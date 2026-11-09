@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     postgres_user: str = "securityops_runtime"
     postgres_password: SecretStr
     mfa_encryption_key: SecretStr | None = None
+    document_encryption_keys: dict[str, SecretStr] = Field(default_factory=dict)
+    document_encryption_active_version: str | None = None
     cors_origins: str = "http://localhost:5173"
     session_cookie_secure: bool = True
     rate_limit_storage_uri: str = "memory://"

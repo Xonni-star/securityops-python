@@ -145,6 +145,19 @@ jobs:
     steps:
       - name: Quellcode auschecken
         uses: actions/checkout@v7.0.1
+      - name: Ephemeren Dokumentenschlüssel für den Integrationstest erzeugen
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import base64
+          import json
+          import os
+
+          print(
+              "DOCUMENT_ENCRYPTION_KEYS="
+              + json.dumps({"ci-v1": base64.urlsafe_b64encode(os.urandom(32)).decode()})
+          )
+          print("DOCUMENT_ENCRYPTION_ACTIVE_VERSION=ci-v1")
+          PY
       - name: age installieren
         run: |
           sudo apt-get update
@@ -209,8 +222,11 @@ jobs:
             http://127.0.0.1:5173/api/v1/auth/login
           grep --ignore-case --extended-regexp --quiet \
             '^set-cookie: securityops_session=.*;.*secure' "$RUNNER_TEMP/login.headers"
-          docker compose exec -T api sh -ec \
-            'printf "%s\n" "synthetic restore fixture" > /var/lib/securityops/documents/ci-backup-fixture'
+          docker compose exec -T api python - <<'PY'
+          from app.document_storage import store_file
+
+          store_file("00000000000000000000000000000001", b"%PDF-1.7\nsynthetic restore fixture")
+          PY
       - name: Verschlüsseltes Backup in PostgreSQL 17 wiederherstellen
         run: |
           age-keygen --output "$RUNNER_TEMP/backup-identity"
@@ -221,8 +237,12 @@ jobs:
           bash scripts/backup.sh "$RUNNER_TEMP/securityops-ci-backup"
           bash scripts/restore-test.sh "$RUNNER_TEMP/securityops-ci-backup"
           docker compose --profile restore-test run --rm --no-deps -T \
-            --entrypoint sh restore-documents -ec \
-            'test "$(cat /var/lib/securityops/documents/ci-backup-fixture)" = "synthetic restore fixture"'
+            -e POSTGRES_PASSWORD=ci-only-runtime-password \
+            -e DOCUMENT_STORAGE_PATH=/var/lib/securityops/documents \
+            -e DOCUMENT_ENCRYPTION_KEYS \
+            -e DOCUMENT_ENCRYPTION_ACTIVE_VERSION \
+            --entrypoint python restore-documents -c \
+            'from app.document_storage import read_file; assert read_file("00000000000000000000000000000001") == b"%PDF-1.7\nsynthetic restore fixture"'
 
   frontend:
     name: Frontend-Typprüfung und Build

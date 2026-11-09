@@ -3,6 +3,11 @@ from collections.abc import Generator
 
 os.environ.setdefault("POSTGRES_PASSWORD", "test-only-not-for-production")
 os.environ.setdefault("MFA_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+os.environ.setdefault(
+    "DOCUMENT_ENCRYPTION_KEYS",
+    '{"test-v1":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}',
+)
+os.environ.setdefault("DOCUMENT_ENCRYPTION_ACTIVE_VERSION", "test-v1")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,6 +16,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.config import get_settings
 from app.database import get_db
 from app.identity_api import password_hasher
 from app.main import app
@@ -137,6 +143,11 @@ def override_get_db() -> Generator[Session, None, None]:
 @pytest.fixture(autouse=True)
 def mock_upload_scanner(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.upload_scanning.scan_upload", lambda _content: None)
+
+
+@pytest.fixture(autouse=True)
+def isolate_document_storage(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "document_storage_path", tmp_path)
 
 
 @pytest.fixture()

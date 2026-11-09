@@ -1212,6 +1212,12 @@ class EmployeeQualificationDocument(Base):
             "length(trim(file_name)) > 0",
             name="ck_employee_qualification_documents_name",
         ),
+        CheckConstraint(
+            "(storage_key IS NULL AND content IS NOT NULL) OR "
+            "(storage_key IS NOT NULL AND content IS NULL)",
+            name="ck_employee_qualification_documents_storage",
+        ),
+        UniqueConstraint("storage_key", name="uq_employee_qualification_documents_storage_key"),
         Index(
             "ix_employee_qualification_documents_qualification_created",
             "qualification_id",
@@ -1230,7 +1236,8 @@ class EmployeeQualificationDocument(Base):
     media_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    storage_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     uploaded_by_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -2764,6 +2771,12 @@ class OWKSAttachment(Base):
         CheckConstraint(
             "size_bytes > 0 AND size_bytes <= 10485760", name="ck_owks_attachments_size"
         ),
+        CheckConstraint(
+            "(storage_key IS NULL AND content IS NOT NULL) OR "
+            "(storage_key IS NOT NULL AND content IS NULL)",
+            name="ck_owks_attachments_storage",
+        ),
+        UniqueConstraint("storage_key", name="uq_owks_attachments_storage_key"),
         Index("ix_owks_attachments_event_created", "event_id", "created_at"),
     )
 
@@ -2775,7 +2788,8 @@ class OWKSAttachment(Base):
     media_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    storage_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     uploaded_by_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )

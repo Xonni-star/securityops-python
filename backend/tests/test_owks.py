@@ -13,6 +13,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app import owks_scheduler
+from app.config import get_settings
 from app.identity_api import password_hasher
 from app.malware_scanner import MalwareDetected
 from app.models import (
@@ -364,6 +365,13 @@ def test_offline_sync_conflicts_status_corrections_and_secure_attachments(
     assert uploaded.status_code == 201
     assert uploaded.json()["file_name"] == "bericht.pdf"
     attachment_id = uploaded.json()["id"]
+    with TestingSessionLocal() as db:
+        attachment = db.get(OWKSAttachment, UUID(attachment_id))
+        assert attachment is not None
+        assert attachment.storage_key is not None and attachment.content is None
+        encoded_file = (get_settings().document_storage_path / attachment.storage_key).read_bytes()
+        assert encoded_file.startswith(b"SECOPS-DOC\x00")
+        assert valid_pdf not in encoded_file
     downloaded = client.get(
         f"/api/v1/owks/events/{critical_id}/attachments/{attachment_id}",
         params={"download": "true"},
