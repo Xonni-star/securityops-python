@@ -2,9 +2,9 @@
 
 **Historische Live-Prüfung:** 09.11.2026, 19:40 Uhr CET · Checkout und `origin/main` stimmten bei dieser Prüfung überein · **Alembic-Head:** `0035_worker_monitoring` · **Alembic-Migrationen:** 35 · **Offene Pull Requests zu diesem Zeitpunkt:** #62, #64, #65, #66, #68–#77.
 
-**Aktueller Main-/GitHub-Abgleich:** 09.11.2026, 21:02 Uhr CET · **Alembic-Head:** `0038_digital_policies` · **Alembic-Migrationen:** 38 · PRs #77, #65, #79 und #78 sind in `main` integriert · **Offene Pull Requests:** #84 und #85. Die detaillierte GitHub-Statusaufnahme weiter unten bleibt eine ausdrücklich datierte historische Momentaufnahme.
+**Aktueller Main-/GitHub-Abgleich:** 09.11.2026, 21:10 Uhr CET · **Alembic-Head:** `0038_digital_policies` · **Alembic-Migrationen:** 38 · PRs #77, #65, #79 und #78 sind in `main` integriert · **Offene Pull Requests:** #84–#88. Die detaillierte GitHub-Statusaufnahme weiter unten bleibt eine ausdrücklich datierte historische Momentaufnahme.
 
-**Vorgeschlagener Stand des offenen PR #85 (nicht in `main`):** **Alembic-Head:** `0039_unique_billing_corrections` · **Alembic-Migrationen:** 39. Die additive Migration ergänzt die Eindeutigkeitssicherung für Rechnungskorrekturen; PR und PostgreSQL-Prüfungen sind noch offen.
+**Vorgeschlagener Stand des offenen PR #85 (nicht in `main`):** **Alembic-Head:** `0039_unique_billing_corrections` · **Alembic-Migrationen:** 39. Die additive Migration ergänzt die Eindeutigkeitssicherung für Rechnungskorrekturen. Issue #7 bleibt offen für fachliche Regeln und Abnahmen.
 
 Diese Momentaufnahme wurde mit dem `main`-Quellcode und einer Live-Abfrage von GitHub abgeglichen. Die Momentaufnahme enthält absichtlich keinen Commit-SHA, der nach dem nächsten Merge veraltet wäre. Implementierung, erfolgreiche CI, fachliche Abnahme und produktiver Betrieb sind getrennte Nachweise. Ein Merge oder grüner CI-Lauf belegt für sich weder fachliche, rechtliche oder steuerliche Abnahme noch einen produktiven Rollout. Der CI-Validator prüft lokale Projektfakten; er fragt GitHub nicht ab. GitHub-Statusangaben müssen bei einer Aktualisierung erneut live geprüft werden.
 
