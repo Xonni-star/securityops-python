@@ -141,9 +141,7 @@ def login(client: TestClient, username: str, password: str) -> dict[str, str]:
     return {"X-CSRF-Token": client.cookies.get("securityops_csrf", "")}
 
 
-def restore_session(
-    client: TestClient, session_cookie: str, csrf_cookie: str
-) -> dict[str, str]:
+def restore_session(client: TestClient, session_cookie: str, csrf_cookie: str) -> dict[str, str]:
     client.cookies.clear()
     client.cookies.set("securityops_session", session_cookie, domain="testserver.local", path="/")
     client.cookies.set("securityops_csrf", csrf_cookie, domain="testserver.local", path="/")
@@ -286,10 +284,7 @@ def test_synthetic_backend_workflow_end_to_end(
         json=missing_qualification_payload,
     )
     assert missing_qualification.status_code == 409, missing_qualification.text
-    assert (
-        missing_qualification.json()["detail"]["conflicts"][0]["code"]
-        == "qualification_missing"
-    )
+    assert missing_qualification.json()["detail"]["conflicts"][0]["code"] == "qualification_missing"
 
     shift_response = client.post(
         "/api/v1/scheduling/shifts",
@@ -514,6 +509,5 @@ def test_synthetic_backend_workflow_end_to_end(
         stored_invoice = db.get(BillingInvoice, UUID(invoice["id"]))
         assert stored_invoice is not None
         assert (
-            stored_invoice.inputs_snapshot["source_time_entries"][0]["time_entry_id"]
-            == entry["id"]
+            stored_invoice.inputs_snapshot["source_time_entries"][0]["time_entry_id"] == entry["id"]
         )
