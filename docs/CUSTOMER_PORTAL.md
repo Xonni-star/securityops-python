@@ -2,8 +2,9 @@
 
 Diese Dokumentation beschreibt die erste vertikale Kundenportal-Basis auf dem
 Feature-Branch. Sie ist kein Nachweis einer Integration in `main`, fachlichen
-Abnahme oder Produktionsfreigabe. Die Alembic-Migration `0025_customer_portal_access`
-folgt linear auf `0024_notification_outbox_worker`.
+Abnahme oder Produktionsfreigabe. Im PR-Stack folgt die Alembic-Migration
+`0026_customer_portal_access` linear auf `0025_unique_incident_owks_event` aus PR #40.
+Beide PRs sind nicht Teil des gemergten `main`.
 
 ## Zugang und Verknüpfung
 

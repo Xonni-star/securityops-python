@@ -102,6 +102,17 @@ Die aktuelle API ist unter `/api/v1` versioniert. OpenAPI/Swagger ist während d
 | POST | `/api/v1/owks/routes/{route_id}/monitor` | `owks.manage`; löst dieselbe idempotente Prüfung wie der eingebaute Minuten-Monitor aus |
 | GET | `/api/v1/dashboard` | `dashboard.read` |
 
+## Kundenportal-Endpunkte im offenen PR-Stack (nicht in `main`)
+
+| Methode | Pfad | Zugriff |
+|---|---|---|
+| GET | `/api/v1/customer-portal/me` | `customer_portal.access`; nur eigener verknüpfter Kontakt, Kunde und nicht archivierte Objekte |
+| GET | `/api/v1/customer-portal/invoices` | `customer_portal.access`; höchstens 100 eigene, nicht archivierte Rechnungen mit Status `approved` |
+| GET | `/api/v1/customer-portal/invoices/{invoice_id}/pdf` | `customer_portal.access`; eigene freigegebene Rechnung; Download wird auditiert |
+| GET | `/api/v1/customer-portal/links` | `customers.portal.manage`; aktive Portalverknüpfungen |
+| POST | `/api/v1/customer-portal/links` | `customers.portal.manage`; manuelle eindeutige Benutzer-/Kontaktverknüpfung |
+| DELETE | `/api/v1/customer-portal/links/{contact_id}` | `customers.portal.manage`; Verknüpfung lösen, Historie und Audit bleiben erhalten |
+
 Kundenlisten blenden archivierte Datensätze standardmäßig aus. Sie können nach Kundenstatus (`status`) und Vertragsstatus (`contract_status`) filtern. Die Sortierfelder sind `company_name`, `customer_number`, `created_at`, `status` und `contract_status`; die Sortierrichtung ist `asc` oder `desc`. Die Suche berücksichtigt Kunden-, Kontakt-, Anschrift- und Websitedaten.
 
 Kunden können Geschäfts- und Rechnungsanschrift, Rechtsform, Website, Vertragsstatus, Umsatzsteuer-ID, Steuernummer und interne Notizen enthalten. Websites müssen HTTP- oder HTTPS-URLs sein. Vertragsstatuswerte: `none` (kein Vertrag), `draft` (in Vorbereitung), `active` (aktiv), `expired` (abgelaufen), `terminated` (beendet). Ansprechpartner werden separat verwaltet; pro Kunde kann höchstens einer als primär markiert sein. Kunden werden archiviert statt physisch gelöscht. Historieneinträge speichern Ereignis, Akteur, Zeitpunkt und geänderte Feldnamen; das Audit-Protokoll hält dieselben geänderten Bereiche fest, aber keine vorherigen/neuen Feldwerte.
