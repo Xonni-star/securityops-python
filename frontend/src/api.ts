@@ -54,6 +54,7 @@ import type {
   ScheduleReplacementReason,
   ScheduleShift,
   ScheduleShiftHistory,
+  ScheduleReplacementCandidate,
   TimeEntry,
   TimeEntryCorrection,
   TimeEntrySummary,
@@ -1125,6 +1126,11 @@ export const cancelScheduleShift = (id: string) =>
 
 export const getScheduleShiftHistory = (id: string) =>
   request<ScheduleShiftHistory[]>(`/scheduling/shifts/${id}/history?limit=100`);
+
+export const getScheduleShiftReplacementCandidates = (id: string) =>
+  request<ScheduleReplacementCandidate[]>(
+    `/scheduling/shifts/${id}/replacement-candidates`,
+  );
 
 export const replaceScheduleShiftEmployee = (
   id: string,

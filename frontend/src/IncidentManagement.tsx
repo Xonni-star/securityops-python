@@ -143,6 +143,7 @@ export default function IncidentManagement({ user }: { user: AuthUser }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   const loadIncidents = useCallback(async () => {
     setLoading(true);
@@ -205,6 +206,7 @@ export default function IncidentManagement({ user }: { user: AuthUser }) {
     const due = String(data.get("due_at") ?? "");
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       const created = await createIncident({
         title: String(data.get("title") ?? "").trim(),
@@ -219,6 +221,7 @@ export default function IncidentManagement({ user }: { user: AuthUser }) {
       form.reset();
       setSelectedObject("");
       await Promise.all([loadIncidents(), loadDetail(created.id)]);
+      setNotice("Vorfall wurde angelegt.");
     } catch (reason) {
       setError(messageFrom(reason, "Vorfall konnte nicht gemeldet werden."));
     } finally {
@@ -232,6 +235,7 @@ export default function IncidentManagement({ user }: { user: AuthUser }) {
     const data = new FormData(event.currentTarget);
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       await updateIncident(detail.id, {
         title: String(data.get("title") ?? "").trim(),
@@ -244,6 +248,7 @@ export default function IncidentManagement({ user }: { user: AuthUser }) {
         assigned_to_id: String(data.get("assigned_to_id") ?? "") || detail.assigned_to_id,
       });
       await Promise.all([loadIncidents(), loadDetail(detail.id)]);
+      setNotice("Vorfall und Verantwortlichkeit wurden gespeichert.");
     } catch (reason) {
       setError(messageFrom(reason, "Vorfall konnte nicht geändert werden."));
     } finally {
@@ -256,9 +261,13 @@ export default function IncidentManagement({ user }: { user: AuthUser }) {
     if (!detail) return;
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       await updateIncidentStatus(detail.id, nextStatus);
       await Promise.all([loadIncidents(), loadDetail(detail.id)]);
+      setNotice(nextStatus === "closed"
+        ? "Vorgang wurde abgeschlossen."
+        : "Vorfallstatus wurde geändert.");
     } catch (reason) {
       setError(messageFrom(reason, "Status konnte nicht geändert werden."));
     } finally {
@@ -272,12 +281,14 @@ export default function IncidentManagement({ user }: { user: AuthUser }) {
     const data = new FormData(event.currentTarget);
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       await updateIncidentSensitiveDetails(detail.id, {
         narrative: String(data.get("narrative") ?? "").trim() || null,
         closure_report: String(data.get("closure_report") ?? "").trim() || null,
       });
       await loadDetail(detail.id);
+      setNotice("Sensible Vorfalldaten wurden gespeichert.");
     } catch (reason) {
       setError(messageFrom(reason, "Sensible Details konnten nicht gespeichert werden."));
     } finally {
@@ -386,6 +397,7 @@ export default function IncidentManagement({ user }: { user: AuthUser }) {
         <span className="result-count">{total} Einträge</span>
       </header>
       {error && <p className="alert" role="alert">{error}</p>}
+      {notice && <p className="success-message" role="status">{notice}</p>}
       <div className="incident-layout">
         <section className="panel incident-list" aria-label="Vorfallliste">
           <label>Status
