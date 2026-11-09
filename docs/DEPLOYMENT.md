@@ -9,11 +9,12 @@ Für den ersten Start oder ein Release:
 ```sh
 docker compose up -d db redis clamav
 docker compose ps clamav
-docker compose --profile release run --rm migrate
+docker compose --profile release run --rm provision-db
+docker compose --profile release run --rm --no-deps migrate
 docker compose up --build -d api frontend
 ```
 
-Der `migrate`-Aufruf führt zunächst den einmaligen/idempotenten Rollen-Provisioner als Administrator aus und danach Alembic als `securityops_migrator`. API und Worker verwenden ausschließlich `securityops_runtime`. Vor dem Upgrade eines bestehenden Volumes `POSTGRES_ADMIN_USER`/`POSTGRES_ADMIN_PASSWORD` auf den bisherigen PostgreSQL-Administrator setzen, drei unterschiedliche Secrets bereitstellen und ein vollständiges Backup prüfen. Der Provisioner überträgt bestehendes Schema-/Objekteigentum an den Migrationsbenutzer, ohne Datensätze zu ändern oder zu löschen. Nicht mit Produktionsdaten experimentieren; den Upgradepfad zuerst mit einer getrennten Kopie und anschließendem Integritäts-/Restore-Test prüfen.
+Der erste Befehl führt den idempotenten Rollen-Provisioner als Administrator aus; der zweite wendet Alembic als `securityops_migrator` an. API und Worker verwenden ausschließlich `securityops_runtime`. Vor dem Upgrade eines bestehenden Volumes `POSTGRES_ADMIN_USER`/`POSTGRES_ADMIN_PASSWORD` auf den bisherigen PostgreSQL-Administrator setzen, drei unterschiedliche Secrets bereitstellen und ein vollständiges Backup prüfen. Der Provisioner überträgt bestehendes Schema-/Objekteigentum an den Migrationsbenutzer, ohne Datensätze zu ändern oder zu löschen. Nicht mit Produktionsdaten experimentieren; den Upgradepfad zuerst mit einer getrennten Kopie und anschließendem Integritäts-/Restore-Test prüfen.
 
 Der ClamAV-Dienst benötigt beim ersten Start Zeit zum Laden seiner Signaturdatenbank. Sein Compose-Healthcheck verlangt sowohl eine `PONG`-Antwort als auch eine ClamAV-`VERSION`-Antwort mit nichtleerer Signaturdatenbank-Version; mit 30 Minuten Startzeitraum wird die API erst nach erreichbarer, initialisierter Engine gestartet. Der Dienst ist nur im internen Compose-Datennetz erreichbar und veröffentlicht keinen Host-Port. Das mehrplattformfähige ClamAV-Debian-Image ist auf Version und OCI-Manifest-Digest festgelegt; seine laufend aktualisierten Virendefinitionen können Erkennungsergebnisse trotz gleicher Container-Version zeitabhängig ändern. Digest-Aktualisierungen müssen geprüft und explizit übernommen werden. Details zu Grenzwerten, Fehlerverhalten und API-Ablehnungen stehen in [Upload-Prüfung](UPLOAD_SECURITY.md).
 

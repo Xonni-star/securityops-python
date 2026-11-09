@@ -151,7 +151,8 @@ jobs:
       - name: PostgreSQL starten und Migrationen einmalig anwenden
         run: |
           docker compose up --detach db
-          docker compose --profile release run --rm migrate
+          docker compose --profile release run --rm provision-db
+          docker compose --profile release run --rm --no-deps migrate
       - name: API und statisches Frontend als Produktionscontainer prüfen
         run: |
           docker compose up --detach api frontend notification-worker

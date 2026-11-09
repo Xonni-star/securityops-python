@@ -9,7 +9,8 @@
 
    ```sh
    docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db redis
-   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile release run --rm migrate
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile release run --rm provision-db
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile release run --rm --no-deps migrate
    docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
    ```
 
