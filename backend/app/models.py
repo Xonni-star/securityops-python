@@ -481,6 +481,51 @@ class CustomerContact(Base):
     customer: Mapped[Customer] = relationship(back_populates="contacts")
 
 
+class CustomerPortalLink(Base):
+    __tablename__ = "customer_portal_links"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_customer_portal_links_user"),
+        UniqueConstraint("contact_id", name="uq_customer_portal_links_contact"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    contact_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("customer_contacts.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class CustomerPortalLinkHistory(Base):
+    __tablename__ = "customer_portal_link_history"
+    __table_args__ = (
+        CheckConstraint("action IN ('linked', 'unlinked')", name="ck_customer_portal_link_action"),
+        Index("ix_customer_portal_link_history_created", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    contact_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("customer_contacts.id", ondelete="RESTRICT"), nullable=False
+    )
+    actor_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
 class CustomerHistory(Base):
     __tablename__ = "customer_history"
     __table_args__ = (Index("ix_customer_history_customer_created", "customer_id", "created_at"),)

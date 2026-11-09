@@ -533,6 +533,77 @@ export interface AuthUser {
   permissions: string[];
 }
 
+export interface CustomerPortalAddress {
+  street: string;
+  house_number: string;
+  postal_code: string;
+  city: string;
+  country_code: string;
+}
+
+export interface CustomerPortalContact {
+  id: string;
+  first_name: string;
+  last_name: string;
+  responsibility: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface CustomerPortalCustomer {
+  customer_number: string;
+  company_name: string;
+  email: string | null;
+  phone: string | null;
+  legal_form: string | null;
+  website: string | null;
+  business_address: CustomerPortalAddress | null;
+  billing_address: CustomerPortalAddress | null;
+}
+
+export interface CustomerPortalObject {
+  id: string;
+  code: string;
+  name: string;
+  object_type: string | null;
+  status: ObjectStatus;
+  operating_hours: string | null;
+  service_times: string | null;
+  address: CustomerPortalAddress | null;
+}
+
+export interface CustomerPortalMe {
+  contact: CustomerPortalContact;
+  customer: CustomerPortalCustomer;
+  objects: CustomerPortalObject[];
+}
+
+export interface CustomerPortalInvoiceLine {
+  position: number;
+  description: string;
+  quantity: string;
+  unit: string;
+  unit_price: string;
+  tax_rate: string;
+  net_amount: string;
+  tax_amount: string;
+  gross_amount: string;
+}
+
+export interface CustomerPortalInvoice {
+  id: string;
+  invoice_number: string;
+  kind: "invoice" | "correction" | "cancellation";
+  payment_status: "open" | "partial" | "paid";
+  currency: string;
+  issued_on: string;
+  due_on: string;
+  net_amount: string;
+  tax_amount: string;
+  gross_amount: string;
+  lines: CustomerPortalInvoiceLine[];
+}
+
 export interface TaskItem {
   id: string;
   title: string;

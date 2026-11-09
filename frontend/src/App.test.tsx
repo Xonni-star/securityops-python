@@ -18,6 +18,9 @@ vi.mock("./api", () => ({
   getCustomerObjects: vi.fn(),
   getCustomers: vi.fn(),
   getDashboard: vi.fn(),
+  getCustomerPortalMe: vi.fn(),
+  getCustomerPortalInvoices: vi.fn(),
+  downloadCustomerPortalInvoice: vi.fn(),
   getControlRoom: vi.fn(),
   getEmployees: vi.fn(),
   getEmployeeAvailability: vi.fn(),
@@ -120,6 +123,7 @@ describe("Kundenformulare", () => {
         permissions: ["control_room.read", "objects.read"],
       },
     });
+
     const controlRoom: ControlRoom = {
       generated_at: "2026-11-09T06:00:00Z",
       range_start: "2026-11-02",
@@ -133,6 +137,48 @@ describe("Kundenformulare", () => {
     expect(await screen.findByRole("button", { name: "Leitstelle" })).toBeTruthy();
     expect(await screen.findByRole("heading", { name: "Leitstelle" })).toBeTruthy();
     expect(await screen.findByText("Keine aktiven, zugänglichen Objekte.")).toBeTruthy();
+  });
+
+  it("öffnet für Kundenportal-Konten ausschließlich die Kundenansicht", async () => {
+    vi.mocked(api.getSession).mockResolvedValue({
+      user: {
+        id: "portal-user",
+        username: "portal",
+        email: "portal@example.com",
+        full_name: "Portal-Konto",
+        is_active: true,
+        roles: ["customer_portal"],
+        permissions: ["customer_portal.access"],
+      },
+    });
+    vi.mocked(api.getCustomerPortalMe).mockResolvedValue({
+      contact: {
+        id: "contact-1",
+        first_name: "Kunden",
+        last_name: "Kontakt",
+        responsibility: null,
+        email: null,
+        phone: null,
+      },
+      customer: {
+        customer_number: "K-1",
+        company_name: "Beispiel GmbH",
+        email: null,
+        phone: null,
+        legal_form: null,
+        website: null,
+        business_address: null,
+        billing_address: null,
+      },
+      objects: [],
+    });
+    vi.mocked(api.getCustomerPortalInvoices).mockResolvedValue([]);
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Willkommen, Kunden." })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Beispiel GmbH" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Kunden" })).toBeNull();
+    expect(api.getCustomers).not.toHaveBeenCalled();
   });
 
   it("bietet berechtigten Nutzern das zentrale Aufgabenmodul in der Navigation an", async () => {
