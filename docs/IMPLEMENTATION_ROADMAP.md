@@ -1,55 +1,39 @@
 # Priorisierte Implementierungs-Roadmap
 
-Diese Roadmap basiert auf dem tatsächlich gemergten `main`-Stand vom 09.11.2026 (SHA `b275b5a0eb4a82a480e3c15ee09a0a5c85453a6d`) und der aktuellen GitHub-Abfrage. Statusdetails stehen in [`PROJECT_STATUS.md`](PROJECT_STATUS.md). Priorität folgt Sicherheits- und Datenabhängigkeiten, nicht der Nummer offener Issues.
+Diese Roadmap basiert auf dem geprüften `main`-Stand vom 09.11.2026 (SHA `0b32db6809d763dc58d003ce0657d1af03666a52`), Alembic-Head `0035_worker_monitoring` und der Live-Abfrage der Issues und Pull Requests. Die aktuelle Momentaufnahme steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md). Prioritäten unterscheiden Implementierung, CI, fachliche Entscheidungen/Abnahme und produktiven Nachweis.
 
-## Prioritäten
+## P0 – Betreiberabnahme und produktiven Betrieb belegen
 
-### P0 – Betriebs- und Sicherheitsrisiken vor realen Daten schließen
+1. **Issue #56 – sehr hohe Priorität, offen.** PR #57 hat versionierte AES-256-GCM-Verschlüsselung, externen Schlüsselring und ein explizites, wiederaufnehmbares Rekey-Werkzeug in `main` integriert (Migration `0033_encrypted_document_storage`). Die Migration selbst verschlüsselt vorhandene Dateien nicht. Betreiber-Schlüsselbereitstellung, Bestandsmigration/Rotation in der Zielumgebung und Abnahme sind nicht nachgewiesen. Produktionsbetrieb darf bei fehlendem/ungültigem Schlüssel nicht auf Klartext zurückfallen; Bestandsdateien nur kontrolliert, wiederaufnehmbar und nicht-destruktiv umschlüsseln.
+2. **Issue #9 bleibt offen.** Die Repository-Konfiguration enthält getrennte PostgreSQL-Rollen, Redis-Rate-Limits, statische Frontend-Auslieferung, Release-Migrationen, ClamAV und Backup-/Restore-Hilfen. PR #58 hat Worker-/Outbox-Monitoring in `main` integriert (Migration `0035_worker_monitoring`). Das implementierte Heartbeat-/Monitoring ersetzt weder produktiven Rollout noch TLS-/Proxy-/DNS-Konfiguration, Secret-Verwaltung, externe Alarmierung/Incident-Abläufe oder regelmäßig ausgeführte Wiederherstellung aus echten Betreiber-Sicherungen. CI-Restoreläufe ersetzen diese Nachweise nicht.
+3. Backupziel, Verschlüsselung, Schlüsseltrennung, Aufbewahrung/Löschung, Wiederanlaufplan und Restoreübungen für den jeweiligen Betrieb festlegen und nachweisen. Keine Bestandsdateien rückwirkend als gescannt behandeln; ClamAV prüft neue unterstützte Uploads fail-closed.
+4. Audit-/Datenbankrollen, MFA/Sitzungsverwaltung, Scopes und Uploadpfade unabhängig sicherheitsprüfen. Die Audit-Hashkette schützt nicht gegen privilegierte Änderungen durch Datenbank-Owner/Superuser; Prüfpunkte und Sicherungen müssen dafür außerhalb der Datenbank getrennt vorliegen.
 
-1. Issue #9: vorhandenes Produktions-Compose, TLS/Reverse Proxy, sichere Header/Cookies, Secrets, getrennte Datenbankrollen, Redis-Rate-Limiting, Monitoring/Alerting und Release-Migrationen für die Zielumgebung konfigurieren, testen und betreiben.
-2. Verschlüsselte Backups mit getrenntem Ziel, Aufbewahrungs-/Löschregeln, dokumentiertem Wiederanlaufplan und regelmäßigen Betreiber-Restoreübungen einrichten; vorhandene Werkzeuge und der CI-Test sind kein Betriebsnachweis.
-3. Optionales TOTP-MFA, Recovery-Codes, Sitzungsliste/-widerruf und administrativen Passwortreset aus PR #31 unabhängig sicherheitsprüfen. Ein nutzerinitiierter E-Mail-Passwortreset ist mangels Zustellprovider nicht implementiert; dessen Bedarf und Ablauf sind fachlich zu entscheiden.
-4. Sensible Daten-/Objektbereiche, Uploads, Auditgrenzen und Datenschutz unabhängig prüfen. ClamAV scannt neue Uploads fail-closed; dies ersetzt weder unabhängige Prüfung noch rückwirkenden Bestandsscan. Hashing ist keine Verschlüsselung.
-5. Security-/Dependency-Scanbefunde triagieren und einen Incident-Prozess mit Verantwortlichkeiten/Alarmierungsweg festlegen.
+## P1 – Fachentscheidungen und Portalgrenzen
 
-PR #28 ist gemergt und enthält Nginx-Auslieferung, einen nicht privilegierten API-Container, Redis-Rate-Limiting, getrennte Migrationen, verschlüsselte Backups/Restore und Security-Scanning. PR #31 ist gemergt und ergänzt TOTP-MFA sowie Sitzungsverwaltung. Issue #9 bleibt offen. Diese Bausteine und CI-Restoreläufe ersetzen weder eine Umgebungskonfiguration noch regelmäßige produktive Restoreübungen, Monitoring, Incident-Abläufe oder eine Betriebsfreigabe.
+1. **Issue #7 bleibt offen.** Für das implementierte Rechnungswesen müssen fachlich bestätigte Tarif-, Zuschlags-, Rundungs-, Steuer-, Korrektur- und Buchhaltungsexportregeln festgelegt und anhand der Akzeptanzkriterien geprüft werden. `Decimal`/`NUMERIC`, PDF und Export belegen keine Steuer- oder Buchhaltungskonformität.
+2. **Issue #52 ist geschlossen.** PR #55 integriert die Rücknahme eigener offener Abwesenheits-/Verfügbarkeitsanträge sowie eine explizite, widerrufbare Freigabe von Qualifikationsdateien. Allgemeine Personal-/Vertragsdokumente bleiben ausgeschlossen; vertrauliche interne Personalunterlagen dürfen nicht generisch sichtbar werden.
+3. Issue #10 ist laut GitHub am 09.11.2026 nach Integration der Planungs-/Vertretungsfunktionen geschlossen. Das bestätigt die Issue-Akzeptanzkriterien, nicht die gesetzliche Konformität konfigurierter Ruhezeiten oder eine externe arbeitsrechtliche Abnahme.
 
-PR #33 hat die Malwareprüfung neuer Dokument-/Vertragsdateien, Dokumentversionen, OWKS-Anhänge und Personal-Qualifikationsdateien integriert. Bereits gespeicherte Dateien werden nicht rückwirkend geprüft. PR #34 hat mit Migration `0019_tasks` einen generischen Aufgaben-Kern integriert. Er ist nicht automatisch mit Fachmodulen verbunden und enthält keine Anhänge, Zustellbenachrichtigungen, Hintergrundjobs oder Eskalationen; diese Ausbaupunkte erfordern eine separat abgestimmte Ereignis-/Integrationssemantik.
+## P2 – Sichere Automatisierungsregeln
 
-PR #35 ergänzt mit `0020_notifications` In-App-Benachrichtigungen für Aufgaben-Zuweisungen und Statuswechsel. PR #39 ist mit `0024_notification_outbox_worker` in `main` gemergt: ein separater Worker verarbeitet diese Task-Ereignisse mit konkurrierenden Claims, Lease/Wiederaufnahme, Backoff, konfigurierbaren Versuchsgrenzen und Dead-Letter-/Attempt-Historie. Derselbe Dienst führt den OWKS-Prüfzyklus aus. E-Mail/Push, Task-Erinnerungen/Eskalationen und Ereignisse aus anderen Modulen bleiben ausgeschlossen.
+**Issue #51 ist offen.** PR #54 integriert ein eingeschränktes Regelwerk für `task.assigned` und `task.status_changed`, mit typisierter Aufgabenstatus-Bedingung, In-App-Benachrichtigungsaktion, Admin-Oberfläche, Ausführungshistorie und Dead-Letter-Wiederholung. PR #59 ergänzt begrenzte OWKS-Auslöser (`owks.missed_control`, `owks.deviation_reported`, `owks.offline_event_synced`). Das Issue bleibt offen, bis der weitere Umfang und die fachlichen Akzeptanzkriterien abgestimmt sind. Keine beliebigen SQL-Ausdrücke, Skripte oder dynamische Codeausführung ergänzen.
 
-PR #36 ist mit Migration `0021_key_management` gemergt und ergänzt ein objektgebundenes Schlüsselregister mit Ausgabe, Rückgabe, Verlust-/Defektmeldung, Inventur und append-only Bewegungsverlauf. Ausgabe erfordert eine aktive, dem Objekt zugewiesene Person und eine digitale Quittierung. Die Quittierung ist keine qualifizierte elektronische Signatur oder ein Nachweis physischer Verwahrung; bestehende Freitext-Zutrittsangaben werden nicht als Schlüsselbestand migriert. Betriebsprozesse für tatsächliche Schlüsselübergabe und physische Sicherung bleiben erforderlich.
+## P3 – Betriebsqualität und vollständiger Nachweis
 
-PR #37 ist mit Migration `0022_incident_management` gemergt und ergänzt objektbezogene Vorfälle/Beschwerden, Maßnahmen, Fristen, Statusübergänge und Abschlussbericht. Separate Sensitivitätsrechte schützen Hergang, Abschlussbericht, Beteiligte/Zeugen und Dateizugriff; alle Endpunkte prüfen zusätzlich Objekt-Scope. Vorfallanhänge werden fail-closed mit ClamAV geprüft, privat gespeichert und nur autorisiert abgerufen; vorhandene Dateien werden nicht rückwirkend geprüft. Maßnahmen, Fristen und Eskalationen bleiben manuell: es gibt keine automatische Aufgaben-/Benachrichtigungsintegration, Fristerinnerung oder Eskalationsregel.
+1. E2E-, Berechtigungs-, Race-/PostgreSQL-, Upload-/Malware-, Last- und Wiederherstellungstests dort ergänzen, wo Risiko und reale Integrationsgrenzen es erfordern.
+2. Datenschutz-/Aufbewahrung, externe Audit-Prüfpunkte, Monitoring/Incident-Prozess und Betreiberverantwortung konkret festlegen und nachweisen. Worker-/Outbox-Monitoring ist in `main` implementiert; externe Alarmierung und produktiver Betrieb sind nicht nachgewiesen.
+3. Fachbereiche wie Kundenportal, Mitarbeiterportal, globale Suche, Inventar, Leitstelle und Rechnungswesen anhand ihrer tatsächlichen Nutzerrollen und Datenbereichsgrenzen abnehmen. Grüne CI oder ein geschlossener GitHub-Vorgang ersetzt keine unabhängige fachliche, rechtliche, steuerliche oder produktive Prüfung.
 
-### P1 – Abnahme und Bestand konsolidieren
+## GitHub-Lage am Prüftag
 
-1. Issue #10: Dienstplanung fachlich abnehmen. PR #26 ist gemergt und ergänzt wöchentliche Verfügbarkeitsfenster, befristete Dienstwünsche/Sperrzeiten und nachvollziehbare Schichtvertretungen. Issue #10 bleibt offen; die Konflikt-/Ruhezeitprüfung ist keine arbeitsrechtliche Freigabe.
-
-### P2 – Fachliche Ausbau- und Abnahmeaufgaben
-
-1. OWKS ist in `main` (PR #23, Migration `0014`); Issue #3 ist geschlossen. Fachlich weiterhin prüfen: statische Kennungen sind keine physischen Präsenznachweise. Neue Anhänge werden durch PR #33 fail-closed gescannt; vorhandene Dateien nicht rückwirkend.
-2. Dokumenten-/Vertragsfunktionen sind in `main` (PR #24, Migration `0015`). Issue #8 ist laut aktueller GitHub-Abfrage offen; Vertragsregeln, Dateizugriff und fachliche Akzeptanz sind vor Erledigung konkret abzugleichen. Neue Uploads werden fail-closed geprüft, der Bestand nicht rückwirkend.
-3. Issue #7: das mit PR #27 gemergte Rechnungswesen fachlich abnehmen: Preise/Steuerwerte, Rechnungssnapshots, Korrekturbelege, Zahlungen/Mahnstatus, PDF und Export `securityops-accounting-v1`. Migration `0017_billing` ist in `main`; Preise/Steuersätze bleiben konfigurierte Eingaben, keine steuerliche oder buchhalterische Abnahme ist nachgewiesen. Issue #7 bleibt offen.
-
-### P3 – Betriebsqualität und vollständiger Nachweis
-
-1. E2E-, Berechtigungs-, Race-/PostgreSQL-, Upload-/Malware-, Last- und Wiederherstellungstests erweitern.
-2. Datenschutz-/Aufbewahrungsprozess, Auditintegrität, Incident-/Monitoringkonzept und reale Betriebsabnahme belegen.
-3. Die gemergte Leitstellenübersicht fachlich validieren: Umfang/Interpretation der Kennzahlen, Nutzerrollen und Objekt-/Fachbereichsgrenzen. `0023_control_room_permission` ergänzt nur das Recht, keine neue Fachdatentabelle. Die Oberfläche bleibt eine serverseitige Momentaufnahme; sie simuliert keine Warnungen und ist kein Echtzeit- oder Alarmierungsdienst.
-
-## Bestätigte GitHub-Lage
-
-- In `main`: Identity inklusive MFA/Sitzungsverwaltung, Kunden, Objekte, Personal/Qualifikationen, Dienstplanung einschließlich Verfügbarkeiten/Vertretungen, Zeiterfassung, OWKS, Dokumente/Verträge, Rechnungswesen, Upload-Scan, Aufgaben, In-App-Aufgabenbenachrichtigungen, Schlüssel-, Vorfallmanagement, Leitstellenübersicht und separater Notification-/OWKS-Worker (Migrationen `0001`–`0024`); PRs #23, #24, #26, #27, #28, #29, #31, #33, #34, #35, #36, #37, #38 und #39 sind gemergt.
-- PR #33 ergänzt fail-closed ClamAV-Scan neuer relevanter Uploads; PR #34 ergänzt den generischen Aufgaben-Kern, der nicht automatisch mit Fachmodulen gekoppelt ist. PRs #35/#39 ergänzen transaktionale Task-Outbox-Ereignisse und deren In-App-Verarbeitung mit Retry-/Dead-Letter-Historie; es gibt keine externen Kanäle, Erinnerungen/Eskalationen oder Ereignisse aus anderen Fachmodulen.
-- PR #25 (Dokumentation) ist gemergt; PR #40 ist offen, alle acht Checks waren am 09.11.2026 um 08:17 UTC erfolgreich und die Änderungen sind nicht Bestandteil von `main`. PR #38/#39 sind gemergt.
-- Migration `0017_billing` folgt auf `0016_scheduling_availability`; `0018_identity_security` folgt auf `0017_billing`, `0019_tasks` auf `0018_identity_security`, `0020_notifications` auf `0019_tasks`, `0021_key_management` auf `0020_notifications`, `0022_incident_management` auf `0021_key_management`, `0023_control_room_permission` auf `0022_incident_management` und `0024_notification_outbox_worker` auf `0023_control_room_permission`. `0024_notification_outbox_worker` ist der `main`-Head. Issues #7–#10 sind offen, #2–#6 geschlossen.
-- Issues #2–#6 sind geschlossen; #7–#10 sind laut frischer GitHub-Abfrage offen. Issue #8 bleibt trotz PR #24 offen; Issue #9 trotz PR #28, Issue #10 trotz PR #26 und Issue #7 trotz PR #27. Offene Issues sind keine Aussage, dass die gemergte Funktion nicht vorhanden ist; keine Issue wurde durch diese Dokumentationsänderung geändert.
+- PRs #40, #42, #43, #44, #46, #47, #49, #50, #54, #55, #57, #58 und #59 sind gemergt; der aktuelle `main`-SHA ist `0b32db6809d763dc58d003ce0657d1af03666a52`, Alembic-Head `0035_worker_monitoring`. PR #53 ist der einzige offene PR.
+- Issues #7, #9, #51 und #56 sind offen; #10 und #52 sind geschlossen. Für die integrierten PR-Änderungen waren die angezeigten CI-Prüfungen erfolgreich. Diese Nachweise belegen weder fachliche Abnahme noch Betreiber-Schlüsselkonfiguration, produktive Dateimigration/Rotation, externe Alarmierung oder Betreiber-Restore.
+- CI, fachliche Abnahme und produktive Prüfung sind unterschiedliche Nachweise. Insbesondere belegen Merge und CI weder Betreiber-Restore noch Produktionsfreigabe oder Rechts-/Steuerkonformität.
 
 ## Abhängigkeiten und Abschlusskriterien
 
-- Objekte bauen auf Kunden auf; Personalakten verknüpfen Benutzerkonten; Dienstplanung benötigt Personal/Qualifikationen, Objekte, Zuweisungen und Abwesenheiten.
-- Zeiterfassung hängt an Personal, Objekten und optional veröffentlichten Schichten. OWKS benötigt Objekt-/Personalidentitäten sowie nachvollziehbare Zeit-/Kontrollereignisse. Dokumenten-/Vertragsfunktionen nutzen Kunden, Objekte und geschützte Dokumentauslieferung. Die Abrechnungsfunktion ist in `main`, ihre fachliche Vertrags-/Tarif-/Steuerlogik muss jedoch unabhängig bestätigt werden.
-- Jede DB-Erweiterung erhält eine Alembic-Migration und passende Schema-, API-, Recht-, UI- und Integrationstests.
-- „Implementiert“, „CI-grün“, „fachlich abgenommen“ und „produktiv freigegeben“ sind unterschiedliche Zustände.
-- Geld-, Arbeitszeit-, Datenschutz-, Aufbewahrungs-, Steuer- und Rechtsregeln müssen vor entsprechender Produktbehauptung fachlich bestätigt werden.
+- Kunden → Objekte → Personal/Qualifikationen → Dienstplanung → Zeiterfassung/OWKS → Dokumente/Verträge → Abrechnung bleibt die fachliche Datenabhängigkeit.
+- Jede Datenbankerweiterung erhält eine Alembic-Migration und passende Schema-, API-, Rechte-, UI- und Integrationstests. Bestehende Geschäfts- und Auditdaten nicht stillschweigend überschreiben; Korrekturen müssen nachvollziehbar sein.
+- Geldwerte verwenden bestätigte Rechenregeln und `Decimal`/`NUMERIC`; Zeitpunkte werden UTC gespeichert. Lokale Dienstzeiten benötigen IANA-Zeitzonen und geprüfte DST-Fälle.
+- „Implementiert“, „CI-grün“, „fachlich abgenommen“ und „produktiv geprüft/freigegeben“ sind getrennte Zustände. Keine Produktionsreife oder Rechts-/Steuerkonformität ohne konkreten und unabhängig geprüften Nachweis behaupten.
