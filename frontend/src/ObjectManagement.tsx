@@ -100,7 +100,15 @@ function AddressFields({
   );
 }
 
-export default function ObjectManagement({ user }: { user: AuthUser }) {
+export default function ObjectManagement({
+  user,
+  initialObjectId,
+  onInitialObjectOpened,
+}: {
+  user: AuthUser;
+  initialObjectId: string | null;
+  onInitialObjectOpened: () => void;
+}) {
   const canRead = user.permissions.includes("objects.read");
   const canCreate = user.permissions.includes("objects.manage")
     && user.permissions.includes("objects.manage_all");
@@ -207,6 +215,21 @@ export default function ObjectManagement({ user }: { user: AuthUser }) {
     setAssignmentCandidates(candidates);
     return object;
   }, [canAssign, canReadSensitive]);
+
+  useEffect(() => {
+    if (!initialObjectId) return;
+    let active = true;
+    refreshSelected(initialObjectId)
+      .catch((reason) => {
+        if (active) setError(messageFrom(reason, "Objektdetails konnten nicht geladen werden."));
+      })
+      .finally(() => {
+        if (active) onInitialObjectOpened();
+      });
+    return () => {
+      active = false;
+    };
+  }, [initialObjectId, onInitialObjectOpened, refreshSelected]);
 
   async function openObject(object: SecurityObject) {
     setError("");

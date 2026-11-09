@@ -34,6 +34,7 @@ import ControlRoom from "./ControlRoom";
 import EmployeePortal from "./EmployeePortal";
 import CustomerPortal from "./CustomerPortal";
 import CustomerPortalManagement from "./CustomerPortalManagement";
+import GlobalSearch from "./GlobalSearch";
 import type {
   AuthUser,
   Customer,
@@ -44,6 +45,7 @@ import type {
   CustomerSort,
   CustomerStatus,
   Dashboard,
+  GlobalSearchResult,
   SecurityObject,
 } from "./types";
 
@@ -158,6 +160,7 @@ export default function App() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [history, setHistory] = useState<CustomerHistory[]>([]);
   const [customerObjects, setCustomerObjects] = useState<SecurityObject[]>([]);
+  const [initialObjectId, setInitialObjectId] = useState<string | null>(null);
   const [activeModule, setActiveModule] = useState<ActiveModule>("customers");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -367,12 +370,30 @@ export default function App() {
     setHistory([]);
     setCustomerObjects([]);
     setDashboard(null);
+    setInitialObjectId(null);
     setActiveModule("customers");
   }
 
   function selectModule(module: ActiveModule) {
     moduleSelectedManually.current = true;
     setActiveModule(module);
+  }
+
+  const clearInitialObjectId = useCallback(() => setInitialObjectId(null), []);
+
+  async function openSearchResult(result: GlobalSearchResult) {
+    setError("");
+    if (result.type === "customer" && canReadCustomers) {
+      selectModule("customers");
+      try {
+        await refreshSelected(result.id);
+      } catch (reason) {
+        setError(messageFrom(reason, "Kundendetails konnten nicht geladen werden."));
+      }
+    } else if (result.type === "object" && canReadObjects) {
+      setInitialObjectId(result.id);
+      selectModule("objects");
+    }
   }
 
   async function signOut() {
@@ -670,6 +691,16 @@ export default function App() {
         </>}
       </nav>
 
+      {(canReadCustomers || canReadObjects) && (
+        <GlobalSearch
+          availableTypes={[
+            ...(canReadCustomers ? ["customer" as const] : []),
+            ...(canReadObjects ? ["object" as const] : []),
+          ]}
+          onOpenResult={(result) => void openSearchResult(result)}
+        />
+      )}
+
       {activeModule === "security"
         ? <IdentitySecurity
           user={user}
@@ -711,7 +742,13 @@ export default function App() {
         ? <SchedulingManagement user={user} />
         : activeModule === "employees" && canReadEmployees
         ? <PersonnelManagement user={user} />
-        : activeModule === "objects" && canReadObjects ? <ObjectManagement user={user} /> : <>
+        : activeModule === "objects" && canReadObjects ? (
+          <ObjectManagement
+            user={user}
+            initialObjectId={initialObjectId}
+            onInitialObjectOpened={clearInitialObjectId}
+          />
+        ) : <>
       {dashboard && <section className="stats" aria-label="Kundenübersicht">
         <article className="stat-card"><span>Kunden gesamt</span><strong>{dashboard.customers_total}</strong></article>
         <article className="stat-card"><span>Aktive Kunden</span><strong>{dashboard.customers_active}</strong></article>
