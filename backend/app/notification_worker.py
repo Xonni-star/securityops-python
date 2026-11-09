@@ -311,8 +311,8 @@ class NotificationOutboxWorker:
                     else "queued"
                 ),
             )
-            db.add(run)
             if not matches or not recipient_ids:
+                db.add(run)
                 continue
 
             action_event_id = uuid4()
@@ -335,6 +335,8 @@ class NotificationOutboxWorker:
                     },
                 )
             )
+            db.flush()
+            db.add(run)
 
     def _record_failure(
         self, claim: ClaimedEvent, error_code: str, *, permanent: bool
