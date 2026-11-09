@@ -129,11 +129,15 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["policy_version_id"], ["policy_versions.id"], ondelete="RESTRICT",
+            ["policy_version_id"],
+            ["policy_versions.id"],
+            ondelete="RESTRICT",
             name="fk_policy_version_closures_policy_version_id_policy_versions",
         ),
         sa.ForeignKeyConstraint(
-            ["closed_by_id"], ["users.id"], ondelete="SET NULL",
+            ["closed_by_id"],
+            ["users.id"],
+            ondelete="SET NULL",
             name="fk_policy_version_closures_closed_by_id_users",
         ),
         sa.PrimaryKeyConstraint("policy_version_id", name="pk_policy_version_closures"),
