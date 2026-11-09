@@ -11,6 +11,7 @@ from app.models import (
     Document,
     Employee,
     Incident,
+    InventoryAsset,
     ObjectAssignment,
     OWKSEvent,
     Permission,
@@ -228,6 +229,7 @@ def test_search_reuses_object_scopes_for_existing_sources(client: TestClient) ->
         "tasks.read_own",
         "incidents.read",
         "keys.read",
+        "inventory.read",
         "owks.read",
     )
     scoped_user_id = create_scoped_search_user(
@@ -250,6 +252,18 @@ def test_search_reuses_object_scopes_for_existing_sources(client: TestClient) ->
             (UUID(object_b["id"]), UUID(customer_b["id"]), "B"),
         ):
             shift_start = start + (timedelta(days=1) if suffix == "B" else timedelta())
+            inventory_asset = InventoryAsset(
+                asset_number=f"INV-SCOPE-{suffix}",
+                serial_number=f"SER-INV-SCOPE-{suffix}",
+                name=f"Scoped inventory {suffix}",
+                category="radio",
+                condition="good",
+                status="available",
+                location="Suchgeheimnis Inventarstandort",
+                object_id=object_id,
+                created_by_id=admin_id,
+            )
+            db.add(inventory_asset)
             db.add_all(
                 [
                     Document(
@@ -317,6 +331,7 @@ def test_search_reuses_object_scopes_for_existing_sources(client: TestClient) ->
         "task": "Scoped task",
         "incident": "Scoped incident",
         "key": "KEY-SCOPE",
+        "inventory_asset": "Scoped inventory",
         "owks_event": "Eintrag",
     }
     for entity_type, query in source_queries.items():
@@ -333,6 +348,9 @@ def test_search_reuses_object_scopes_for_existing_sources(client: TestClient) ->
         elif entity_type == "key":
             assert items[0]["title"] == "Schlüssel"
             assert items[0]["reference"] == "KEY-SCOPE-A"
+        elif entity_type == "inventory_asset":
+            assert items[0]["title"] == "Scoped inventory A"
+            assert items[0]["reference"] == "INV-SCOPE-A"
         elif entity_type == "owks_event":
             assert items[0]["title"] == "Wachbuch: Eintrag"
         assert set(items[0]) == {"id", "type", "title", "reference"}
@@ -342,8 +360,39 @@ def test_search_reuses_object_scopes_for_existing_sources(client: TestClient) ->
                 "Suchgeheimnis",
                 "Private OWKS",
                 "Nicht in Suchtreffern",
+                "Suchgeheimnis Inventarstandort",
+                "SER-INV-SCOPE",
             )
         )
+
+    create_scoped_search_user(
+        "search_without_inventory_read",
+        object_a["id"],
+        ("objects.read",),
+    )
+    sign_in(client, "search_without_inventory_read", "such-test-passwort-2026")
+    no_inventory_permission = client.get(
+        "/api/v1/search",
+        params={"q": "Scoped inventory", "type": "inventory_asset"},
+    )
+    assert no_inventory_permission.status_code == 200
+    assert no_inventory_permission.json()["items"] == []
+
+    sign_in(client, "search_scoped_sources", "such-test-passwort-2026")
+    with TestingSessionLocal() as db:
+        inventory_asset = db.scalar(
+            select(InventoryAsset).where(InventoryAsset.asset_number == "INV-SCOPE-A")
+        )
+        assert inventory_asset is not None
+        inventory_asset.archived_at = datetime.now(UTC)
+        inventory_asset.status = "archived"
+        db.commit()
+    archived_inventory = client.get(
+        "/api/v1/search",
+        params={"q": "Scoped inventory", "type": "inventory_asset"},
+    )
+    assert archived_inventory.status_code == 200
+    assert archived_inventory.json()["items"] == []
 
     with TestingSessionLocal() as db:
         db.get(SecurityObject, UUID(object_a["id"])).archived_at = datetime.now(UTC)

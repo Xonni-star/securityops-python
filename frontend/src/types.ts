@@ -18,6 +18,7 @@ export type GlobalSearchEntityType =
   | "task"
   | "incident"
   | "key"
+  | "inventory_asset"
   | "owks_event";
 export interface GlobalSearchResult {
   id: string;

@@ -368,6 +368,71 @@ describe("Kundenformulare", () => {
     expect(api.getObject).toHaveBeenCalledWith(securityObject.id);
   });
 
+  it("öffnet einen Inventartreffer gefiltert im Inventarmodul", async () => {
+    const inventoryAsset = {
+      id: "inventory-asset-1",
+      asset_number: "INV-001",
+      serial_number: "SER-001",
+      name: "Funkgerät",
+      category: "radio" as const,
+      condition: "good" as const,
+      status: "available" as const,
+      location: "Materialraum",
+      object_id: "object-1",
+      object_code: "OBJ-001",
+      object_name: "Verwaltungsgebäude",
+      current_employee_id: null,
+      current_employee_name: null,
+      archived_at: null,
+      created_at: "2026-11-01T10:00:00Z",
+      updated_at: "2026-11-01T10:00:00Z",
+    };
+    vi.mocked(api.getSession).mockResolvedValue({
+      user: {
+        id: "inventory-user",
+        username: "inventar",
+        email: "inventar@example.de",
+        full_name: "Inventarzugriff",
+        is_active: true,
+        roles: [],
+        permissions: ["inventory.read"],
+      },
+    });
+    vi.mocked(api.getGlobalSearch).mockResolvedValue({
+      items: [{
+        id: inventoryAsset.id,
+        type: "inventory_asset",
+        title: inventoryAsset.name,
+        reference: inventoryAsset.asset_number,
+      }],
+      total: 1,
+      limit: 10,
+      offset: 0,
+    });
+    vi.mocked(api.getInventoryAssets).mockResolvedValue({
+      items: [inventoryAsset],
+      total: 1,
+      limit: 25,
+      offset: 0,
+    });
+    vi.mocked(api.getInventoryObjects).mockResolvedValue([]);
+    vi.mocked(api.getInventoryEmployees).mockResolvedValue([]);
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Globale Suche" });
+    fireEvent.change(screen.getByLabelText("Freigegebene Bereiche durchsuchen"), {
+      target: { value: "INV-001" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Öffnen" }));
+
+    expect(await screen.findByRole("heading", { name: "Inventarverwaltung" })).toBeTruthy();
+    await waitFor(() => {
+      expect(api.getInventoryAssets).toHaveBeenCalledWith(
+        expect.objectContaining({ q: inventoryAsset.asset_number }),
+      );
+    });
+  });
+
   it("bietet berechtigten Nutzern das zentrale Aufgabenmodul in der Navigation an", async () => {
     vi.mocked(api.getSession).mockResolvedValue({
       user: {

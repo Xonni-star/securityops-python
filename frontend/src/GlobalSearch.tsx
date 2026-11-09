@@ -18,6 +18,7 @@ const typeNames: Record<GlobalSearchEntityType, string> = {
   task: "Aufgabe",
   incident: "Vorfall/Beschwerde",
   key: "Schlüssel",
+  inventory_asset: "Inventar",
   owks_event: "Wachbuch",
 };
 

@@ -13,6 +13,7 @@ SearchEntityType = Literal[
     "task",
     "incident",
     "key",
+    "inventory_asset",
     "owks_event",
 ]
 

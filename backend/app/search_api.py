@@ -8,6 +8,7 @@ from app.auth import AuthPrincipal, get_auth_principal
 from app.database import get_db
 from app.documents_contracts_api import _scope_contract_query, _scope_document_query
 from app.incidents_api import GLOBAL_READ, _incident_query, _require_incident_reader
+from app.inventory_api import has_global_object_access
 from app.key_management_api import key_query
 from app.models import (
     Contract,
@@ -15,6 +16,7 @@ from app.models import (
     Document,
     Employee,
     Incident,
+    InventoryAsset,
     ObjectAssignment,
     OWKSEvent,
     PhysicalKey,
@@ -42,6 +44,7 @@ SEARCH_PERMISSIONS = {
     "incidents.read_all",
     "incidents.manage_all",
     "keys.read",
+    "inventory.read",
     "owks.read",
 }
 
@@ -317,6 +320,33 @@ def _search_query(
                 PhysicalKey.id.label("id"),
                 literal("Schlüssel").label("title"),
                 PhysicalKey.key_number.label("reference"),
+                literal(2).label("rank"),
+            )
+        )
+
+    if "inventory.read" in permissions and entity_type in (None, "inventory_asset"):
+        inventory_query = select(InventoryAsset).where(
+            InventoryAsset.archived_at.is_(None),
+            or_(
+                InventoryAsset.asset_number.ilike(pattern, escape="\\"),
+                InventoryAsset.name.ilike(pattern, escape="\\"),
+            ),
+            _active_object(InventoryAsset.object_id),
+        )
+        if not has_global_object_access(principal):
+            inventory_query = inventory_query.where(
+                InventoryAsset.object_id.in_(
+                    select(ObjectAssignment.object_id).where(
+                        ObjectAssignment.user_id == principal.user.id
+                    )
+                )
+            )
+        selects.append(
+            inventory_query.with_only_columns(
+                literal("inventory_asset").label("type"),
+                InventoryAsset.id.label("id"),
+                InventoryAsset.name.label("title"),
+                InventoryAsset.asset_number.label("reference"),
                 literal(2).label("rank"),
             )
         )

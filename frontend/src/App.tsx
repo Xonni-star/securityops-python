@@ -220,6 +220,7 @@ export default function App() {
       ["incidents.read", "incidents.read_all", "incidents.manage_all"].includes(permission),
     ) ? ["incident" as const] : []),
     ...(canReadKeys ? ["key" as const] : []),
+    ...(canReadInventory ? ["inventory_asset" as const] : []),
     ...(canReadOWKS ? ["owks_event" as const] : []),
   ];
 
@@ -422,6 +423,7 @@ export default function App() {
         task: "tasks",
         incident: "incidents",
         key: "keys",
+        inventory_asset: "inventory",
         owks_event: "owks",
       };
       const targetModule = moduleByType[result.type];
@@ -766,6 +768,8 @@ export default function App() {
           canManage={canManageInventory}
           canManageGlobal={user.permissions.includes("objects.manage_all")}
           canMove={canMoveInventory}
+          initialAssetId={searchResult?.type === "inventory_asset" ? searchResult.id : null}
+          initialQuery={searchResult?.type === "inventory_asset" ? searchResult.reference : ""}
         />
         : activeModule === "notifications" && canReadNotifications
         ? <NotificationManagement />
