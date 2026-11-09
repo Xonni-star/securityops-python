@@ -27,6 +27,7 @@ import BillingManagement from "./BillingManagement";
 import IdentitySecurity from "./IdentitySecurity";
 import TaskManagement from "./TaskManagement";
 import NotificationManagement from "./NotificationManagement";
+import AutomationManagement from "./AutomationManagement";
 import KeyManagement from "./KeyManagement";
 import InventoryManagement from "./InventoryManagement";
 import IncidentManagement from "./IncidentManagement";
@@ -93,6 +94,7 @@ type ActiveModule =
   | "owks"
   | "tasks"
   | "notifications"
+  | "automations"
   | "keys"
   | "inventory"
   | "incidents"
@@ -191,6 +193,7 @@ export default function App() {
   const canReadNotifications = Boolean(
     user?.permissions.includes("notifications.read_own") && canReadTasks,
   );
+  const canManageAutomations = user?.permissions.includes("automations.manage") ?? false;
   const canReadKeys = user?.permissions.includes("keys.read") ?? false;
   const canReadInventory = user?.permissions.includes("inventory.read") ?? false;
   const canManageInventory = user?.permissions.includes("inventory.manage") ?? false;
@@ -333,7 +336,15 @@ export default function App() {
     ) {
       setActiveModule("notifications");
     }
-  }, [canAccessBilling, canAccessDocuments, canCreateTasks, canReadCustomers, canReadEmployees, canReadInventory, canReadKeys, canReadNotifications, canReadObjects, canReadOWKS, canReadScheduling, canReadTasks, canReadTimeTracking, isEmployeePortal, user]);
+    else if (
+      user && !canReadCustomers && !canReadObjects && !canReadEmployees
+      && !canReadScheduling && !canReadTimeTracking && !canAccessDocuments && !canAccessBilling
+      && !canReadOWKS && !canReadTasks && !canCreateTasks && !canReadNotifications
+      && canManageAutomations
+    ) {
+      setActiveModule("automations");
+    }
+  }, [canAccessBilling, canAccessDocuments, canCreateTasks, canManageAutomations, canReadCustomers, canReadEmployees, canReadInventory, canReadKeys, canReadNotifications, canReadObjects, canReadOWKS, canReadScheduling, canReadTasks, canReadTimeTracking, isEmployeePortal, user]);
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -690,6 +701,9 @@ export default function App() {
         {canReadNotifications && <button
           className={activeModule === "notifications" ? "module-tab active" : "module-tab"}
           onClick={() => selectModule("notifications")}>Benachrichtigungen</button>}
+        {canManageAutomations && <button
+          className={activeModule === "automations" ? "module-tab active" : "module-tab"}
+          onClick={() => selectModule("automations")}>Automatisierungen</button>}
         {canReadObjects && <button
           className={activeModule === "objects" ? "module-tab active" : "module-tab"}
           onClick={() => selectModule("objects")}>Objekte</button>}
@@ -773,6 +787,8 @@ export default function App() {
         />
         : activeModule === "notifications" && canReadNotifications
         ? <NotificationManagement />
+        : activeModule === "automations" && canManageAutomations
+        ? <AutomationManagement />
         : activeModule === "documents" && canAccessDocuments
         ? <DocumentContractManagement
           user={user}

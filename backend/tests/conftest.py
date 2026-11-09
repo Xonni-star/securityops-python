@@ -16,6 +16,8 @@ from app.identity_api import password_hasher
 from app.main import app
 from app.models import (
     AuditLog,
+    AutomationRule,
+    AutomationRun,
     Base,
     BillingExport,
     BillingInvoice,
@@ -165,6 +167,8 @@ def client() -> Generator[TestClient, None, None]:
         db.execute(delete(TaskComment))
         db.execute(delete(TaskHistory))
         db.execute(delete(Notification))
+        db.execute(delete(AutomationRun))
+        db.execute(delete(AutomationRule))
         db.execute(delete(NotificationOutboxAttempt))
         db.execute(delete(NotificationOutbox))
         db.execute(delete(Task))
@@ -337,6 +341,7 @@ def client() -> Generator[TestClient, None, None]:
             "tasks.assign",
             "tasks.manage_all",
             "notifications.read_own",
+            "automations.manage",
             "keys.read",
             "keys.manage",
             "keys.move",

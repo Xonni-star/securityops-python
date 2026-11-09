@@ -234,6 +234,30 @@ footer span { padding: 0 5px; }
 .notification-list p { margin: 5px 0; color: #43515c; }
 .notification-list time, .notification-status { color: #74818d; font-size: .78rem; }
 .notification-read { background: #f8fafb !important; }
+.automation-module { display: grid; gap: 16px; padding-bottom: 12px; }
+.automation-module > .panel-heading { margin: 0; }
+.automation-form { display: grid; gap: 12px; }
+.automation-form label { display: grid; gap: 6px; color: #43515c; font-size: .82rem; font-weight: 600; }
+.automation-form input, .automation-form select {
+  min-width: 0; min-height: 40px; border: 1px solid #dfe6ea; border-radius: 7px;
+  background: white; padding: 8px 10px; color: #172635;
+}
+.automation-form .form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.automation-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.automation-list li {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+  gap: 12px; padding: 14px; border: 1px solid #e8edef; border-radius: 8px; background: #fff;
+}
+.automation-list li > div:first-child { min-width: 200px; flex: 1; }
+.automation-list p { margin: 5px 0; color: #43515c; }
+.automation-list span { color: #74818d; font-size: .78rem; }
+.automation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.automation-actions .automation-active, .automation-actions .automation-inactive {
+  border-radius: 999px; padding: 4px 8px; font-size: .75rem; font-weight: 700;
+}
+.automation-active { background: #e8f5ed; color: #17664d !important; }
+.automation-inactive { background: #f0f2f4; color: #64727e !important; }
+.automation-limits p { max-width: 1000px; color: #43515c; line-height: 1.55; }
 .key-register { padding-bottom: 12px; }
 .key-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 14px 0; }
 .key-filters label, .key-form label { display: grid; flex: 1 1 180px; gap: 6px; color: #43515c; font-size: .82rem; font-weight: 600; }
@@ -427,6 +451,7 @@ footer span { padding: 0 5px; }
   .filter-row > label:not(.checkbox-label) { flex: 1 1 42%; }
   .pagination { align-items: start; flex-direction: column; }
   .form-row { grid-template-columns: 1fr; }
+  .automation-actions { width: 100%; }
   .schedule-window-row { grid-template-columns: 1fr 1fr; }
   .schedule-window-row label:first-child { grid-column: 1 / -1; }
   .schedule-window-row button { justify-self: start; }

@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import router
+from app.automations_api import router as automations_router
 from app.billing_api import router as billing_router
 from app.config import get_settings
 from app.control_room_api import router as control_room_router
@@ -81,6 +82,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
 )
 app.include_router(router, prefix=settings.api_prefix)
+app.include_router(automations_router, prefix=settings.api_prefix)
 app.include_router(personnel_router, prefix=settings.api_prefix)
 app.include_router(employee_portal_router, prefix=settings.api_prefix)
 app.include_router(scheduling_router, prefix=settings.api_prefix)

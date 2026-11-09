@@ -137,6 +137,11 @@ import type {
   CustomerPortalRequestAttachment,
   GlobalSearchEntityType,
   GlobalSearchPage,
+  AutomationRule,
+  AutomationTrigger,
+  AutomationTaskStatus,
+  AutomationRunPage,
+  AutomationDeadLetterPage,
 } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -389,6 +394,46 @@ export const getNotifications = (filters: {
 
 export const markNotificationRead = (notificationId: string) =>
   request<NotificationItem>(`/notifications/${notificationId}/read`, { method: "PATCH" });
+
+export const getAutomationRules = () => request<AutomationRule[]>("/automations/rules");
+
+export const createAutomationRule = (data: {
+  name: string;
+  description?: string;
+  trigger_type: AutomationTrigger;
+  conditions: { status?: AutomationTaskStatus };
+}) => request<AutomationRule>("/automations/rules", {
+  method: "POST",
+  body: JSON.stringify({ ...data, action_type: "notify_event_recipients" }),
+});
+
+export const updateAutomationRule = (
+  ruleId: string,
+  data: Partial<Pick<AutomationRule, "name" | "description" | "trigger_type" | "conditions" | "is_active">>,
+) => request<AutomationRule>(`/automations/rules/${ruleId}`, {
+  method: "PATCH",
+  body: JSON.stringify(data),
+});
+
+export const deleteAutomationRule = (ruleId: string) =>
+  request<void>(`/automations/rules/${ruleId}`, { method: "DELETE" });
+
+export const getAutomationRuns = (filters: { limit?: number; offset?: number } = {}) => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined) params.set(key, String(value));
+  }
+  return request<AutomationRunPage>(`/automations/runs?${params.toString()}`);
+};
+
+export const getAutomationDeadLetters = (limit = 25) =>
+  request<AutomationDeadLetterPage>(`/automations/outbox-events?limit=${limit}`);
+
+export const retryAutomationRun = (runId: string) =>
+  request<{ status: string }>(`/automations/runs/${runId}/retry`, { method: "POST" });
+
+export const retryAutomationEvent = (eventId: string) =>
+  request<{ status: string }>(`/automations/outbox-events/${eventId}/retry`, { method: "POST" });
 
 export const getIncidents = (filters: {
   status?: IncidentStatus | "";

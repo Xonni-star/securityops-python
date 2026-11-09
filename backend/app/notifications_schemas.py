@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-NotificationEventType = Literal["task.assigned", "task.status_changed"]
+NotificationEventType = Literal["task.assigned", "task.status_changed", "automation.notification"]
 
 
 class NotificationRead(BaseModel):

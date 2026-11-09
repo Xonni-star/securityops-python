@@ -20,6 +20,7 @@ DOCUMENT_GRANTS_REVISION = "0027_customer_document_grants"
 CUSTOMER_REQUESTS_REVISION = "0028_customer_portal_requests"
 AUDIT_REVISION = "0029_audit_integrity"
 INVENTORY_REVISION = "0030_inventory_management"
+AUTOMATION_REVISION = "0031_safe_automations"
 
 
 def admin_connection_options() -> dict[str, str | int]:
@@ -62,7 +63,10 @@ def verify_revision_chain() -> None:
     inventory_revision = script.get_revision(INVENTORY_REVISION)
     if inventory_revision is None or inventory_revision.down_revision != AUDIT_REVISION:
         raise RuntimeError(f"{INVENTORY_REVISION} folgt nicht auf {AUDIT_REVISION}.")
-    if script.get_heads() != [INVENTORY_REVISION]:
+    automation_revision = script.get_revision(AUTOMATION_REVISION)
+    if automation_revision is None or automation_revision.down_revision != INVENTORY_REVISION:
+        raise RuntimeError(f"{AUTOMATION_REVISION} folgt nicht auf {INVENTORY_REVISION}.")
+    if script.get_heads() != [AUTOMATION_REVISION]:
         raise RuntimeError(f"Unerwartete Alembic-Heads: {script.get_heads()}")
 
 
@@ -103,6 +107,7 @@ def main() -> None:
         )
         engine = create_engine(database_url)
         audit_id = uuid4()
+        outbox_id = uuid4()
         with engine.begin() as connection:
             customer_id = connection.execute(
                 text(
@@ -134,6 +139,35 @@ def main() -> None:
                 ),
                 {"id": audit_id},
             )
+            connection.execute(
+                text(
+                    "INSERT INTO notification_outbox "
+                    "(id, dedupe_key, event_type, aggregate_type, aggregate_id, payload, "
+                    "status, attempt_count, available_at) "
+                    "VALUES (:id, :dedupe_key, 'task.assigned', 'task', :aggregate_id, "
+                    "'{}'::json, 'pending', 2, now())"
+                ),
+                {
+                    "id": outbox_id,
+                    "dedupe_key": f"ci-migration:{outbox_id}",
+                    "aggregate_id": uuid4(),
+                },
+            )
+            for attempt_number in (1, 2):
+                connection.execute(
+                    text(
+                        "INSERT INTO notification_outbox_attempts "
+                        "(id, outbox_id, attempt_number, event) "
+                        "VALUES (:id, :outbox_id, :attempt_number, 'claimed'), "
+                        "(:retry_id, :outbox_id, :attempt_number, 'retry_scheduled')"
+                    ),
+                    {
+                        "id": uuid4(),
+                        "retry_id": uuid4(),
+                        "outbox_id": outbox_id,
+                        "attempt_number": attempt_number,
+                    },
+                )
         engine.dispose()
 
         run_migration("head", database_name)
@@ -141,9 +175,9 @@ def main() -> None:
         with engine.connect() as connection:
             if (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                != INVENTORY_REVISION
+                != AUTOMATION_REVISION
             ):
-                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0030 geendet.")
+                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0031 geendet.")
             if (
                 connection.execute(
                     text("SELECT company_name FROM customers WHERE id = :id"),
@@ -209,6 +243,38 @@ def main() -> None:
                 != 1
             ):
                 raise RuntimeError("Der Inventar-Append-only-Trigger wurde nicht angelegt.")
+            for table_name in ("automation_rules", "automation_runs"):
+                if not connection.execute(
+                    text("SELECT to_regclass(:table_name) IS NOT NULL"),
+                    {"table_name": table_name},
+                ).scalar_one():
+                    raise RuntimeError(f"Automatisierungstabelle {table_name} fehlt.")
+            if (
+                connection.execute(
+                    text("SELECT count(*) FROM permissions WHERE code = 'automations.manage'")
+                ).scalar_one()
+                != 1
+            ):
+                raise RuntimeError("Die Automatisierungsberechtigung wurde nicht angelegt.")
+            if (
+                connection.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.columns "
+                        "WHERE table_schema = 'public' AND table_name = 'notification_outbox' "
+                        "AND column_name IN ('failure_count', 'manual_retry_count')"
+                    )
+                ).scalar_one()
+                != 2
+            ):
+                raise RuntimeError("Die Outbox-Wiederholungszähler fehlen.")
+            if (
+                connection.execute(
+                    text("SELECT failure_count FROM notification_outbox WHERE id = :id"),
+                    {"id": outbox_id},
+                ).scalar_one()
+                != 2
+            ):
+                raise RuntimeError("Bestehende Outbox-Fehlversuche wurden nicht übernommen.")
             if (
                 connection.execute(
                     text("SELECT action FROM audit_logs WHERE id = :id"),
