@@ -49,6 +49,7 @@ vi.mock("./api", () => ({
   getScheduleSettings: vi.fn(),
   getScheduleAvailabilityRequests: vi.fn(),
   getScheduleShifts: vi.fn(),
+  getScheduleShiftReplacementCandidates: vi.fn(),
   replaceScheduleShiftEmployee: vi.fn(),
   getTimeEntries: vi.fn(),
   getTimeReport: vi.fn(),
@@ -504,6 +505,11 @@ describe("Kundenformulare", () => {
     });
     vi.mocked(api.getEmployeeAvailability).mockResolvedValue([]);
     vi.mocked(api.getScheduleAvailabilityRequests).mockResolvedValue([]);
+    vi.mocked(api.getScheduleShiftReplacementCandidates).mockResolvedValue([{
+      employee_id: "employee-2",
+      employee_number: "P-1002",
+      employee_name: "Vertretung",
+    }]);
     vi.mocked(api.updateEmployeeAvailability).mockResolvedValue([]);
     vi.mocked(api.replaceScheduleShiftEmployee).mockResolvedValue({
       ...shift,
@@ -525,13 +531,13 @@ describe("Kundenformulare", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Vertretung" }));
-    fireEvent.change(screen.getByLabelText("Vertretende Person"), {
+    fireEvent.change(await screen.findByLabelText("Vertretende Person"), {
       target: { value: "employee-2" },
     });
     fireEvent.change(screen.getByLabelText("Grundkategorie der Vertretung"), {
       target: { value: "short_notice" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Vertretung prüfen und speichern" }));
+    fireEvent.click(screen.getByRole("button", { name: "Vertretung erneut prüfen und speichern" }));
     await waitFor(() => {
       expect(api.replaceScheduleShiftEmployee).toHaveBeenCalledWith(
         "shift-1",
@@ -539,6 +545,7 @@ describe("Kundenformulare", () => {
         "short_notice",
       );
     });
+    expect(await screen.findByText("Vertretung wurde eingetragen.")).toBeTruthy();
   });
 
   it("zeigt Mitarbeitenden das Portal und reicht eigene Anträge ohne Employee-ID ein", async () => {

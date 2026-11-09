@@ -30,6 +30,7 @@ from app.schemas import (
     ScheduleAvailabilityRequestRead,
     ScheduleAvailabilityRequestUpdate,
     ScheduleConflictRead,
+    ScheduleReplacementCandidateRead,
     ScheduleSettingsRead,
     ScheduleSettingsUpdate,
     ScheduleShiftCreate,
@@ -1166,6 +1167,56 @@ def replace_schedule_shift_employee(
     )
     commit_schedule_transaction(db)
     return read_shift(shift, settings.time_zone)
+
+
+@router.get(
+    "/scheduling/shifts/{shift_id}/replacement-candidates",
+    response_model=list[ScheduleReplacementCandidateRead],
+)
+def list_schedule_shift_replacement_candidates(
+    shift_id: UUID,
+    db: Session = Depends(get_db),
+    principal=Depends(require_permission("scheduling.manage")),
+) -> list[ScheduleReplacementCandidateRead]:
+    shift = get_shift_or_404(db, shift_id, principal)
+    if shift.status == "cancelled":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Abgesagte Dienste können nicht vertreten werden.",
+        )
+    settings = get_schedule_settings(db)
+    employee_query = select(Employee).where(
+        Employee.id != shift.employee_id,
+        Employee.archived_at.is_(None),
+        Employee.employment_status == "active",
+        Employee.user_id.is_not(None),
+        Employee.user_id.in_(
+            select(ObjectAssignment.user_id).where(
+                ObjectAssignment.object_id == shift.object_id,
+            )
+        ),
+    )
+    candidates = db.scalars(employee_query.order_by(Employee.full_name, Employee.id)).all()
+    obj = get_assignable_object(db, shift.object_id, principal)
+    return [
+        ScheduleReplacementCandidateRead(
+            employee_id=employee.id,
+            employee_number=employee.employee_number,
+            employee_name=employee.full_name,
+        )
+        for employee in candidates
+        if not check_conflicts(
+            db,
+            employee=employee,
+            obj=obj,
+            starts_at=as_utc(shift.starts_at),
+            ends_at=as_utc(shift.ends_at),
+            required_qualification=shift.required_qualification,
+            time_zone=settings.time_zone,
+            minimum_rest_hours=settings.minimum_rest_hours,
+            exclude_shift_id=shift.id,
+        )
+    ]
 
 
 @router.post("/scheduling/shifts/{shift_id}/publish", response_model=ScheduleShiftRead)

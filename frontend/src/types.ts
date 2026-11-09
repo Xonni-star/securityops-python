@@ -1129,6 +1129,12 @@ export interface ScheduleShiftHistory {
   created_at: string;
 }
 
+export interface ScheduleReplacementCandidate {
+  employee_id: string;
+  employee_number: string;
+  employee_name: string;
+}
+
 export interface TimeEntrySegment {
   id: string;
   position: number;

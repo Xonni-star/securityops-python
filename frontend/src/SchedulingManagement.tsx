@@ -9,6 +9,7 @@ import {
   getScheduleAvailabilityRequests,
   getScheduleSettings,
   getScheduleShiftHistory,
+  getScheduleShiftReplacementCandidates,
   getScheduleShifts,
   publishScheduleShift,
   replaceScheduleShiftEmployee,
@@ -24,6 +25,7 @@ import type {
   ScheduleAvailabilityRequest,
   ScheduleAvailabilityRequestKind,
   ScheduleReplacementReason,
+  ScheduleReplacementCandidate,
   ScheduleSettings,
   ScheduleShift,
   ScheduleShiftHistory,
@@ -145,7 +147,10 @@ export default function SchedulingManagement({ user }: Props) {
   >([]);
   const [availabilityRequests, setAvailabilityRequests] = useState<ScheduleAvailabilityRequest[]>([]);
   const [replacementFor, setReplacementFor] = useState<ScheduleShift | null>(null);
+  const [replacementCandidates, setReplacementCandidates] = useState<ScheduleReplacementCandidate[]>([]);
+  const [replacementCandidatesError, setReplacementCandidatesError] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const range = useMemo(() => viewRange(view, focusDate), [focusDate, view]);
 
@@ -242,13 +247,16 @@ export default function SchedulingManagement({ user }: Props) {
       required_qualification: String(data.get("required_qualification") ?? "").trim() || undefined,
     };
     setBusy(true);
+    setNotice("");
     try {
+      const wasEditing = Boolean(editing);
       if (editing) await updateScheduleShift(editing.id, payload);
       else await createScheduleShift(payload);
       setEditing(null);
       setHistory(null);
       setError("");
       await loadShifts();
+      setNotice(wasEditing ? "Dienst wurde geändert." : "Dienst wurde angelegt.");
     } catch (reason) {
       setError(messageFrom(reason, "Dienst konnte nicht gespeichert werden."));
     } finally {
@@ -259,11 +267,13 @@ export default function SchedulingManagement({ user }: Props) {
   async function changeShiftStatus(shift: ScheduleShift, action: "publish" | "cancel") {
     if (action === "cancel" && !window.confirm("Diesen Dienst wirklich absagen?")) return;
     setBusy(true);
+    setNotice("");
     try {
       if (action === "publish") await publishScheduleShift(shift.id);
       else await cancelScheduleShift(shift.id);
       await loadShifts();
       setError("");
+      setNotice(action === "publish" ? "Dienst wurde veröffentlicht." : "Dienst wurde abgesagt.");
     } catch (reason) {
       setError(messageFrom(reason, "Dienststatus konnte nicht geändert werden."));
     } finally {
@@ -288,6 +298,7 @@ export default function SchedulingManagement({ user }: Props) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     setBusy(true);
+    setNotice("");
     try {
       const updated = await updateScheduleSettings({
         time_zone: String(data.get("time_zone")).trim(),
@@ -379,8 +390,26 @@ export default function SchedulingManagement({ user }: Props) {
       setReplacementFor(null);
       setError("");
       await loadShifts();
+      setNotice("Vertretung wurde eingetragen.");
     } catch (reason) {
       setError(messageFrom(reason, "Vertretung konnte nicht eingetragen werden."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openReplacement(shift: ScheduleShift) {
+    setReplacementFor(shift);
+    setReplacementCandidates([]);
+    setReplacementCandidatesError("");
+    setBusy(true);
+    setError("");
+    try {
+      setReplacementCandidates(await getScheduleShiftReplacementCandidates(shift.id));
+    } catch (reason) {
+      setReplacementCandidatesError(
+        messageFrom(reason, "Passende Vertretungen konnten nicht ermittelt werden."),
+      );
     } finally {
       setBusy(false);
     }
@@ -398,6 +427,7 @@ export default function SchedulingManagement({ user }: Props) {
         <p>Schichten planen, prüfen und nachvollziehbar veröffentlichen.</p>
       </section>
       {error && <p className="alert page-alert" role="alert">{error}</p>}
+      {notice && <p className="success-message" role="status">{notice}</p>}
 
       <section className="panel">
         <div className="panel-heading">
@@ -474,7 +504,7 @@ export default function SchedulingManagement({ user }: Props) {
                         <button className="text-button danger-text" disabled={busy}
                           onClick={() => void changeShiftStatus(shift, "cancel")}>Absagen</button>
                         <button className="text-button" disabled={busy}
-                          onClick={() => setReplacementFor(shift)}>Vertretung</button>
+                          onClick={() => void openReplacement(shift)}>Vertretung</button>
                       </>}
                       <button className="text-button" onClick={() => void showHistory(shift)}>Verlauf</button>
                     </div>
@@ -490,16 +520,21 @@ export default function SchedulingManagement({ user }: Props) {
             <div><p className="eyebrow">VERTRETUNG</p><h3>Vertretung für {replacementFor.employee_name}</h3></div>
             <button type="button" className="secondary-button" onClick={() => setReplacementFor(null)}>Abbrechen</button>
           </div>
-          <label>Vertretende Person
-            <select name="employee_id" required defaultValue="">
-              <option value="" disabled>Bitte auswählen</option>
-              {employees.filter((employee) => employee.id !== replacementFor.employee_id).map((employee) =>
-                <option key={employee.id} value={employee.id}>
-                  {employee.full_name} ({employee.employee_number})
-                </option>,
-              )}
-            </select>
-          </label>
+          {replacementCandidatesError && <p className="alert" role="alert">{replacementCandidatesError}</p>}
+          {busy ? <p className="muted" role="status">Passende Vertretungen werden ermittelt …</p>
+            : replacementCandidatesError ? null
+            : replacementCandidates.length === 0
+              ? <p className="empty">Für diesen Dienst wurde keine konfliktfreie Vertretung gefunden.</p>
+              : <label>Vertretende Person
+                <select name="employee_id" required defaultValue="">
+                  <option value="" disabled>Bitte auswählen</option>
+                  {replacementCandidates.map((candidate) =>
+                    <option key={candidate.employee_id} value={candidate.employee_id}>
+                      {candidate.employee_name} ({candidate.employee_number})
+                    </option>,
+                  )}
+                </select>
+              </label>}
           <label>Grundkategorie der Vertretung
             <select name="reason" required defaultValue="short_notice">
               <option value="short_notice">Kurzfristiger Personalausfall</option>
@@ -510,7 +545,9 @@ export default function SchedulingManagement({ user }: Props) {
             </select>
           </label>
           <p className="muted">Keine Gesundheits- oder anderen sensiblen Personendaten eintragen.</p>
-          <button type="submit" disabled={busy}>Vertretung prüfen und speichern</button>
+          <button type="submit" disabled={busy || replacementCandidates.length === 0}>
+            Vertretung erneut prüfen und speichern
+          </button>
         </form>}
         {history && <section className="schedule-history">
           <h3>Änderungsverlauf</h3>
