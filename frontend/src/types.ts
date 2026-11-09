@@ -8,7 +8,17 @@ export type CustomerSort =
   | "contract_status";
 export type ObjectStatus = "active" | "inactive";
 export type ObjectSort = "name" | "code" | "created_at" | "status";
-export type GlobalSearchEntityType = "customer" | "object";
+export type GlobalSearchEntityType =
+  | "customer"
+  | "object"
+  | "employee"
+  | "document"
+  | "contract"
+  | "shift"
+  | "task"
+  | "incident"
+  | "key"
+  | "owks_event";
 export interface GlobalSearchResult {
   id: string;
   type: GlobalSearchEntityType;

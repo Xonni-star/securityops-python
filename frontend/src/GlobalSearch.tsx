@@ -11,6 +11,14 @@ const pageSize = 10;
 const typeNames: Record<GlobalSearchEntityType, string> = {
   customer: "Kunde",
   object: "Objekt",
+  employee: "Mitarbeiter",
+  document: "Dokument",
+  contract: "Vertrag",
+  shift: "Dienst",
+  task: "Aufgabe",
+  incident: "Vorfall/Beschwerde",
+  key: "Schlüssel",
+  owks_event: "Wachbuch",
 };
 
 export default function GlobalSearch({
@@ -81,7 +89,7 @@ export default function GlobalSearch({
         </div>
       </div>
       <form className="global-search-form" onSubmit={submit}>
-        <label htmlFor="global-search-query">Kunden und Objekte suchen</label>
+        <label htmlFor="global-search-query">Freigegebene Bereiche durchsuchen</label>
         <div className="global-search-controls">
           <input
             id="global-search-query"

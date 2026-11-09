@@ -31,7 +31,7 @@ import type {
   ScheduleShiftHistory,
 } from "./types";
 
-type Props = { user: AuthUser };
+type Props = { user: AuthUser; initialShiftDate?: string; initialShiftId?: string | null };
 type ViewMode = "day" | "week" | "month";
 
 function messageFrom(reason: unknown, fallback: string) {
@@ -127,15 +127,19 @@ const actionNames: Record<string, string> = {
 
 const weekdayNames = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
 
-export default function SchedulingManagement({ user }: Props) {
+export default function SchedulingManagement({
+  user,
+  initialShiftDate,
+  initialShiftId = null,
+}: Props) {
   const canManage = user.permissions.includes("scheduling.manage");
   const canRequestAvailability = user.permissions.includes("scheduling.availability.request");
   const [settings, setSettings] = useState<ScheduleSettings | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [objects, setObjects] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [shifts, setShifts] = useState<ScheduleShift[]>([]);
-  const [view, setView] = useState<ViewMode>("week");
-  const [focusDate, setFocusDate] = useState(dateString(new Date()));
+  const [view, setView] = useState<ViewMode>(initialShiftDate ? "day" : "week");
+  const [focusDate, setFocusDate] = useState(initialShiftDate ?? dateString(new Date()));
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [objectFilter, setObjectFilter] = useState("");
   const [includeCancelled, setIncludeCancelled] = useState(false);
@@ -203,6 +207,12 @@ export default function SchedulingManagement({ user }: Props) {
   useEffect(() => {
     void loadShifts();
   }, [loadShifts]);
+
+  useEffect(() => {
+    if (!initialShiftDate) return;
+    setView("day");
+    setFocusDate(initialShiftDate);
+  }, [initialShiftDate]);
 
   useEffect(() => {
     if (!canManage || !availabilityEmployeeId) return;
@@ -481,7 +491,13 @@ export default function SchedulingManagement({ user }: Props) {
             </tr></thead>
             <tbody>
               {shifts.map((shift) => (
-                <tr key={shift.id} className={shift.status === "cancelled" ? "archived-row" : ""}>
+                <tr
+                  key={shift.id}
+                  className={[
+                    shift.status === "cancelled" ? "archived-row" : "",
+                    shift.id === initialShiftId ? "search-result-row" : "",
+                  ].filter(Boolean).join(" ")}
+                >
                   <td>
                     <strong>{formatInstant(shift.starts_at, settings?.time_zone ?? shift.time_zone)}</strong>
                     <small>bis {formatInstant(shift.ends_at, settings?.time_zone ?? shift.time_zone)}</small>

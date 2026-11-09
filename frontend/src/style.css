@@ -286,6 +286,8 @@ footer span { padding: 0 5px; }
 .owks-route-card button { flex-basis: 100%; text-align: left; }
 .owks-event-list { display: grid; }
 .owks-event { padding: 15px 0; border-top: 1px solid #eef1f3; }
+.search-result-row { background: #eaf3ff; }
+.owks-event.search-result-row { padding-inline: 10px; }
 .owks-event-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
 .owks-event-heading time { color: #74818d; font-size: .78rem; }
 .owks-event > p { margin: 8px 0; color: #43515c; white-space: pre-wrap; }

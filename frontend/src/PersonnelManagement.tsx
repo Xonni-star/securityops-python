@@ -88,7 +88,15 @@ function optionalValue(data: FormData, name: string) {
   return String(data.get(name) ?? "").trim() || null;
 }
 
-export default function PersonnelManagement({ user }: { user: AuthUser }) {
+export default function PersonnelManagement({
+  user,
+  initialSearch = "",
+  initialEmployeeId = null,
+}: {
+  user: AuthUser;
+  initialSearch?: string;
+  initialEmployeeId?: string | null;
+}) {
   const canRead = user.permissions.includes("employees.read");
   const canManage = user.permissions.includes("employees.manage");
   const canReadSensitive = user.permissions.includes("employees.sensitive.read");
@@ -101,7 +109,7 @@ export default function PersonnelManagement({ user }: { user: AuthUser }) {
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [total, setTotal] = useState(0);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "">("");
   const [includeArchived, setIncludeArchived] = useState(false);
   const [sortBy, setSortBy] = useState<
@@ -158,6 +166,10 @@ export default function PersonnelManagement({ user }: { user: AuthUser }) {
   useEffect(() => {
     void loadEmployees();
   }, [loadEmployees]);
+
+  useEffect(() => {
+    setSearch(initialSearch);
+  }, [initialSearch]);
 
   useEffect(() => {
     if (!canRead) return;
@@ -222,6 +234,13 @@ export default function PersonnelManagement({ user }: { user: AuthUser }) {
     canReadDocuments,
     canReadSensitive,
   ]);
+
+  useEffect(() => {
+    if (!initialEmployeeId) return;
+    refreshSelected(initialEmployeeId)
+      .catch((reason: unknown) =>
+        setError(messageFrom(reason, "Mitarbeiterdetails konnten nicht geladen werden.")));
+  }, [initialEmployeeId, refreshSelected]);
 
   async function openEmployee(employee: Employee) {
     setError("");

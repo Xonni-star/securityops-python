@@ -32,7 +32,7 @@ describe("globale Suche", () => {
     const onOpenResult = vi.fn();
     render(<GlobalSearch availableTypes={["customer"]} onOpenResult={onOpenResult} />);
 
-    fireEvent.change(screen.getByLabelText("Kunden und Objekte suchen"), {
+    fireEvent.change(screen.getByLabelText("Freigegebene Bereiche durchsuchen"), {
       target: { value: "Beispiel" },
     });
 
@@ -51,7 +51,7 @@ describe("globale Suche", () => {
     vi.mocked(api.getGlobalSearch).mockRejectedValue(new Error("Suche nicht verfügbar"));
     render(<GlobalSearch availableTypes={["customer", "object"]} onOpenResult={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText("Kunden und Objekte suchen"), {
+    fireEvent.change(screen.getByLabelText("Freigegebene Bereiche durchsuchen"), {
       target: { value: "Objekt" },
     });
 
@@ -72,7 +72,7 @@ describe("globale Suche", () => {
       offset: 0,
     });
     render(<GlobalSearch availableTypes={["customer"]} onOpenResult={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText("Kunden und Objekte suchen"), {
+    fireEvent.change(screen.getByLabelText("Freigegebene Bereiche durchsuchen"), {
       target: { value: "Kunde" },
     });
 
@@ -86,5 +86,17 @@ describe("globale Suche", () => {
         offset: 10,
       });
     });
+  });
+
+  it("zeigt nur bereitgestellte Suchtypen mit deutschen Bezeichnungen", () => {
+    render(<GlobalSearch
+      availableTypes={["customer", "employee", "document", "contract", "task"]}
+      onOpenResult={vi.fn()}
+    />);
+
+    const options = Array.from(
+      screen.getByRole("combobox", { name: "Suchbereich" }).querySelectorAll("option"),
+    ).map((option) => option.textContent);
+    expect(options).toEqual(["Alle Treffer", "Kunde", "Mitarbeiter", "Dokument", "Vertrag", "Aufgabe"]);
   });
 });

@@ -325,7 +325,7 @@ describe("Kundenformulare", () => {
     render(<App />);
 
     await screen.findByRole("heading", { name: "Globale Suche" });
-    fireEvent.change(screen.getByLabelText("Kunden und Objekte suchen"), {
+    fireEvent.change(screen.getByLabelText("Freigegebene Bereiche durchsuchen"), {
       target: { value: "Beispiel" },
     });
     fireEvent.click(await screen.findByRole("button", { name: "Öffnen" }));
@@ -360,7 +360,7 @@ describe("Kundenformulare", () => {
     render(<App />);
     await screen.findByRole("heading", { name: "Globale Suche" });
 
-    fireEvent.change(screen.getByLabelText("Kunden und Objekte suchen"), {
+    fireEvent.change(screen.getByLabelText("Freigegebene Bereiche durchsuchen"), {
       target: { value: "Direkt" },
     });
     fireEvent.click(await screen.findByRole("button", { name: "Öffnen" }));

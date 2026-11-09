@@ -10,7 +10,7 @@ Im aktuellen Webfrontend mit Benutzername und Passwort anmelden. Berechtigungen 
 
 ## Globale Suche
 
-Die globale Suche ist für Konten mit Kunden- oder Objektleserecht sichtbar. Sie durchsucht nur Kundenname/-nummer und Objektname/-code; zusätzliche Suchfelder wie Kontaktangaben, Notizen, Beschreibungen oder Sicherheitsdaten werden nicht einbezogen. Treffer sind auf die vorhandenen Leserechte beschränkt. Objekte ohne globales Objektleserecht erscheinen nur, wenn das Konto ihnen zugewiesen ist. Treffer können direkt in der jeweiligen Detailansicht geöffnet werden. Weitere Module werden derzeit nicht global durchsucht; Grenzen und API-Parameter stehen in [`GLOBAL_SEARCH.md`](GLOBAL_SEARCH.md).
+Die globale Suche wird nur angezeigt, wenn mindestens ein Suchleserecht vorhanden ist. Die verfügbaren Suchbereiche richten sich nach den Leserechten; die Suche umfasst Kunden, Objekte, Personalnummern, Dokumente, Verträge, Dienste, Aufgaben, Vorfälle/Beschwerden, Schlüsselnummern und feste Wachbuchkategorien. Treffer verwenden die Berechtigungs- und Objekt-/Kundenbereiche der jeweiligen Fachmodule. Berichte, Freitextnotizen, sensible Personaldaten, Dateiinhalte und Rechnungsbeträge werden nicht durchsucht oder ausgegeben. Treffer öffnen das jeweilige Fachmodul über dessen geschützte Datenpfade. Rechnungen bleiben wegen fehlender erzwungener Kunden-/Objektabgrenzung ausgeschlossen. Grenzen und API-Parameter stehen in [`GLOBAL_SEARCH.md`](GLOBAL_SEARCH.md).
 
 ## Objektverwaltung
 

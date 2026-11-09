@@ -3,7 +3,18 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-SearchEntityType = Literal["customer", "object"]
+SearchEntityType = Literal[
+    "customer",
+    "object",
+    "employee",
+    "document",
+    "contract",
+    "shift",
+    "task",
+    "incident",
+    "key",
+    "owks_event",
+]
 
 
 class SearchResult(BaseModel):

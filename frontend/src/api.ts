@@ -1772,6 +1772,9 @@ export const getOWKSObjects = () => request<OWKSObject[]>("/owks/objects");
 export const getOWKSEvents = (objectId: string) =>
   request<OWKSEvent[]>(`/owks/objects/${objectId}/events`);
 
+export const getOWKSEvent = (eventId: string) =>
+  request<OWKSEvent>(`/owks/events/${eventId}`);
+
 export const getOWKSControlPoints = (objectId: string) =>
   request<OWKSControlPoint[]>(`/owks/objects/${objectId}/control-points`);
 
