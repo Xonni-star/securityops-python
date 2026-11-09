@@ -1,7 +1,10 @@
+import csv
 from datetime import UTC, date, datetime, time, timedelta
+from io import StringIO
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -16,6 +19,8 @@ from app.control_room_schemas import (
     ControlRoomRead,
     ControlRoomShift,
     ControlRoomTask,
+    ObjectOperationsReportItem,
+    ObjectOperationsReportRead,
 )
 from app.database import get_db
 from app.models import (
@@ -36,8 +41,11 @@ from app.models import (
 
 router = APIRouter()
 MAX_ITEMS = 100
+MAX_REPORT_ITEMS = 100
+MAX_REPORT_OFFSET = 10_000
 OPEN_TASK_STATUSES = ("open", "in_progress", "blocked")
 OPEN_INCIDENT_STATUSES = ("reported", "investigating", "action_required")
+TASK_STATUSES = ("open", "in_progress", "blocked", "completed", "cancelled")
 
 
 def _count(db: Session, query) -> int:
@@ -413,3 +421,222 @@ def get_control_room(
         ]
 
     return ControlRoomRead.model_validate(result)
+
+
+def _object_operations_report(
+    db: Session,
+    principal: AuthPrincipal,
+    *,
+    object_id: UUID | None,
+    from_date: date,
+    to_date: date,
+    limit: int,
+    offset: int,
+) -> ObjectOperationsReportRead:
+    permissions = principal.permission_codes
+    if "objects.read" not in permissions:
+        raise HTTPException(403, "Keine Berechtigung für Objektberichte")
+    if to_date < from_date:
+        raise HTTPException(422, "Das Ende des Berichtszeitraums liegt vor dem Beginn.")
+    if to_date == date.max or (to_date - from_date).days > 366:
+        raise HTTPException(422, "Der Berichtszeitraum darf höchstens 367 Tage umfassen.")
+
+    allowed_objects = select(SecurityObject.id).where(
+        SecurityObject.status == "active",
+        SecurityObject.archived_at.is_(None),
+    )
+    if "objects.read_all" not in permissions:
+        allowed_objects = allowed_objects.where(
+            SecurityObject.id.in_(
+                select(ObjectAssignment.object_id).where(
+                    ObjectAssignment.user_id == principal.user.id
+                )
+            )
+        )
+    if object_id is not None:
+        allowed_objects = allowed_objects.where(SecurityObject.id == object_id)
+
+    total = db.scalar(select(func.count()).select_from(allowed_objects.subquery())) or 0
+    if object_id is not None and total == 0:
+        raise HTTPException(404, "Objekt nicht gefunden")
+
+    page_query = (
+        select(SecurityObject)
+        .where(SecurityObject.id.in_(allowed_objects))
+        .order_by(SecurityObject.code, SecurityObject.id)
+        .offset(offset)
+        .limit(limit + 1)
+    )
+    page_objects = db.scalars(page_query).all()
+    has_more = len(page_objects) > limit
+    page_objects = page_objects[:limit]
+    object_ids = [item.id for item in page_objects]
+
+    range_start = datetime.combine(from_date, time.min, tzinfo=UTC)
+    range_end = datetime.combine(to_date + timedelta(days=1), time.min, tzinfo=UTC)
+    shift_counts: dict[UUID, int] = {}
+    incident_counts: dict[UUID, int] = {}
+    control_counts: dict[UUID, dict[str, int]] = {}
+    task_counts: dict[UUID, dict[str, int]] = {
+        item_id: dict.fromkeys(TASK_STATUSES, 0) for item_id in object_ids
+    }
+
+    if object_ids:
+        shift_counts = dict(
+            db.execute(
+                select(ScheduleShift.object_id, func.count())
+                .where(
+                    ScheduleShift.object_id.in_(object_ids),
+                    ScheduleShift.status == "published",
+                    ScheduleShift.starts_at < range_end,
+                    ScheduleShift.ends_at > range_start,
+                )
+                .group_by(ScheduleShift.object_id)
+            ).all()
+        )
+        incident_counts = dict(
+            db.execute(
+                select(Incident.object_id, func.count())
+                .where(
+                    Incident.object_id.in_(object_ids),
+                    Incident.created_at >= range_start,
+                    Incident.created_at < range_end,
+                )
+                .group_by(Incident.object_id)
+            ).all()
+        )
+        for item_id, event_type, count in db.execute(
+            select(OWKSEvent.object_id, OWKSEvent.event_type, func.count())
+            .where(
+                OWKSEvent.object_id.in_(object_ids),
+                OWKSEvent.event_type.in_(("control", "missed")),
+                OWKSEvent.occurred_at >= range_start,
+                OWKSEvent.occurred_at < range_end,
+            )
+            .group_by(OWKSEvent.object_id, OWKSEvent.event_type)
+        ).all():
+            control_counts.setdefault(item_id, {})[event_type] = count
+        for item_id, task_status, count in db.execute(
+            select(Task.object_id, Task.status, func.count())
+            .where(
+                Task.object_id.in_(object_ids),
+                Task.created_at >= range_start,
+                Task.created_at < range_end,
+            )
+            .group_by(Task.object_id, Task.status)
+        ).all():
+            if task_status in TASK_STATUSES:
+                task_counts[item_id][task_status] = count
+
+    return ObjectOperationsReportRead(
+        range_start=from_date,
+        range_end=to_date,
+        total=total,
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
+        items=[
+            ObjectOperationsReportItem(
+                object_id=item.id,
+                object_code=item.code,
+                object_name=item.name,
+                published_assigned_shifts=shift_counts.get(item.id, 0),
+                incidents_created=incident_counts.get(item.id, 0),
+                control_events=control_counts.get(item.id, {}).get("control", 0),
+                missed_controls=control_counts.get(item.id, {}).get("missed", 0),
+                task_status_counts=task_counts[item.id],
+            )
+            for item in page_objects
+        ],
+    )
+
+
+@router.get(
+    "/object-operations-report",
+    response_model=ObjectOperationsReportRead,
+)
+def get_object_operations_report(
+    object_id: UUID | None = None,
+    from_date: date = Query(),
+    to_date: date = Query(),
+    limit: int = Query(50, ge=1, le=MAX_REPORT_ITEMS),
+    offset: int = Query(0, ge=0, le=MAX_REPORT_OFFSET),
+    db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(require_permission("control_room.read")),
+) -> ObjectOperationsReportRead:
+    return _object_operations_report(
+        db,
+        principal,
+        object_id=object_id,
+        from_date=from_date,
+        to_date=to_date,
+        limit=limit,
+        offset=offset,
+    )
+
+
+def _safe_csv_cell(value: object) -> str:
+    text = str(value)
+    if text.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")):
+        return f"'{text}"
+    return text
+
+
+@router.get("/object-operations-report.csv")
+def export_object_operations_report(
+    object_id: UUID | None = None,
+    from_date: date = Query(),
+    to_date: date = Query(),
+    limit: int = Query(50, ge=1, le=MAX_REPORT_ITEMS),
+    offset: int = Query(0, ge=0, le=MAX_REPORT_OFFSET),
+    db: Session = Depends(get_db),
+    principal: AuthPrincipal = Depends(require_permission("control_room.read")),
+) -> Response:
+    report = _object_operations_report(
+        db,
+        principal,
+        object_id=object_id,
+        from_date=from_date,
+        to_date=to_date,
+        limit=limit,
+        offset=offset,
+    )
+    output = StringIO()
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow(
+        (
+            "Objektnummer",
+            "Objekt",
+            "Zeitraum von (UTC)",
+            "Zeitraum bis (UTC)",
+            "Veröffentlichte zugewiesene Schichten",
+            "Erstellte Vorfälle",
+            "Kontrollereignisse",
+            "Versäumte Kontrollen",
+            "Aufgaben offen",
+            "Aufgaben in Bearbeitung",
+            "Aufgaben blockiert",
+            "Aufgaben abgeschlossen",
+            "Aufgaben abgebrochen",
+        )
+    )
+    for item in report.items:
+        writer.writerow(
+            _safe_csv_cell(value)
+            for value in (
+                item.object_code,
+                item.object_name,
+                report.range_start.isoformat(),
+                report.range_end.isoformat(),
+                item.published_assigned_shifts,
+                item.incidents_created,
+                item.control_events,
+                item.missed_controls,
+                *(item.task_status_counts[status] for status in TASK_STATUSES),
+            )
+        )
+    return Response(
+        content=f"\ufeff{output.getvalue()}",
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="objektbetriebsbericht.csv"'},
+    )
