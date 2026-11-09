@@ -5,6 +5,6 @@ argument-hint: [symptom, reproduction, and affected area]
 agent: project-reviewer
 ---
 
-This prompt file runs in VS Code **Local** only; `.prompt.md` files are not invoked by Copilot Cloud or the Copilot App.
+VS Code documents this prompt format for the **Local** harness. GitHub does not document `.prompt.md` as a Copilot Cloud prompt format, and Copilot App support is not documented.
 
 Investigate the stated symptom by reading the relevant implementation and tests. Do not edit files or run commands. Trace the behavior to a concrete likely cause, cite file/line evidence, and identify a minimal fix plus regression test. Label hypotheses and missing reproduction details explicitly; do not claim a root cause is confirmed unless code evidence establishes it.
