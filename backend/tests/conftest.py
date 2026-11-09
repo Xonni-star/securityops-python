@@ -73,6 +73,7 @@ from app.models import (
     Notification,
     NotificationOutbox,
     NotificationOutboxAttempt,
+    NotificationWorkerHeartbeat,
     ObjectAddress,
     ObjectAssignment,
     ObjectContact,
@@ -185,6 +186,7 @@ def client() -> Generator[TestClient, None, None]:
         db.execute(delete(AutomationRule))
         db.execute(delete(NotificationOutboxAttempt))
         db.execute(delete(NotificationOutbox))
+        db.execute(delete(NotificationWorkerHeartbeat))
         db.execute(delete(Task))
         db.execute(delete(IncidentHistory))
         db.execute(delete(IncidentPerson))
@@ -359,6 +361,7 @@ def client() -> Generator[TestClient, None, None]:
             "tasks.manage_all",
             "notifications.read_own",
             "automations.manage",
+            "system.monitoring.read",
             "keys.read",
             "keys.manage",
             "keys.move",
@@ -466,6 +469,12 @@ def client() -> Generator[TestClient, None, None]:
                 "contracts.manage_reminders",
             ),
         )
+        operations = get_or_create_role(
+            "operations",
+            "Betrieb",
+            "Betriebs-Testrolle",
+            ("system.monitoring.read",),
+        )
         get_or_create_role(
             "employee",
             "Mitarbeiter",
@@ -568,6 +577,15 @@ def client() -> Generator[TestClient, None, None]:
                 full_name="Test Geschäftsführung",
                 password_hash=password_hasher.hash("management-test-passwort-2026"),
                 roles=[management],
+            )
+        )
+        db.add(
+            User(
+                username="operations",
+                email="operations@example.com",
+                full_name="Test Betrieb",
+                password_hash=password_hasher.hash("operations-test-passwort-2026"),
+                roles=[operations],
             )
         )
         db.commit()

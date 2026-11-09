@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import signal
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -37,6 +38,13 @@ from app.models import (
     ObjectAssignment,
     SecurityObject,
     User,
+    NotificationWorkerHeartbeat,
+)
+from app.notification_monitoring import (
+    HEARTBEAT_INTERVAL_SECONDS,
+    HEARTBEAT_STALE_SECONDS,
+    WORKER_NAME,
+    write_worker_heartbeat,
 )
 from app.owks_scheduler import run_monitoring_scheduler
 
@@ -494,12 +502,15 @@ async def run_worker(
     worker: NotificationOutboxWorker | None = None,
     poll_interval_seconds: float | None = None,
     run_cycle: Callable[[], CycleResult] | None = None,
+    heartbeat_writer: Callable[[], None] | None = None,
 ) -> None:
     settings = get_settings()
     worker = worker or NotificationOutboxWorker()
     run_cycle = run_cycle or worker.run_once
+    heartbeat_writer = heartbeat_writer or write_worker_heartbeat
     poll_interval_seconds = poll_interval_seconds or settings.notification_worker_poll_seconds
     monitor_task = asyncio.create_task(run_monitoring_scheduler(stop))
+    last_heartbeat_attempt: float | None = None
     try:
         while not stop.is_set():
             try:
@@ -512,6 +523,19 @@ async def run_worker(
                     result.retried,
                     result.dead_lettered,
                 )
+                monotonic_now = time.monotonic()
+                if (
+                    last_heartbeat_attempt is None
+                    or monotonic_now - last_heartbeat_attempt >= HEARTBEAT_INTERVAL_SECONDS
+                ):
+                    last_heartbeat_attempt = monotonic_now
+                    try:
+                        await asyncio.to_thread(heartbeat_writer)
+                    except (SQLAlchemyError, OSError, TimeoutError) as exc:
+                        logger.error(
+                            "Notification-Worker-Heartbeat fehlgeschlagen: error_code=%s",
+                            _safe_error_code(exc),
+                        )
             except (SQLAlchemyError, OSError, TimeoutError) as exc:
                 logger.error(
                     "Notification-Outbox-Zyklus fehlgeschlagen: error_code=%s",
@@ -581,6 +605,18 @@ def check_worker_health() -> None:
     with engine.connect() as connection:
         connection.execute(text("SELECT 1"))
         connection.execute(select(func.count()).select_from(NotificationOutbox))
+        heartbeat_at = connection.scalar(
+            select(NotificationWorkerHeartbeat.heartbeat_at).where(
+                NotificationWorkerHeartbeat.worker_name == WORKER_NAME
+            )
+        )
+    if heartbeat_at is None:
+        raise RuntimeError("Notification-Worker-Heartbeat nicht vorhanden")
+    if (
+        datetime.now(UTC)
+        - (heartbeat_at.replace(tzinfo=UTC) if heartbeat_at.tzinfo is None else heartbeat_at)
+    ).total_seconds() > HEARTBEAT_STALE_SECONDS:
+        raise RuntimeError("Notification-Worker-Heartbeat veraltet")
 
 
 def main() -> int:
@@ -599,7 +635,7 @@ def main() -> int:
     if args.command == "health":
         try:
             check_worker_health()
-        except SQLAlchemyError as exc:
+        except (SQLAlchemyError, RuntimeError) as exc:
             logger.error("Worker-Healthcheck fehlgeschlagen: error_code=%s", _safe_error_code(exc))
             return 1
         print(json.dumps({"status": "ready"}))

@@ -26,6 +26,7 @@ from app.identity_api import router as identity_router
 from app.incidents_api import router as incidents_router
 from app.inventory_api import router as inventory_router
 from app.key_management_api import router as key_management_router
+from app.notification_monitoring import router as notification_monitoring_router
 from app.notifications_api import router as notifications_router
 from app.owks_api import router as owks_router
 from app.personnel_api import router as personnel_router
@@ -92,6 +93,7 @@ app.include_router(time_tracking_router, prefix=settings.api_prefix)
 app.include_router(time_tracking_surcharges_router, prefix=settings.api_prefix)
 app.include_router(tasks_router, prefix=settings.api_prefix)
 app.include_router(notifications_router, prefix=settings.api_prefix)
+app.include_router(notification_monitoring_router, prefix=settings.api_prefix)
 app.include_router(key_management_router, prefix=settings.api_prefix)
 app.include_router(inventory_router, prefix=settings.api_prefix)
 app.include_router(documents_contracts_router, prefix=settings.api_prefix)
