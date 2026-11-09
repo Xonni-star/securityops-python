@@ -288,6 +288,26 @@ Mitarbeiter-Objektzuweisungen und deren Historie werden auf Objekte mit `objects
 
 Allgemeine Personalantworten enthalten keine Anschrift, Notfallkontakt- oder internen Notizfelder. Datei-Uploadvalidierung prüft Größe, Dateiendung, gemeldeten MIME-Typ und Signatur; neue Qualifikationsdateien werden zusätzlich fail-closed mit ClamAV gescannt. Anwendungsebene-Verschlüsselung und rückwirkender Bestandsscan fehlen.
 
+## Digitale Dienstanweisungen und Unterweisungen
+
+Verwaltung benötigt `policies.manage`. Globale Inhalte erfordern zusätzlich `objects.manage_all`; Objektleitungen benötigen `objects.manage` und eine eigene Zuordnung zum jeweiligen Objekt. Beschäftigte benötigen `policies.read_own`, ein aktives verknüpftes Personalkonto und eine aktive Objektzuweisung, wenn der Inhalt objektbezogen ist. Lese- und Bestätigungsnachweise hängen an einer konkreten Version und einem Zuweisungszyklus. Versionen, Zuweisungen und Nachweise sind append-only. Zeitpunkte müssen eine Zeitzone enthalten und werden als UTC gespeichert; Gültigkeitszeiträume sind halboffen `[valid_from, valid_until)`.
+
+| Methode und Route | Recht / Bereich | Eingabe | Erfolg / Response | Wesentliche Fehler |
+|---|---|---|---|---|
+| `GET /api/v1/policies` | `policies.manage` + Verwaltungs-Objektscope | – | `200 PolicyRead[]`, einschließlich Versionen | `401`, `403` |
+| `POST /api/v1/policies` | `policies.manage` + Objektverwaltung/Scope + CSRF | `PolicyCreate` (Art, Titel, optionales Objekt, konfigurierbares Wiederholungs-/Erinnerungsintervall) | `201 PolicyRead` | `401`, `403`, `404`, `422` |
+| `GET /api/v1/policies/objects` | `policies.manage` + Objektbereich | – | `200 PolicyObjectOption[]` | `401`, `403` |
+| `POST /api/v1/policies/{policy_id}/versions` | `policies.manage` + Richtlinien-Objektscope + CSRF | `PolicyVersionCreate` (Inhalt, UTC-Gültigkeitsbeginn/-ende) | `201 PolicyVersionRead` | `401`, `403`, `404`, `409` überlappende Gültigkeit, `422` |
+| `GET /api/v1/policies/{policy_id}/employees` | `policies.manage` + Richtlinien-Objektscope | – | `200 PolicyEmployeeOption[]`, nur aktive Konten im passenden Objektbereich | `401`, `403`, `404` |
+| `POST /api/v1/policies/{policy_id}/versions/{version_id}/assignments` | `policies.manage` + Mitarbeiter-/Objekt-Scope + CSRF | `PolicyAssignmentCreate` (Mitarbeiter, optionale UTC-Fälligkeit) | `201 PolicyAssignmentRead` | `401`, `403`, `404`, `409` doppelte Zuweisung, `422` |
+| `GET /api/v1/policies/assignments/me` | `policies.read_own` | – | `200 PolicyAssignmentRead[]`, ausschließlich eigene aktuell gültige Zuweisungen | `401`, `403` |
+| `POST /api/v1/policies/assignments/{assignment_id}/read` | `policies.read_own` + eigene gültige Zuweisung/Objektzuweisung + CSRF | – | `200 PolicyAssignmentRead` | `401`, `403`, `404`, `409` bereits gelesen |
+| `POST /api/v1/policies/assignments/{assignment_id}/confirm` | `policies.read_own` + eigener zuvor gelesener gültiger Inhalt + CSRF | – | `200 PolicyAssignmentRead`; bei konfiguriertem Trainingsintervall wird ein neuer Zuweisungszyklus angelegt | `401`, `403`, `404`, `409` |
+| `GET /api/v1/policies/{policy_id}/history` | `policies.manage` + Richtlinien-Objektscope | – | `200 PolicyHistoryRead` mit Versionen, Zuordnungen, Lesungen und Bestätigungen | `401`, `403`, `404` |
+| `GET /api/v1/policies/{policy_id}/export.csv` | `policies.manage` + Richtlinien-Objektscope | – | `200 text/csv`, Nachweisexport | `401`, `403`, `404` |
+
+Erinnerungs- und Überfälligkeitsstatus wird beim Abruf berechnet und im Mitarbeiterbereich sowie in der Verlaufstabelle angezeigt; es gibt dafür keinen Versand per E-Mail oder Push. Ohne ausdrücklich konfigurierte Fälligkeit bzw. Erinnerungs-/Wiederholungsintervalle wird keine Frist erzeugt. Unterweisungszyklen nach einer Bestätigung verwenden die unveränderte bestätigte Version und das konfigurierte Intervall. Eine fachlich notwendige neue Fassung muss separat angelegt und zugewiesen werden.
+
 ## Dienstplanung
 
 | Methode und Route | Recht / Bereich | Eingabe | Erfolg / Response | Wesentliche Fehler |

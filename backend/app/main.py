@@ -30,6 +30,7 @@ from app.notification_monitoring import router as notification_monitoring_router
 from app.notifications_api import router as notifications_router
 from app.owks_api import router as owks_router
 from app.personnel_api import router as personnel_router
+from app.policies_api import router as policies_router
 from app.rate_limit import limiter
 from app.scheduling_api import router as scheduling_router
 from app.search_api import router as search_router
@@ -87,6 +88,7 @@ app.add_middleware(
 app.include_router(router, prefix=settings.api_prefix)
 app.include_router(automations_router, prefix=settings.api_prefix)
 app.include_router(personnel_router, prefix=settings.api_prefix)
+app.include_router(policies_router, prefix=settings.api_prefix)
 app.include_router(employee_portal_router, prefix=settings.api_prefix)
 app.include_router(scheduling_router, prefix=settings.api_prefix)
 app.include_router(time_tracking_router, prefix=settings.api_prefix)
