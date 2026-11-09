@@ -189,8 +189,14 @@ jobs:
             fi
             sleep 2
           done
-          curl --fail --silent --show-error --head http://127.0.0.1:5173/ \
-            | grep --ignore-case --quiet '^Content-Security-Policy:'
+          curl --fail --silent --show-error --dump-header "$RUNNER_TEMP/frontend.headers" \
+            --output "$RUNNER_TEMP/frontend.html" http://127.0.0.1:5173/
+          grep --ignore-case --quiet '^Content-Security-Policy:' "$RUNNER_TEMP/frontend.headers"
+          grep --ignore-case --quiet '^X-Content-Type-Options: nosniff' "$RUNNER_TEMP/frontend.headers"
+          grep --ignore-case --quiet '^X-Frame-Options: DENY' "$RUNNER_TEMP/frontend.headers"
+          grep --ignore-case --quiet '^Referrer-Policy:' "$RUNNER_TEMP/frontend.headers"
+          grep --ignore-case --quiet '^Permissions-Policy:' "$RUNNER_TEMP/frontend.headers"
+          grep --extended-regexp --quiet 'src="/assets/[^"]+\.js"' "$RUNNER_TEMP/frontend.html"
           docker compose exec -T \
             -e BOOTSTRAP_ADMIN_USERNAME=ci-admin \
             -e BOOTSTRAP_ADMIN_EMAIL=ci-admin@example.com \
@@ -256,5 +262,9 @@ jobs:
         run: docker build -t securityops-api:ci ./backend
       - name: Frontend-Image bauen
         run: docker build -t securityops-frontend:ci ./frontend
-      - name: Nginx-Konfiguration prüfen
-        run: docker run --rm securityops-frontend:ci nginx -t
+      - name: Statische Frontend-Assets und Nginx-Konfiguration prüfen
+        run: >-
+          docker run --rm securityops-frontend:ci sh -ec
+          'test -s /usr/share/nginx/html/index.html
+          && ! command -v node
+          && nginx -t'
