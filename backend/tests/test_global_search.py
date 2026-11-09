@@ -249,6 +249,7 @@ def test_search_reuses_object_scopes_for_existing_sources(client: TestClient) ->
             (UUID(object_a["id"]), UUID(customer_a["id"]), "A"),
             (UUID(object_b["id"]), UUID(customer_b["id"]), "B"),
         ):
+            shift_start = start + (timedelta(days=1) if suffix == "B" else timedelta())
             db.add_all(
                 [
                     Document(
@@ -270,8 +271,8 @@ def test_search_reuses_object_scopes_for_existing_sources(client: TestClient) ->
                     ScheduleShift(
                         employee_id=employee.id,
                         object_id=object_id,
-                        starts_at=start,
-                        ends_at=start + timedelta(hours=8),
+                        starts_at=shift_start,
+                        ends_at=shift_start + timedelta(hours=8),
                         status="published",
                     ),
                     Task(
