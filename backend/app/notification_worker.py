@@ -35,10 +35,10 @@ from app.models import (
     Notification,
     NotificationOutbox,
     NotificationOutboxAttempt,
+    NotificationWorkerHeartbeat,
     ObjectAssignment,
     SecurityObject,
     User,
-    NotificationWorkerHeartbeat,
 )
 from app.notification_monitoring import (
     HEARTBEAT_INTERVAL_SECONDS,
