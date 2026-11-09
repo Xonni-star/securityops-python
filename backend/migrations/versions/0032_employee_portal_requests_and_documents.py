@@ -65,7 +65,7 @@ def upgrade() -> None:
         sa.Column(
             "revoked_by_id",
             uuid,
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
+            sa.ForeignKey("users.id", ondelete="RESTRICT"),
             nullable=True,
         ),
         sa.Column("revoked_at", timestamp, nullable=True),

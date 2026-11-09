@@ -1029,3 +1029,57 @@ def test_employee_portal_document_grant_history_is_append_only(client: TestClien
         db.rollback()
         with pytest.raises(DBAPIError):
             db.execute(delete(EmployeePortalDocumentGrantHistory))
+
+
+@pytest.mark.skipif(
+    test_engine.dialect.name != "postgresql", reason="PostgreSQL-FK- und Check-Constraint"
+)
+def test_employee_portal_revoker_cannot_be_deleted_while_grant_is_retained(
+    client: TestClient,
+) -> None:
+    employee_user_id, employee_id = create_linked_employee("portal-dokument-loeschung")
+    _, document_id = create_qualification_document(employee_id)
+    revoker_id = create_user_without_employee_role("portal-dokument-widerrufer")
+
+    with TestingSessionLocal() as db:
+        grant = EmployeePortalDocumentGrant(
+            employee_id=employee_id,
+            user_id=employee_user_id,
+            qualification_document_id=document_id,
+        )
+        db.add(grant)
+        db.flush()
+        db.add(
+            EmployeePortalDocumentGrantHistory(
+                grant_id=grant.id,
+                action="granted",
+            )
+        )
+        db.commit()
+        grant_id = grant.id
+
+    csrf_token = sign_in(client, "portal-dokument-widerrufer")
+    response = client.delete(
+        f"/api/v1/employee-portal/document-grants/{grant_id}",
+        headers={"X-CSRF-Token": csrf_token},
+    )
+    assert response.status_code == 200, response.text
+
+    with TestingSessionLocal() as db:
+        revoker = db.get(User, revoker_id)
+        assert revoker is not None
+        with pytest.raises(DBAPIError):
+            db.delete(revoker)
+            db.commit()
+        db.rollback()
+        grant = db.get(EmployeePortalDocumentGrant, grant_id)
+        assert grant is not None
+        assert grant.revoked_at is not None
+        assert grant.revoked_by_id == revoker_id
+        history = db.scalars(
+            select(EmployeePortalDocumentGrantHistory)
+            .where(EmployeePortalDocumentGrantHistory.grant_id == grant_id)
+            .order_by(EmployeePortalDocumentGrantHistory.created_at)
+        ).all()
+        assert [item.action for item in history] == ["granted", "revoked"]
+        assert history[-1].actor_id == revoker_id

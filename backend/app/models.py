@@ -733,7 +733,7 @@ class EmployeePortalDocumentGrant(Base):
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
     revoked_by_id: Mapped[UUID | None] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
