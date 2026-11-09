@@ -220,7 +220,7 @@ def main() -> None:
         with engine.connect() as connection:
             if (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                != BILLING_AUTOMATION_REVISION
+                != OBJECT_QUALIFICATION_REVISION
             ):
                 raise RuntimeError("Die Upgrade-Kette hat nicht beim aktuellen Head geendet.")
             if (
