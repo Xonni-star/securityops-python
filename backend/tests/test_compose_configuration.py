@@ -60,6 +60,21 @@ def test_production_api_uses_shared_redis_and_explicit_release_migration() -> No
     assert 'CMD ["uvicorn"' in (root / "backend" / "Dockerfile").read_text(encoding="utf-8")
 
 
+def test_mfa_encryption_key_is_passed_only_to_api() -> None:
+    root = Path(__file__).resolve().parents[2]
+    compose = yaml.safe_load((root / "docker-compose.yml").read_text(encoding="utf-8"))
+    development = yaml.safe_load((root / "docker-compose.dev.yml").read_text(encoding="utf-8"))
+    api_environment = compose["services"]["api"]["environment"]
+    development_api_environment = development["services"]["api"]["environment"]
+    worker_environment = compose["services"]["notification-worker"]["environment"]
+    effective_api_environment = {**api_environment, **development_api_environment}
+
+    assert api_environment["MFA_ENCRYPTION_KEY"] == "${MFA_ENCRYPTION_KEY:-}"
+    assert "MFA_ENCRYPTION_KEY" not in development_api_environment
+    assert effective_api_environment["MFA_ENCRYPTION_KEY"] == "${MFA_ENCRYPTION_KEY:-}"
+    assert "MFA_ENCRYPTION_KEY" not in worker_environment
+
+
 def test_production_frontend_is_static_nginx_with_security_headers() -> None:
     root = Path(__file__).resolve().parents[2]
     compose = yaml.safe_load((root / "docker-compose.yml").read_text(encoding="utf-8"))
