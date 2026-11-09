@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { getControlRoom, getSession } from "./api";
+import {
+  exportObjectOperationsReport,
+  getControlRoom,
+  getObjectOperationsReport,
+  getSession,
+} from "./api";
 import ControlRoomActions from "./ControlRoomActions";
-import type { AuthUser, ControlRoom as ControlRoomData } from "./types";
+import type {
+  AuthUser,
+  ControlRoom as ControlRoomData,
+  ObjectOperationsReport as ObjectOperationsReportData,
+} from "./types";
 
 type StatusFilter =
   | ""
@@ -79,6 +88,7 @@ function statusName(value: string) {
 
 export default function ControlRoom() {
   const [data, setData] = useState<ControlRoomData | null>(null);
+  const [report, setReport] = useState<ObjectOperationsReportData | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [objectId, setObjectId] = useState("");
   const [fromDate, setFromDate] = useState(initialFromDate);
@@ -87,8 +97,14 @@ export default function ControlRoom() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [userError, setUserError] = useState("");
+  const [reportError, setReportError] = useState("");
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportExporting, setReportExporting] = useState(false);
+  const [reportOffset, setReportOffset] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const requestId = useRef(0);
+  const reportRequestId = useRef(0);
+  const reportLimit = 50;
 
   useEffect(() => {
     getSession()
@@ -132,6 +148,58 @@ export default function ControlRoom() {
     };
   }, [fromDate, objectId, refreshKey, toDate]);
 
+  useEffect(() => {
+    const currentRequest = ++reportRequestId.current;
+    setReportLoading(true);
+    setReportError("");
+    getObjectOperationsReport({
+      object_id: objectId || undefined,
+      from_date: fromDate,
+      to_date: toDate,
+      limit: reportLimit,
+      offset: reportOffset,
+    })
+      .then((response) => {
+        if (reportRequestId.current === currentRequest) setReport(response);
+      })
+      .catch((reason: unknown) => {
+        if (reportRequestId.current === currentRequest) {
+          setReport(null);
+          setReportError(reason instanceof Error ? reason.message : "Objektbericht konnte nicht geladen werden.");
+        }
+      })
+      .finally(() => {
+        if (reportRequestId.current === currentRequest) setReportLoading(false);
+      });
+    return () => {
+      reportRequestId.current += 1;
+    };
+  }, [fromDate, objectId, refreshKey, reportLimit, reportOffset, toDate]);
+
+  const downloadReport = async () => {
+    setReportExporting(true);
+    setReportError("");
+    try {
+      const blob = await exportObjectOperationsReport({
+        object_id: objectId || undefined,
+        from_date: fromDate,
+        to_date: toDate,
+        limit: reportLimit,
+        offset: reportOffset,
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "objektbetriebsbericht.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (reason) {
+      setReportError(reason instanceof Error ? reason.message : "CSV-Export fehlgeschlagen.");
+    } finally {
+      setReportExporting(false);
+    }
+  };
+
   const counts = data?.counts ?? {};
   const cards = [
     ["Aktive Objekte", "active_objects"],
@@ -165,19 +233,28 @@ export default function ControlRoom() {
         <button className="secondary-button" onClick={() => setRefreshKey((value) => value + 1)}
           disabled={loading}>Aktualisieren</button>
       </div>
-      <div className="control-room-filters" aria-label="Leitstellenfilter">
+      <div className="control-room-filters" aria-label="Leitstellen- und Berichtsfilter">
         <label>Objekt
-          <select value={objectId} onChange={(event) => setObjectId(event.target.value)}>
+          <select value={objectId} onChange={(event) => {
+            setObjectId(event.target.value);
+            setReportOffset(0);
+          }}>
             <option value="">Alle zugänglichen Objekte</option>
             {(data?.objects ?? []).map((object) =>
               <option key={object.id} value={object.id}>{object.name} ({object.code})</option>)}
           </select>
         </label>
         <label>Zeitraum von
-          <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+          <input type="date" value={fromDate} onChange={(event) => {
+            setFromDate(event.target.value);
+            setReportOffset(0);
+          }} />
         </label>
         <label>Zeitraum bis
-          <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+          <input type="date" value={toDate} onChange={(event) => {
+            setToDate(event.target.value);
+            setReportOffset(0);
+          }} />
         </label>
         <label>Status / Priorität
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
@@ -303,6 +380,81 @@ export default function ControlRoom() {
           </article>}
         </div>
       </>}
+      <section className="object-operations-report panel" aria-labelledby="object-operations-report-title">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">AGGREGIERTE OBJEKTDATEN</p>
+            <h3 id="object-operations-report-title">Objektbetriebsbericht</h3>
+          </div>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={downloadReport}
+            disabled={!report || reportLoading || reportExporting}
+          >
+            {reportExporting ? "CSV wird erstellt …" : "CSV herunterladen (aktuelle Seite)"}
+          </button>
+        </div>
+        {reportLoading && <p className="muted" role="status">Objektbericht wird geladen …</p>}
+        {reportError && <p className="alert page-alert" role="alert">{reportError}</p>}
+        {!reportLoading && report && <>
+          <p className="muted">
+            {report.total} zugängliche Objekte · Seite mit {report.items.length} Einträgen · Zeitraum in UTC
+          </p>
+          <div className="object-operations-table-wrap">
+            <table className="object-operations-table">
+              <thead><tr>
+                <th scope="col">Objekt</th>
+                <th scope="col">Veröffentlichte, zugewiesene Schichten</th>
+                <th scope="col">Erstellte Vorfälle</th>
+                <th scope="col">Kontrollereignisse</th>
+                <th scope="col">Versäumte Kontrollen</th>
+                <th scope="col">Aufgaben offen</th>
+                <th scope="col">In Bearbeitung</th>
+                <th scope="col">Blockiert</th>
+                <th scope="col">Abgeschlossen</th>
+                <th scope="col">Abgebrochen</th>
+              </tr></thead>
+              <tbody>
+                {report.items.map((item) => <tr key={item.object_id}>
+                  <th scope="row">{item.object_name} ({item.object_code})</th>
+                  <td>{item.published_assigned_shifts}</td>
+                  <td>{item.incidents_created}</td>
+                  <td>{item.control_events}</td>
+                  <td>{item.missed_controls}</td>
+                  <td>{item.task_status_counts.open}</td>
+                  <td>{item.task_status_counts.in_progress}</td>
+                  <td>{item.task_status_counts.blocked}</td>
+                  <td>{item.task_status_counts.completed}</td>
+                  <td>{item.task_status_counts.cancelled}</td>
+                </tr>)}
+              </tbody>
+            </table>
+          </div>
+          {report.items.length === 0 && <p className="empty">Keine aktiven, zugänglichen Objekte im Bericht.</p>}
+          <div className="object-operations-pagination">
+            <span>Einträge {report.total === 0 ? 0 : report.offset + 1}–{report.offset + report.items.length} von {report.total}</span>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setReportOffset(Math.max(0, reportOffset - reportLimit))}
+              disabled={reportOffset === 0}
+            >Zurück</button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setReportOffset(reportOffset + reportLimit)}
+              disabled={!report.has_more}
+            >Weiter</button>
+          </div>
+          <p className="object-operations-definition">
+            Schichten sind veröffentlichte und im Modell einer Person zugewiesene Dienste, die den Zeitraum berühren.
+            Vorfälle zählen nach Erstellungszeit; Kontrollereignisse und versäumte Kontrollen nach OWKS-Ereigniszeit.
+            Aufgaben zählen nach Erstellungszeit und ihrem aktuellen Status. Personen- oder Vorfalltexte werden nicht ausgegeben.
+            Eine Besetzungs- oder Ausfallquote wird mangels fachlich bestätigter Sollbesetzung und Ausfalldefinition nicht berechnet.
+          </p>
+        </>}
+      </section>
       {user && <ControlRoomActions user={user} />}
     </section>
   );

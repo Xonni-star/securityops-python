@@ -251,6 +251,27 @@ export interface ControlRoom {
   billing_approvals?: ControlRoomBillingApproval[];
 }
 
+export interface ObjectOperationsReportItem {
+  object_id: string;
+  object_code: string;
+  object_name: string;
+  published_assigned_shifts: number;
+  incidents_created: number;
+  control_events: number;
+  missed_controls: number;
+  task_status_counts: Record<TaskStatus, number>;
+}
+
+export interface ObjectOperationsReport {
+  range_start: string;
+  range_end: string;
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+  items: ObjectOperationsReportItem[];
+}
+
 export type EmployeeStatus = "active" | "inactive" | "leave" | "terminated";
 export type EmployeeAbsenceType = "vacation" | "sick_leave" | "other";
 export type EmployeeAbsenceStatus = "pending" | "approved" | "rejected" | "withdrawn";

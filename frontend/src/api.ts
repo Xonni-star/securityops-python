@@ -125,6 +125,7 @@ import type {
   IncidentSeverity,
   IncidentMeasure,
   ControlRoom,
+  ObjectOperationsReport,
   CustomerPortalInvoice,
   CustomerPortalMe,
   CustomerPortalDocument,
@@ -367,6 +368,43 @@ export const getControlRoom = (filters: {
     if (value) params.set(key, value);
   }
   return request<ControlRoom>(`/control-room?${params.toString()}`);
+};
+
+export const getObjectOperationsReport = (filters: {
+  object_id?: string;
+  from_date: string;
+  to_date: string;
+  limit?: number;
+  offset?: number;
+}) => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  return request<ObjectOperationsReport>(`/object-operations-report?${params.toString()}`);
+};
+
+export const exportObjectOperationsReport = async (filters: {
+  object_id?: string;
+  from_date: string;
+  to_date: string;
+  limit?: number;
+  offset?: number;
+}): Promise<Blob> => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const response = await fetch(`/api/v1/object-operations-report.csv?${params.toString()}`, {
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(
+      typeof body?.detail === "string" ? body.detail : `Serverfehler (${response.status})`,
+    );
+  }
+  return response.blob();
 };
 
 export const getGlobalSearch = (filters: {

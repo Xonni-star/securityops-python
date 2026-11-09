@@ -539,6 +539,18 @@ footer span { padding: 0 5px; }
 .control-room-panel li strong { overflow-wrap: anywhere; font-size: .86rem; }
 .control-room-panel li small { color: #74818d; font-size: .77rem; line-height: 1.45; }
 .control-room-panel .empty { margin: 0; padding: 16px 8px; font-size: .83rem; }
+.object-operations-report { display: grid; gap: 12px; margin-top: 18px; }
+.object-operations-report > .panel-heading { margin: 0; }
+.object-operations-report h3 { margin: 0; }
+.object-operations-report .muted, .object-operations-definition { margin: 0; line-height: 1.5; font-size: .82rem; }
+.object-operations-table-wrap { overflow-x: auto; }
+.object-operations-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.object-operations-table th, .object-operations-table td { padding: 9px 10px; border-bottom: 1px solid #e1e7eb; text-align: right; white-space: nowrap; }
+.object-operations-table thead th { color: #43515c; font-weight: 600; }
+.object-operations-table th:first-child { text-align: left; }
+.object-operations-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.object-operations-pagination span { margin-right: auto; color: #74818d; font-size: .82rem; }
+.object-operations-definition { color: #74818d; }
 .control-room-actions { display: grid; gap: 14px; margin-top: 18px; padding: 18px; }
 .control-room-actions h3 { margin: 0; font-size: 1rem; }
 .control-room-action-tabs { display: flex; flex-wrap: wrap; gap: 8px; }

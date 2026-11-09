@@ -34,6 +34,8 @@ vi.mock("./api", () => ({
   getCustomerPortalRequests: vi.fn(),
   downloadCustomerPortalInvoice: vi.fn(),
   getControlRoom: vi.fn(),
+  getObjectOperationsReport: vi.fn(),
+  exportObjectOperationsReport: vi.fn(),
   getGlobalSearch: vi.fn(),
   getEmployees: vi.fn(),
   getEmployeeAvailability: vi.fn(),
@@ -182,6 +184,15 @@ describe("Kundenformulare", () => {
     });
     vi.mocked(api.getEmployeePortalAbsences).mockResolvedValue([]);
     vi.mocked(api.getEmployeePortalAvailabilityRequests).mockResolvedValue([]);
+    vi.mocked(api.getObjectOperationsReport).mockResolvedValue({
+      range_start: "2026-11-09",
+      range_end: "2026-11-09",
+      total: 0,
+      limit: 50,
+      offset: 0,
+      has_more: false,
+      items: [],
+    });
     vi.mocked(api.getEmployeePortalShift).mockResolvedValue({
       id: "portal-shift-1",
       object_code: "OBJ-001",
