@@ -66,8 +66,13 @@ def main() -> None:
         with engine.begin() as connection:
             customer_id = connection.execute(
                 text(
-                    "INSERT INTO customers (customer_number, company_name) "
-                    "VALUES ('CI-MIGRATION-EXISTING-DATA', 'Synthetischer Migrationskunde') "
+                    "INSERT INTO customers "
+                    "(customer_number, company_name, contract_status) "
+                    "VALUES ("
+                    "'CI-MIGRATION-EXISTING-DATA', "
+                    "'Synthetischer Migrationskunde', "
+                    "'none'"
+                    ") "
                     "RETURNING id"
                 )
             ).scalar_one()
