@@ -720,6 +720,16 @@ describe("Kundenformulare", () => {
       employee_id: "employee-2",
       employee_number: "P-1002",
       employee_name: "Vertretung",
+      is_eligible: true,
+      eligibility_reasons: ["Der Dienst ist konfliktfrei."],
+      exclusion_reasons: [],
+    }, {
+      employee_id: "employee-3",
+      employee_number: "P-1003",
+      employee_name: "Ausgeschlossen",
+      is_eligible: false,
+      eligibility_reasons: [],
+      exclusion_reasons: ["Der Mitarbeiter ist im ausgewählten Zeitraum nicht aktiv beschäftigt."],
     }]);
     vi.mocked(api.updateEmployeeAvailability).mockResolvedValue([]);
     vi.mocked(api.replaceScheduleShiftEmployee).mockResolvedValue({
@@ -745,6 +755,10 @@ describe("Kundenformulare", () => {
     fireEvent.change(await screen.findByLabelText("Vertretende Person"), {
       target: { value: "employee-2" },
     });
+    expect(await screen.findByText("Geeignet, weil:")).toBeTruthy();
+    expect(screen.getByText("Der Dienst ist konfliktfrei.")).toBeTruthy();
+    fireEvent.click(screen.getByText("Ausgeschlossene Personen (1)"));
+    expect(screen.getByText("Der Mitarbeiter ist im ausgewählten Zeitraum nicht aktiv beschäftigt.")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Grundkategorie der Vertretung"), {
       target: { value: "short_notice" },
     });

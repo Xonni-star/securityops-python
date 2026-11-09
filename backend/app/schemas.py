@@ -1499,6 +1499,9 @@ class ScheduleReplacementCandidateRead(BaseModel):
     employee_id: UUID
     employee_number: str
     employee_name: str
+    is_eligible: bool
+    eligibility_reasons: list[str]
+    exclusion_reasons: list[str]
 
 
 class ScheduleConflictRead(BaseModel):

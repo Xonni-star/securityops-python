@@ -173,13 +173,14 @@ jobs:
         run: |
           docker compose up --detach api frontend notification-worker
           worker_id="$(docker compose ps --quiet notification-worker)"
-          for attempt in $(seq 1 30); do
+          for attempt in $(seq 1 90); do
             worker_health="$(docker inspect --format='{{.State.Health.Status}}' "$worker_id")"
             if [ "$worker_health" = "healthy" ]; then
               break
             fi
-            if [ "$attempt" -eq 30 ]; then
-              docker compose logs notification-worker
+            if [ "$attempt" -eq 90 ]; then
+              docker inspect --format='{{json .State.Health}}' "$worker_id"
+              docker compose logs --tail 100 notification-worker
               exit 1
             fi
             sleep 2
