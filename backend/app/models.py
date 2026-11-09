@@ -973,10 +973,12 @@ class SecurityObject(Base):
     assignments: Mapped[list["ObjectAssignment"]] = relationship(
         back_populates="object", cascade="all, delete-orphan"
     )
-    qualification_requirement_records: Mapped[list["ObjectQualificationRequirement"]] = relationship(
-        back_populates="object",
-        cascade="all, delete-orphan",
-        order_by="ObjectQualificationRequirement.name",
+    qualification_requirement_records: Mapped[list["ObjectQualificationRequirement"]] = (
+        relationship(
+            back_populates="object",
+            cascade="all, delete-orphan",
+            order_by="ObjectQualificationRequirement.name",
+        )
     )
     security_details: Mapped["ObjectSecurityDetails | None"] = relationship(
         back_populates="object", cascade="all, delete-orphan", uselist=False

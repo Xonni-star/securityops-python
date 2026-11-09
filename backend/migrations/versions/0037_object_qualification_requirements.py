@@ -38,9 +38,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    has_requirements = op.get_bind().execute(
-        sa.text("SELECT EXISTS (SELECT 1 FROM object_qualification_requirements)")
-    ).scalar_one()
+    has_requirements = (
+        op.get_bind()
+        .execute(sa.text("SELECT EXISTS (SELECT 1 FROM object_qualification_requirements)"))
+        .scalar_one()
+    )
     if has_requirements:
         raise RuntimeError(
             "Objektqualifikations-Downgrade abgelehnt: Objektanforderungen würden verloren gehen."

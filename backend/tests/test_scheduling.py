@@ -612,10 +612,9 @@ def test_object_qualification_requirements_cover_all_shift_assignment_paths(
         json={"qualification_requirements": ["Brandschutzhelfer", " brandschutzhelfer "]},
     )
     assert duplicate_requirements.status_code == 422
-    assert (
-        client.get(f"/api/v1/objects/{obj['id']}").json()["qualification_requirements"]
-        == ["Brandschutzhelfer"]
-    )
+    assert client.get(f"/api/v1/objects/{obj['id']}").json()["qualification_requirements"] == [
+        "Brandschutzhelfer"
+    ]
 
     missing_qualification = client.post(
         "/api/v1/scheduling/shifts",
@@ -626,15 +625,21 @@ def test_object_qualification_requirements_cover_all_shift_assignment_paths(
     conflict = missing_qualification.json()["detail"]["conflicts"][0]
     assert conflict["code"] == "object_qualification_missing"
     assert "Brandschutzhelfer" in conflict["message"]
-    assert client.post(
-        f"/api/v1/scheduling/shifts/{draft.json()['id']}/publish",
-        headers={"X-CSRF-Token": csrf},
-    ).status_code == 409
-    assert client.patch(
-        f"/api/v1/scheduling/shifts/{draft.json()['id']}",
-        headers={"X-CSRF-Token": csrf},
-        json={"break_minutes": 20},
-    ).status_code == 409
+    assert (
+        client.post(
+            f"/api/v1/scheduling/shifts/{draft.json()['id']}/publish",
+            headers={"X-CSRF-Token": csrf},
+        ).status_code
+        == 409
+    )
+    assert (
+        client.patch(
+            f"/api/v1/scheduling/shifts/{draft.json()['id']}",
+            headers={"X-CSRF-Token": csrf},
+            json={"break_minutes": 20},
+        ).status_code
+        == 409
+    )
 
     with TestingSessionLocal() as db:
         db.add_all(

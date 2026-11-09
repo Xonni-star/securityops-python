@@ -805,8 +805,7 @@ def create_object(
             )
         )
     obj.qualification_requirement_records.extend(
-        ObjectQualificationRequirement(name=name)
-        for name in payload.qualification_requirements
+        ObjectQualificationRequirement(name=name) for name in payload.qualification_requirements
     )
     changed_fields = {"customer_id", "code", "name", "status"}
     if payload.address is not None:
@@ -1135,9 +1134,7 @@ def update_object(
             set_object_address(db, obj, payload.address)
             changed_fields.add("address")
     if "qualification_requirements" in payload.model_fields_set:
-        desired = {
-            name.casefold(): name for name in payload.qualification_requirements
-        }
+        desired = {name.casefold(): name for name in payload.qualification_requirements}
         existing = {
             requirement.name.casefold(): requirement
             for requirement in obj.qualification_requirement_records
