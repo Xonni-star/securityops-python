@@ -2,7 +2,7 @@
 
 ## Quelle und Stand
 
-Diese Referenz beschreibt das Schema in `backend/app/models.py` und `backend/migrations/versions/`, enthält aber auch historisch abgegrenzte Teilinventare und PR-Kontext. `main` umfasst 36 Alembic-Revisionen bis `0036_billing_approval_automation`; dieser PR-Stack ergänzt `0037_object_qual_requirements` sowie `0038_digital_policies` aus PR #77. Den aktuellen Prüfzeitpunkt und PR-/Issue-Status dokumentiert [`PROJECT_STATUS.md`](PROJECT_STATUS.md). PostgreSQL ist für den Betrieb vorgesehen. Laufzeitverbindungen verwenden `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` und `POSTGRES_PASSWORD`; Compose setzt dafür ausschließlich `securityops_runtime`. Alembic verwendet `securityops_migrator`, der Datenbankadministrator `POSTGRES_ADMIN_USER` und `POSTGRES_ADMIN_PASSWORD`. Die drei Rollen haben getrennte Zugangsdaten. API und Worker erhalten keine Administrator- oder Migrationszugangsdaten. Normales Modell-Metadaten-`create_all` ist nur in Tests zulässig.
+Diese Referenz beschreibt das Schema in `backend/app/models.py` und `backend/migrations/versions/`. Sie bewahrt den bisherigen Tabellen-/Spaltenkatalog sowie Betriebs- und Migrationshinweise, einschließlich historisch abgegrenzter Teilinventare und PR-Kontext, und ergänzt sie um den aktuellen PK/FK-Katalog und Beziehungsdiagramme. `main` umfasst 38 Alembic-Revisionen bis `0038_digital_policies`; das ORM definiert 95 Tabellen, Migration 0029 erzeugt zusätzlich `audit_log_integrity` direkt in PostgreSQL (96 Schema-Tabellen insgesamt). Die Revisionen `0037_object_qual_requirements` und `0038_digital_policies` wurden mit PR #77 in `main` integriert. Den aktuellen Prüfzeitpunkt und PR-/Issue-Status dokumentiert [`PROJECT_STATUS.md`](PROJECT_STATUS.md). PostgreSQL ist für den Betrieb vorgesehen. Laufzeitverbindungen verwenden `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` und `POSTGRES_PASSWORD`; Compose setzt dafür ausschließlich `securityops_runtime`. Alembic verwendet `securityops_migrator`, der Datenbankadministrator `POSTGRES_ADMIN_USER` und `POSTGRES_ADMIN_PASSWORD`. Die drei Rollen haben getrennte Zugangsdaten. API und Worker erhalten keine Administrator- oder Migrationszugangsdaten. Normales Modell-Metadaten-`create_all` ist nur in Tests zulässig.
 
 UUID-Primärschlüssel werden in PostgreSQL als UUID geführt. Datums-/Zeitpunktfelder mit `DateTime(timezone=True)` werden als zeitzonenbewusste Zeitpunkte (`TIMESTAMPTZ`) abgebildet; APIs normalisieren Zeitpunkte für operative Zeitdaten nach UTC. JSON-Spalten und Binärdaten verwenden PostgreSQL-JSON bzw. `BYTEA`. Nicht aufgeführte `CHECK`-Regeln können zusätzlich in Schemas/Service-Code validiert werden; hier werden Datenbankconstraints und -indizes dokumentiert.
 
@@ -64,6 +64,7 @@ UUID-Primärschlüssel werden in PostgreSQL als UUID geführt. Datums-/Zeitpunkt
 | `customer_contacts` | PK `id`; `customer_id`, `first_name`, `last_name`, `responsibility`, `email`, `phone`, `is_primary` |
 | `customer_history` | PK `id`; `customer_id`, `actor_id`, `action`, `changed_fields`, `created_at` |
 | `objects` | PK `id`; `customer_id`, `code`, `name`, `object_type`, `description`, `status`, `operating_hours`, `service_times`, `staffing_requirements`, `archived_at`, `created_at`, `updated_at` |
+| `object_qualification_requirements` | PK `id`; `object_id`, `name` |
 | `object_addresses` | PK `id`; `object_id`, `street`, `house_number`, `postal_code`, `city`, `country_code` |
 | `object_contacts` | PK `id`; `object_id`, `first_name`, `last_name`, `role`, `email`, `phone`, `is_primary` |
 | `object_history` | PK `id`; `object_id`, `actor_id`, `action`, `changed_fields`, `created_at` |
@@ -127,9 +128,9 @@ UUID-Primärschlüssel werden in PostgreSQL als UUID geführt. Datums-/Zeitpunkt
 | `tasks` | PK `id`; `title`, `description`, `assigned_to_id`, `created_by_id`, `customer_id`, `object_id`, `due_at`, `priority`, `status`, `completion_evidence`, `created_at`, `updated_at` |
 | `task_comments` | PK `id`; `task_id`, `author_id`, `body`, `created_at` |
 | `task_history` | PK `id`; `task_id`, `actor_id`, `action`, `changes`, `created_at` |
-| `notification_outbox` | PK `id`; `dedupe_key`, `event_type`, `aggregate_type`, `aggregate_id`, `payload`, `status`, `attempt_count`, `available_at`, `last_attempt_at`, `processed_at`, `locked_at`, `lock_token`, `last_error`, `created_at` |
+| `notification_outbox` | PK `id`; `dedupe_key`, `event_type`, `aggregate_type`, `aggregate_id`, `payload`, `status`, `attempt_count`, `failure_count`, `manual_retry_count`, `available_at`, `last_attempt_at`, `processed_at`, `locked_at`, `lock_token`, `last_error`, `created_at` |
 | `notification_outbox_attempts` | PK `id`; `outbox_id`, `attempt_number`, `event`, `error_code`, `created_at` |
-| `notifications` | PK `id`; `outbox_id`, `recipient_id`, `task_id`, `event_type`, `title`, `body`, `created_at`, `read_at` |
+| `notifications` | PK `id`; `outbox_id`, `recipient_id`, `task_id`, `object_id`, `invoice_id`, `event_type`, `title`, `body`, `created_at`, `read_at` |
 | `physical_keys` | PK `id`; `key_number`, `description`, `object_id`, `status`, `current_employee_id`, `created_by_id`, `archived_at`, `created_at`, `updated_at` |
 | `key_movements` | PK `id`; `key_id`, `object_id`, `employee_id`, `actor_id`, `movement_type`, `key_status_after`, `acknowledged_at`, `acknowledgement_note`, `note`, `created_at` |
 | `incidents` | PK `id`; `title`, `report`, `incident_type`, `severity`, `object_id`, `status`, `due_at`, `assigned_to_id`, `owks_event_id`, `created_by_id`, `created_at`, `updated_at` |
@@ -138,6 +139,22 @@ UUID-Primärschlüssel werden in PostgreSQL als UUID geführt. Datums-/Zeitpunkt
 | `incident_people` | PK `id`; `incident_id`, `name`, `role`, `notes`, `created_by_id`, `created_at` |
 | `incident_attachments` | PK `id`; `incident_id`, `storage_key`, `file_name`, `media_type`, `size_bytes`, `sha256`, `uploaded_by_id`, `created_at` |
 | `incident_history` | PK `id`; `incident_id`, `actor_id`, `action`, `changes`, `created_at` |
+| `customer_portal_links` | PK `id`; `user_id`, `contact_id`, `created_by_id`, `created_at`, `is_active` |
+| `customer_portal_link_history` | PK `id`; `user_id`, `contact_id`, `actor_id`, `action`, `created_at` |
+| `customer_portal_document_grants` | PK `id`; `document_id`, `version_id`, `customer_id`, `granted_by_id`, `granted_at`, `revoked_by_id`, `revoked_at` |
+| `customer_portal_document_grant_history` | PK `id`; `grant_id`, `actor_id`, `action`, `created_at` |
+| `customer_portal_requests` | PK `id`; `customer_id`, `contact_id`, `object_id`, `category`, `title`, `status`, `created_at`, `updated_at` |
+| `customer_portal_request_messages` | PK `id`; `request_id`, `author_id`, `body`, `created_at` |
+| `customer_portal_request_attachments` | PK `id`; `request_id`, `storage_key`, `file_name`, `media_type`, `size_bytes`, `sha256`, `uploaded_by_id`, `created_at` |
+| `customer_portal_request_history` | PK `id`; `request_id`, `actor_id`, `action`, `old_status`, `new_status`, `created_at` |
+| `audit_log_integrity` | PK/FK `audit_log_id`; `previous_hash`, `entry_hash` (je 32 Byte; `previous_hash` für den ersten Eintrag NULL); migrationsdefinierte Tabelle |
+| `inventory_assets` | PK `id`; `asset_number`, `serial_number`, `name`, `category`, `condition`, `status`, `location`, `object_id`, `current_employee_id`, `created_by_id`, `archived_at`, `created_at`, `updated_at` |
+| `inventory_events` | PK `id`; `asset_id`, `object_id`, `from_object_id`, `to_object_id`, `from_employee_id`, `to_employee_id`, `actor_id`, `event_type`, `status_after`, `condition_after`, `location_after`, `acknowledged_at`, `acknowledgement_note`, `note`, `created_at` |
+| `automation_rules` | PK `id`; `name`, `description`, `trigger_type`, `conditions`, `action_type`, `is_active`, `deleted_at`, `created_by_id`, `updated_by_id`, `created_at`, `updated_at` |
+| `automation_runs` | PK `id`; `rule_id`, `rule_name`, `source_event_id`, `action_event_id`, `trigger_type`, `status`, `last_error`, `manual_retry_count`, `created_at`, `updated_at` |
+| `employee_portal_document_grants` | PK `id`; `employee_id`, `user_id`, `qualification_document_id`, `granted_by_id`, `granted_at`, `revoked_by_id`, `revoked_at` |
+| `employee_portal_document_grant_history` | PK `id`; `grant_id`, `actor_id`, `action`, `created_at` |
+| `notification_worker_heartbeats` | PK `worker_name`; `heartbeat_at` |
 
 ### Nullable Spalten
 
@@ -155,7 +172,7 @@ Alle nicht in dieser Liste enthaltenen Spalten sind in den Modellen `nullable=Fa
 | `object_security_details` | `security_requirements`, `access_information`, `emergency_contact` |
 | `employees` | `user_id`, `email`, `phone`, `job_title`, `ended_on`, `contract_type`, `weekly_hours`, `archived_at` |
 | `employee_qualifications` | `issuer`, `valid_from`, `expires_on`, `archived_at` |
-| `employee_qualification_documents` | `uploaded_by_id` |
+| `employee_qualification_documents` | `uploaded_by_id`, `storage_key`, `content` |
 | `employee_absences` | `created_by_id` |
 | `employee_sensitive_details` | `address`, `emergency_contact`, `internal_notes` |
 | `employee_history` | `actor_id` |
@@ -183,7 +200,7 @@ Alle nicht in dieser Liste enthaltenen Spalten sind in den Modellen `nullable=Fa
 | `owks_challenges` | `consumed_at` |
 | `owks_events` | `route_id`, `control_point_id`, `corrects_event_id`, `employee_id`, `actor_id`, `challenge_id`, `client_event_id` |
 | `owks_event_statuses` | `actor_id` |
-| `owks_attachments` | `uploaded_by_id` |
+| `owks_attachments` | `uploaded_by_id`, `storage_key`, `content` |
 | `documents` | `description`, `customer_id`, `object_id`, `employee_id`, `expires_on`, `created_by_id`, `archived_at` |
 | `document_versions` | `uploaded_by_id` |
 | `document_approvals` | `requested_by_id`, `decided_by_id`, `decision_note`, `decided_at` |
@@ -204,7 +221,7 @@ Alle nicht in dieser Liste enthaltenen Spalten sind in den Modellen `nullable=Fa
 | `task_history` | `actor_id` |
 | `notification_outbox` | `last_attempt_at`, `processed_at`, `locked_at`, `lock_token`, `last_error` |
 | `notification_outbox_attempts` | `error_code` |
-| `notifications` | `read_at` |
+| `notifications` | `task_id`, `object_id`, `read_at` |
 | `physical_keys` | `current_employee_id`, `created_by_id`, `archived_at` |
 | `key_movements` | `employee_id`, `acknowledged_at`, `acknowledgement_note`, `note` |
 | `incidents` | `due_at`, `owks_event_id`, `created_by_id` |
@@ -213,6 +230,21 @@ Alle nicht in dieser Liste enthaltenen Spalten sind in den Modellen `nullable=Fa
 | `incident_people` | `notes`, `created_by_id` |
 | `incident_attachments` | `uploaded_by_id` |
 | `incident_history` | `actor_id` |
+| `customer_portal_links` | `created_by_id` |
+| `customer_portal_link_history` | `actor_id` |
+| `customer_portal_document_grants` | `granted_by_id`, `revoked_by_id`, `revoked_at` |
+| `customer_portal_document_grant_history` | `actor_id` |
+| `customer_portal_request_messages` | `author_id` |
+| `customer_portal_request_attachments` | `uploaded_by_id` |
+| `customer_portal_request_history` | `actor_id`, `old_status`, `new_status` |
+| `employee_portal_document_grants` | `granted_by_id`, `revoked_by_id`, `revoked_at` |
+| `employee_portal_document_grant_history` | `actor_id` |
+| `automation_rules` | `description`, `deleted_at`, `created_by_id`, `updated_by_id` |
+| `automation_runs` | `action_event_id`, `last_error` |
+| `notification_worker_heartbeats` | — |
+| `notifications` | `task_id`, `object_id`, `invoice_id` |
+| `inventory_assets` | `serial_number`, `object_id`, `current_employee_id`, `created_by_id`, `archived_at` |
+| `inventory_events` | `object_id`, `from_object_id`, `to_object_id`, `from_employee_id`, `to_employee_id`, `acknowledged_at`, `acknowledgement_note`, `note` |
 
 ## Fremdschlüssel und Löschverhalten
 
@@ -220,7 +252,7 @@ Alle nicht in dieser Liste enthaltenen Spalten sind in den Modellen `nullable=Fa
 |---|---|---|
 | `customer_addresses.customer_id`, `customer_contacts.customer_id`, `customer_history.customer_id`, `objects.customer_id` | `customers.id` | `RESTRICT` |
 | `customer_history.actor_id`, `object_history.actor_id`, `object_assignments.assigned_by_id`, `employee_absences.created_by_id`, `employee_history.actor_id`, `employee_object_assignment_history.user_id`, `employee_object_assignment_history.actor_id`, `employee_qualification_documents.uploaded_by_id`, `schedule_settings.updated_by_id`, `employee_availability_windows.created_by_id`, `schedule_availability_requests.created_by_id`, `schedule_availability_requests.reviewed_by_id`, `schedule_shifts.created_by_id`, `schedule_shift_history.actor_id`, `time_entries.created_by_id`, `time_entries.reviewed_by_id`, `time_entry_corrections.requested_by_id`, `time_entry_corrections.decided_by_id`, `time_entry_history.actor_id`, `time_tracking_settings.updated_by_id`, `time_surcharge_rules.created_by_id`, `time_surcharge_calculations.created_by_id`, `time_tracking_periods.locked_by_id`, `audit_logs.actor_id` | jeweils `users.id` | `SET NULL` |
-| `object_addresses.object_id`, `object_contacts.object_id`, `object_history.object_id`, `object_assignments.object_id`, `object_security_details.object_id`, `employee_object_assignment_history.object_id`, `schedule_shifts.object_id`, `time_entries.object_id` | `objects.id` | `RESTRICT` |
+| `object_addresses.object_id`, `object_contacts.object_id`, `object_history.object_id`, `object_assignments.object_id`, `object_security_details.object_id`, `object_qualification_requirements.object_id`, `employee_object_assignment_history.object_id`, `schedule_shifts.object_id`, `time_entries.object_id` | `objects.id` | `RESTRICT` |
 | `object_assignments.user_id` | `users.id` | `RESTRICT` |
 | `employees.user_id` | `users.id` | `SET NULL`; eindeutig, nullable |
 | `employee_qualifications.employee_id`, `employee_absences.employee_id`, `employee_sensitive_details.employee_id`, `employee_history.employee_id`, `employee_object_assignment_history.employee_id`, `employee_availability_windows.employee_id`, `schedule_availability_requests.employee_id`, `schedule_shifts.employee_id`, `time_entries.employee_id` | `employees.id` | `RESTRICT` |
@@ -278,6 +310,8 @@ Alle nicht in dieser Liste enthaltenen Spalten sind in den Modellen `nullable=Fa
 | `notifications.outbox_id` | `notification_outbox.id` | `RESTRICT` |
 | `notification_outbox_attempts.outbox_id` | `notification_outbox.id` | `RESTRICT` |
 | `notifications.recipient_id` | `users.id` | `CASCADE` |
+| `notifications.object_id` | `objects.id` | `RESTRICT` |
+| `notifications.invoice_id` | `billing_invoices.id` | `RESTRICT` |
 | `notifications.task_id` | `tasks.id` | `RESTRICT` |
 | `physical_keys.object_id`, `key_movements.object_id` | `objects.id` | jeweils `RESTRICT` |
 | `physical_keys.current_employee_id`, `key_movements.employee_id` | `employees.id` | jeweils `RESTRICT` |
@@ -312,6 +346,7 @@ Primärschlüssel sind in der Tabellenübersicht aufgeführt. Die folgenden bena
 | `customer_contacts` | Check `ck_customer_contacts_name`; Index `ix_customer_contacts_customer_name`; partieller Unique-Index `uq_customer_contacts_primary(customer_id)` für primäre Kontakte (`is_primary`) |
 | `customer_history` | Index `ix_customer_history_customer_created` |
 | `objects` | Checks `ck_objects_status`, `ck_objects_name`, `ck_objects_code`; Indizes `ix_objects_code` (unique), `ix_objects_name`, `ix_objects_customer_status` |
+| `object_qualification_requirements` | Unique `uq_object_qualification_requirements_object_name(object_id, name)`; Check `ck_object_qualification_requirements_name` |
 | `object_addresses` | Unique `uq_object_addresses_object`; Check `ck_object_addresses_required_fields` |
 | `object_contacts` | Check `ck_object_contacts_name`; Index `ix_object_contacts_object_name`; partieller Unique-Index `uq_object_contacts_primary(object_id)` für `is_primary` |
 | `object_history` | Index `ix_object_history_object_created` |
@@ -324,8 +359,8 @@ Primärschlüssel sind in der Tabellenübersicht aufgeführt. Die folgenden bena
 | `audit_logs` | Indizes `ix_audit_logs_entity_created`, `ix_audit_logs_actor_created` |
 | `employees` | Unique `employee_number`, Unique `user_id`; Checks `ck_employees_employment_status`, `ck_employees_number`, `ck_employees_full_name`, `ck_employees_weekly_hours`, `ck_employees_end_date`; Index `ix_employees_status_name` |
 | `employee_qualifications` | Checks `ck_employee_qualifications_name`, `ck_employee_qualifications_dates`; Indizes `ix_employee_qualifications_expiry`, `ix_employee_qualifications_employee` |
-| `employee_qualification_documents` | Unique `uq_employee_qualification_documents_version(qualification_id, version)`, nullable `storage_key`; Checks `ck_employee_qualification_documents_version`, `ck_employee_qualification_documents_size` (1–10 MiB), `ck_employee_qualification_documents_media_type`, `ck_employee_qualification_documents_name`, `ck_employee_qualification_documents_storage`; Index `ix_employee_qualification_documents_qualification_created` |
-| `employee_absences` | Checks `ck_employee_absences_type`, `ck_employee_absences_status`, `ck_employee_absences_dates`; Index `ix_employee_absences_employee_dates` |
+| `employee_qualification_documents` | Unique `uq_employee_qualification_documents_version(qualification_id, version)`, nullable `storage_key` with Unique `uq_employee_qualification_documents_storage_key`; Checks `ck_employee_qualification_documents_version`, `ck_employee_qualification_documents_size` (1–10 MiB), `ck_employee_qualification_documents_media_type`, `ck_employee_qualification_documents_name`, `ck_employee_qualification_documents_storage`; Index `ix_employee_qualification_documents_qualification_created` |
+| `employee_absences` | Checks `ck_employee_absences_type`, `ck_employee_absences_status` (`pending/approved/rejected/withdrawn`), `ck_employee_absences_dates`; Index `ix_employee_absences_employee_dates` |
 | `employee_sensitive_details` | Checks `ck_employee_sensitive_address`, `ck_employee_sensitive_emergency_contact` |
 | `employee_history` | Index `ix_employee_history_employee_created` |
 | `employee_object_assignment_history` | Check `ck_employee_object_assignment_action`; Indizes `ix_employee_object_assignment_history_employee_created`, `ix_employee_object_assignment_history_object_created` |
@@ -336,7 +371,7 @@ Primärschlüssel sind in der Tabellenübersicht aufgeführt. Die folgenden bena
 | `policy_receipts` | Unique `uq_policy_receipts_assignment_action(assignment_id, action)`; Check `ck_policy_receipts_action`; Index `ix_policy_receipts_created`; PostgreSQL-Trigger `policy_receipts_append_only` blockiert UPDATE/DELETE |
 | `schedule_settings` | Checks `ck_schedule_settings_singleton` (`id = 1`), `ck_schedule_settings_rest_hours` (0–168) |
 | `employee_availability_windows` | Checks `ck_employee_availability_weekday` (0–6), `ck_employee_availability_window_time_order`; Index `ix_employee_availability_windows_employee_weekday` |
-| `schedule_availability_requests` | Checks `ck_schedule_availability_requests_kind` (`preferred/blocked`), `ck_schedule_availability_requests_status` (`open/accepted/rejected`), `ck_schedule_availability_requests_time_order`; Indizes `ix_schedule_availability_requests_employee_time`, `ix_schedule_availability_requests_status_time` |
+| `schedule_availability_requests` | Checks `ck_schedule_availability_requests_kind` (`preferred/blocked`), `ck_schedule_availability_requests_status` (`open/accepted/rejected/withdrawn`), `ck_schedule_availability_requests_time_order`; Indizes `ix_schedule_availability_requests_employee_time`, `ix_schedule_availability_requests_status_time` |
 | `schedule_shifts` | Checks `ck_schedule_shifts_time_order`, `ck_schedule_shifts_break_minutes`, `ck_schedule_shifts_status`; Indizes `ix_schedule_shifts_employee_time`, `ix_schedule_shifts_object_time`; PostgreSQL-Exclusion-Constraint `ex_schedule_shifts_employee_time` auf Mitarbeiter und halboffenem `tstzrange(starts_at, ends_at, '[)')`, nur wenn Status nicht `cancelled`; nutzt `btree_gist` |
 | `schedule_shift_history` | Index `ix_schedule_shift_history_shift_created`; `details` speichert Vertretungsdetails bei Ersetzungsereignissen |
 | `time_entries` | Checks `ck_time_entries_status`, `ck_time_entries_time_order`; Unique `uq_time_entries_employee_shift`; Indizes `ix_time_entries_employee_start`, `ix_time_entries_object_start`, `ix_time_entries_status_start`; partieller Unique-Index `uq_time_entries_one_open_per_employee(employee_id)` bei `status = 'open'` (Migration 0012) |
@@ -354,7 +389,7 @@ Primärschlüssel sind in der Tabellenübersicht aufgeführt. Die folgenden bena
 | `owks_challenges` | Index `ix_owks_challenges_expires` |
 | `owks_events` | Checks `ck_owks_events_type`, `ck_owks_events_severity`, `ck_owks_events_sync_status`; Unique `uq_owks_events_idempotency(actor_id, client_event_id)`; indexes `ix_owks_events_object_occurred`, `ix_owks_events_object_created` and partial unique `uq_owks_missed_event_client_id` for `event_type = 'missed'` |
 | `owks_event_statuses` | Checks `ck_owks_event_status`, `ck_owks_event_status_sequence`; Unique `uq_owks_event_status_sequence(event_id, sequence_no)`; Index `ix_owks_event_statuses_event_created` |
-| `owks_attachments` | Unique nullable `storage_key`; Checks `ck_owks_attachments_media_type`, `ck_owks_attachments_size` (max. 10 MiB), `ck_owks_attachments_storage`; Index `ix_owks_attachments_event_created` |
+| `owks_attachments` | Unique nullable `storage_key` (`uq_owks_attachments_storage_key`); Checks `ck_owks_attachments_media_type`, `ck_owks_attachments_size` (max. 10 MiB), `ck_owks_attachments_storage`; Index `ix_owks_attachments_event_created` |
 | `documents` | Unique `document_number`; Checks `ck_documents_status`, `ck_documents_title`; indexes `ix_documents_status_expiry`, `ix_documents_customer`, `ix_documents_object`, `ix_documents_employee` |
 | `document_versions` | Unique `storage_key`, `uq_document_versions_number(document_id, version)`; Checks `ck_document_versions_version`, `ck_document_versions_size`, `ck_document_versions_media_type`; Index `ix_document_versions_document_created` |
 | `document_approvals` | Check `ck_document_approvals_status`; Index `ix_document_approvals_version_created` |
@@ -372,21 +407,36 @@ Primärschlüssel sind in der Tabellenübersicht aufgeführt. Die folgenden bena
 | `tasks` | Checks `ck_tasks_priority`, `ck_tasks_status`, `ck_tasks_title`; Indizes `ix_tasks_assignee_status_due`, `ix_tasks_object_status_due`, `ix_tasks_customer_status_due` |
 | `task_comments` | Check `ck_task_comments_body`; Index `ix_task_comments_task_created` |
 | `task_history` | Index `ix_task_history_task_created` |
-| `notification_outbox` | Unique `uq_notification_outbox_dedupe_key`; Checks `ck_notification_outbox_status` (`pending/processing/completed/failed/dead_letter`), `ck_notification_outbox_attempt_count`; Indizes `ix_notification_outbox_status_available`, `ix_notification_outbox_status_locked(status, locked_at)` |
+| `notification_outbox` | Unique `uq_notification_outbox_dedupe_key`; Checks `ck_notification_outbox_status` (`pending/processing/completed/failed/dead_letter`), `ck_notification_outbox_attempt_count`, `ck_notification_outbox_failure_count`, `ck_notification_outbox_manual_retry_count` (0–3); Indizes `ix_notification_outbox_status_available`, `ix_notification_outbox_status_locked(status, locked_at)` |
 | `notification_outbox_attempts` | Unique `uq_notification_outbox_attempt_event(outbox_id, attempt_number, event)`; Checks `ck_notification_outbox_attempt_event` (`claimed/succeeded/retry_scheduled/dead_lettered`), `ck_notification_outbox_attempt_number` (`> 0`); Index `ix_notification_outbox_attempts_outbox_created(outbox_id, created_at)`; Trigger `notification_outbox_attempts_append_only` blockiert UPDATE/DELETE |
-| `notifications` | Unique `uq_notifications_event_recipient`; Index `ix_notifications_recipient_created` |
+| `notifications` | Unique `uq_notifications_event_recipient`; Check `ck_notifications_target` (genau ein Ziel aus Aufgabe, Objekt oder Rechnung); Index `ix_notifications_recipient_created` |
 | `physical_keys` | Unique `key_number`; Checks `ck_physical_keys_status`, `ck_physical_keys_number`, `ck_physical_keys_description`, `ck_physical_keys_holder_status`, `ck_physical_keys_archived_at`; Indizes `ix_physical_keys_object_status`, `ix_physical_keys_holder_status` |
 | `key_movements` | Checks `ck_key_movements_type`, `ck_key_movements_status_after`, `ck_key_movements_issue_acknowledged`, `ck_key_movements_type_status`; Indizes `ix_key_movements_key_created`, `ix_key_movements_object_created`, `ix_key_movements_employee_created`; PostgreSQL-Trigger `key_movements_append_only` verhindert UPDATE/DELETE |
-| `incidents` | Checks `ck_incidents_type`, `ck_incidents_severity`, `ck_incidents_status`, `ck_incidents_title`, `ck_incidents_report`; Indizes `ix_incidents_object_status_due`, `ix_incidents_assignee_status` |
+| `incidents` | Checks `ck_incidents_type`, `ck_incidents_severity`, `ck_incidents_status`, `ck_incidents_title`, `ck_incidents_report`; Indizes `ix_incidents_object_status_due`, `ix_incidents_assignee_status` und partieller Unique-Index `uq_incidents_owks_event_id` bei `owks_event_id IS NOT NULL` |
 | `incident_sensitive_details` | FK/PK auf `incident_id`; keine zusätzlichen benannten Checks/Indizes |
 | `incident_measures` | Checks `ck_incident_measures_status`, `ck_incident_measures_title`; Indizes `ix_incident_measures_incident_status_due`, `ix_incident_measures_assignee_status` |
 | `incident_people` | Checks `ck_incident_people_role`, `ck_incident_people_name`; Index `ix_incident_people_incident_created`; PostgreSQL-Trigger `incident_people_append_only` verhindert UPDATE/DELETE |
 | `incident_attachments` | Unique `storage_key`; Checks `ck_incident_attachments_media_type`, `ck_incident_attachments_size` (max. 10 MiB); Index `ix_incident_attachments_incident_created`; PostgreSQL-Trigger `incident_attachments_append_only` verhindert UPDATE/DELETE |
 | `incident_history` | Index `ix_incident_history_incident_created`; PostgreSQL-Trigger `incident_history_append_only` verhindert UPDATE/DELETE |
+| `customer_portal_links` | Unique `uq_customer_portal_links_user`, `uq_customer_portal_links_contact` |
+| `customer_portal_link_history` | Check `ck_customer_portal_link_action`; Index `ix_customer_portal_link_history_created`; PostgreSQL-Trigger `customer_portal_link_history_append_only` verhindert UPDATE/DELETE |
+| `customer_portal_document_grants` | Check `ck_customer_portal_document_grants_revocation`; partieller Unique-Index `uq_customer_portal_document_grants_active` bei `revoked_at IS NULL`; Index `ix_customer_portal_document_grants_customer` |
+| `customer_portal_document_grant_history` | Check `ck_portal_document_grant_action`; Index `ix_customer_portal_document_grant_history_created`; PostgreSQL-Trigger `customer_portal_document_grant_history_append_only` verhindert UPDATE/DELETE |
+| `customer_portal_requests` | Checks `ck_customer_portal_requests_category`, `ck_customer_portal_requests_status`, `ck_customer_portal_requests_title`; Indizes `ix_customer_portal_requests_customer_updated`, `ix_customer_portal_requests_status_updated` |
+| `customer_portal_request_messages` | Check `ck_customer_portal_request_messages_body`; Index `ix_customer_portal_request_messages_request_created`; PostgreSQL-Trigger `customer_portal_request_messages_append_only` verhindert UPDATE/DELETE |
+| `customer_portal_request_attachments` | Checks `ck_customer_portal_request_attachments_size`, `ck_customer_portal_request_attachments_type`; Index `ix_customer_portal_request_attachments_request`; PostgreSQL-Trigger `customer_portal_request_attachments_append_only` verhindert UPDATE/DELETE |
+| `customer_portal_request_history` | Check `ck_customer_portal_request_history_action`; Index `ix_customer_portal_request_history_request_created`; PostgreSQL-Trigger `customer_portal_request_history_append_only` verhindert UPDATE/DELETE |
+| `audit_log_integrity` | Unique `previous_hash`, `entry_hash`; Checks `ck_audit_log_integrity_previous_hash_length`, `ck_audit_log_integrity_entry_hash_length`; PostgreSQL-Trigger `audit_log_integrity_append_only`; `audit_logs` hat `audit_logs_append_only` und den Insert-Trigger `audit_logs_integrity_chain` |
+| `inventory_assets` | Checks `ck_inventory_assets_archived_at`, `ck_inventory_assets_category`, `ck_inventory_assets_condition`, `ck_inventory_assets_holder_status`, `ck_inventory_assets_location`, `ck_inventory_assets_name`, `ck_inventory_assets_number`, `ck_inventory_assets_serial`, `ck_inventory_assets_status`; Indizes `ix_inventory_assets_category_condition`, `ix_inventory_assets_holder_status`, `ix_inventory_assets_object_status` |
+| `inventory_events` | Checks `ck_inventory_events_condition`, `ck_inventory_events_issue_acknowledged`, `ck_inventory_events_location`, `ck_inventory_events_status`, `ck_inventory_events_transfer_acknowledged`, `ck_inventory_events_type`, `ck_inventory_events_type_status`; Indizes `ix_inventory_events_asset_created`, `ix_inventory_events_employee_created`, `ix_inventory_events_object_created`; PostgreSQL-Trigger `inventory_events_append_only` verhindert UPDATE/DELETE |
+| `automation_rules` | Checks `ck_automation_rules_action_type`, `ck_automation_rules_name`, `ck_automation_rules_trigger_type` (einschließlich `billing.invoice_approved`); Index `ix_automation_rules_trigger_active` |
+| `automation_runs` | Unique `uq_automation_runs_action_event`, `uq_automation_runs_rule_source`; Checks `ck_automation_runs_manual_retry_count` (0–3), `ck_automation_runs_status`; Index `ix_automation_runs_created` |
+| `employee_portal_document_grants` | Check `ck_employee_portal_document_grants_revocation`; partieller Unique-Index `uq_employee_portal_document_grants_active` bei `revoked_at IS NULL`; Index `ix_employee_portal_document_grants_employee` |
+| `employee_portal_document_grant_history` | Check `ck_employee_portal_document_grant_history_action`; Index `ix_employee_portal_document_grant_history_created`; PostgreSQL-Trigger `employee_portal_document_grant_history_append_only` verhindert UPDATE/DELETE |
 
 Die `user_roles`- und `role_permissions`-Join-Tabellen haben zusammengesetzte Primärschlüssel; ihre beiden Fremdschlüssel sind jeweils `ON DELETE CASCADE`. Einige modelldeklarierte, nicht benannte Einzelspalten-Unique-Constraints (zum Beispiel `roles.code`) sind oben als Feld-Unique erwähnt. Migrationsspezifische PostgreSQL- und partielle Indizes sind zusätzlich aufgeführt, auch wenn sie nicht vollständig in `Base.metadata` als Modell-Index gespiegelt sind.
 
-## Entity-Relationship-Diagramm
+## Entity-Relationship-Diagramm des bisherigen Katalogs
 
 ```mermaid
 erDiagram
@@ -406,8 +456,13 @@ erDiagram
     PERMISSIONS ||--o{ ROLE_PERMISSIONS : granted
     USERS ||--o{ USER_SESSIONS : sessions
     USERS ||--o{ USER_MFA_RECOVERY_CODES : recovery_codes
-    USERS ||--o{ AUDIT_LOGS : actor
-    EMPLOYEES o|--o| USERS : account
+    AUDIT_LOGS ||--o| AUDIT_LOG_INTEGRITY : integrity_chain
+    USERS o|--o| SCHEDULE_SETTINGS : updater
+    USERS o|--o| TIME_TRACKING_SETTINGS : updater
+    USERS o|--o| DOCUMENT_CONTRACT_REMINDER_SETTINGS : updater
+    USERS o|--o{ TIME_TRACKING_PERIODS : locker
+    USERS o|--o{ TIME_SURCHARGE_RULES : creator
+    USERS o|--o| EMPLOYEES : account
     EMPLOYEES ||--o{ EMPLOYEE_QUALIFICATIONS : qualifications
     EMPLOYEE_QUALIFICATIONS ||--o{ EMPLOYEE_QUALIFICATION_DOCUMENTS : versions
     EMPLOYEES ||--o{ EMPLOYEE_ABSENCES : absences
@@ -451,7 +506,7 @@ erDiagram
     DOCUMENT_VERSIONS ||--o{ DOCUMENT_APPROVALS : approvals
     DOCUMENT_VERSIONS ||--o{ DOCUMENT_READ_RECEIPTS : read_receipts
     DOCUMENTS ||--o{ DOCUMENT_HISTORY : history
-    CUSTOMERS ||--o{ DOCUMENTS : customer_files
+    CUSTOMERS o|--o{ DOCUMENTS : customer_files
     OBJECTS o|--o{ DOCUMENTS : object_files
     EMPLOYEES o|--o{ DOCUMENTS : employee_files
     CUSTOMERS ||--o{ CONTRACTS : customer_contracts
@@ -481,7 +536,7 @@ erDiagram
     NOTIFICATION_OUTBOX ||--o{ NOTIFICATIONS : entries
     NOTIFICATION_OUTBOX ||--o{ NOTIFICATION_OUTBOX_ATTEMPTS : attempts
     USERS ||--o{ NOTIFICATIONS : recipient
-    TASKS ||--o{ NOTIFICATIONS : task_context
+    TASKS o|--o{ NOTIFICATIONS : task_context
     OBJECTS ||--o{ PHYSICAL_KEYS : key_register
     EMPLOYEES o|--o{ PHYSICAL_KEYS : current_holder
     USERS o|--o{ PHYSICAL_KEYS : created_by
@@ -492,7 +547,7 @@ erDiagram
     OBJECTS ||--o{ INCIDENTS : object_scope
     USERS ||--o{ INCIDENTS : assigned_to
     USERS o|--o{ INCIDENTS : created_by
-    OWKS_EVENTS o|--o{ INCIDENTS : optional_reference
+    OWKS_EVENTS o|--o| INCIDENTS : optional_reference
     INCIDENTS ||--o| INCIDENT_SENSITIVE_DETAILS : restricted_details
     INCIDENTS ||--o{ INCIDENT_MEASURES : measures
     USERS ||--o{ INCIDENT_MEASURES : measure_assignee
@@ -532,24 +587,40 @@ erDiagram
 | `0022_incident_management` | `0021_key_management` | Objektbezogene Vorfälle/Beschwerden, getrennte sensible Details, Maßnahmen, Beteiligte/Zeugen, private Dateianhänge, append-only Verlauf/Bezüge, Rechte `incidents.*` |
 | `0023_control_room_permission` | `0022_incident_management` | Recht `control_room.read` und Zuweisung an Administrator, Geschäftsführung, Operations und Objektleitung; keine neue Tabelle |
 | `0024_notification_outbox_worker` | `0023_control_room_permission` | Outbox-Status um `dead_letter` erweitert, Lock-/Lease-Felder und Index ergänzt; neue Attempt-Tabelle mit eindeutiger Ereignishistorie, Fehlercode, FK `RESTRICT`, Index und Append-only-Trigger. Der Worker verarbeitet unterstützte Task-Ereignisse zu In-App-Benachrichtigungen und führt den OWKS-Prüfzyklus aus. |
+| `0025_unique_incident_owks_event` | `0024_notification_outbox_worker` | Partieller Unique-Index verhindert die mehrfache Verknüpfung eines OWKS-Ereignisses mit Vorfällen. |
+| `0026_customer_portal_access` | `0025_unique_incident_owks_event` | Eindeutige manuelle Login-/Kundenkontakt-Verknüpfungen und append-only Verknüpfungshistorie; Portalrolle und Rechte. |
+| `0027_customer_document_grants` | `0026_customer_portal_access` | Explizite Dokumentversionsfreigaben mit Kundenbezug, Widerruf sowie append-only Freigabehistorie; Portalverknüpfung erhält Aktivierungsstatus. |
+| `0028_customer_portal_requests` | `0027_customer_document_grants` | Kundenanfragen mit Nachrichten, privaten Anhang-Metadaten und append-only Verlauf; Trigger sperren Änderungen an den Verlaufstabellen. |
+| `0029_audit_integrity` | `0028_customer_portal_requests` | `audit_log_integrity`, SHA-256-Verkettung und PostgreSQL-Trigger/Grants schützen Audit-Einträge vor Änderungen durch die Laufzeitrolle; Audit-Akteur wird absichtlich FK-los. |
+| `0030_inventory_management` | `0029_audit_integrity` | Objektbezogenes Inventar mit append-only Ereignishistorie, Constraints, Indizes, Trigger und Berechtigungen. |
+| `0031_safe_automations` | `0030_inventory_management` | Begrenzte Automatisierungsregeln und Ausführungen mit Outbox-Verweisen; ergänzt Fehler- und manuelle Retry-Zähler. |
+| `0032_employee_portal` | `0031_safe_automations` | Mitarbeiterportal-Freigaben für Qualifikationsdateien samt append-only Freigabehistorie; Abwesenheits- und Verfügbarkeitsstatus um Rücknahme erweitert. |
+| `0033_encrypted_document_storage` | `0032_employee_portal` | `storage_key` und nullable Legacy-BLOBs für Qualifikations- und OWKS-Dateien; CHECK erzwingt genau eine Ablageform. |
+| `0034_owks_automation_events` | `0033_encrypted_document_storage` | Erlaubt OWKS-Automationsereignisse; Benachrichtigungen können optional auf Objekt statt Aufgabe verweisen, mit CHECK auf genau ein Ziel. |
+| `0035_worker_monitoring` | `0034_owks_automation_events` | Worker-Heartbeat-Tabelle und Monitoring-Berechtigung. |
+| `0036_billing_approval_automation` | `0035_worker_monitoring` | Erlaubt `billing.invoice_approved` als Automatisierungsauslöser; ergänzt `notifications.invoice_id` mit FK `RESTRICT` und erweitert den Ziel-Check auf genau ein Aufgaben-, Objekt- oder Rechnungsziel. |
+| `0037_object_qual_requirements` | `0036_billing_approval_automation` | Ergänzt eindeutige, normalisierte Qualifikationsanforderungen je Objekt mit RESTRICT-Fremdschlüssel auf `objects`. |
+| `0038_digital_policies` | `0037_object_qual_requirements` | Ergänzt Dienstanweisungs-/Unterweisungsstammdaten, immutable Versionen/Abschlüsse, Mitarbeiterzuweisungen und Nachweise sowie Rechte und Append-only-Trigger. |
 
 Die Migration `0033_encrypted_document_storage` wurde mit PR #57 in `main` integriert. Sie ergänzt optionale `storage_key`-Spalten und nullable Legacy-BLOBs für OWKS-/Personalanhänge. Die Migration ändert keine vorhandenen Inhalte; ein expliziter Wartungsbefehl schreibt verschlüsselte Dateien atomar in den privaten Speicher und löscht den BLOB erst zusammen mit dem Datenbankverweis innerhalb einer Transaktion. Der OWKS-Append-only-Trigger erlaubt ausschließlich diesen eng begrenzten Umzug. Downgrade wird abgelehnt, sobald ein Datensatz auf den Dateispeicher verweist. Die Integration belegt keine durchgeführte Betreiber-Bestandsmigration oder Rotation; den aktuellen Issue- und Betriebsstatus dokumentiert [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
 Neue Schemaänderungen benötigen eine neue Alembic-Migration. Ein `Base.metadata.create_all` ist nur in Tests zulässig. Migrationen sollten vor Rollout in PostgreSQL geprüft werden; Daten-destruktive Downgrades sind keine sichere Rollbackstrategie. Release-Migrationen und verschlüsselte Backup-/Restore-Skripte sind vorhanden; produktive Rollouts und Wiederherstellungen sind nicht unabhängig nachgewiesen.
 
-Historischer Hinweis zum ursprünglichen Outbox-PR: PR #39 und die Dokumentationsänderung PR #25 sind gemergt; PR #40 ist ebenfalls gemergt und Bestandteil von `main`. PR #39 fügte `0024_notification_outbox_worker` mit einer Attempt-Tabelle sowie Lock-/Lease-Feldern und einem Index hinzu. Issue #7 bleibt trotz des Billing-Merges offen zur fachlichen Abnahme. `main` reicht inzwischen bis `0036_billing_approval_automation`; der aktuelle Live-PR- und Migrationsstatus steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
+Historischer Hinweis zum ursprünglichen Outbox-PR: PR #39 und die Dokumentationsänderung PR #25 sind gemergt; PR #40 ist ebenfalls gemergt und Bestandteil von `main`. PR #39 fügte `0024_notification_outbox_worker` mit einer Attempt-Tabelle sowie Lock-/Lease-Feldern und einem Index hinzu. Issue #7 bleibt trotz des Billing-Merges offen zur fachlichen Abnahme. `main` reicht inzwischen bis `0038_digital_policies`; der aktuelle Live-PR- und Migrationsstatus steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
-Der aktuelle Stack setzt die späteren PR-Revisionen linear fort: `0036_billing_approval_automation` folgt auf `0035_worker_monitoring`, `0037_object_qual_requirements` auf 0036 und `0038_digital_policies` auf 0037. Revision 0038 ergänzt die vier Policy-Tabellen, die Berechtigungen `policies.manage`/`policies.read_own` und Append-only-Trigger. Sie ist nicht Bestandteil von `main`, solange der Stack nicht gemergt wurde.
+Die aktuelle lineare Kette setzt `0036_billing_approval_automation` mit `0037_object_qual_requirements` und `0038_digital_policies` fort. Revision 0037 ergänzt normalisierte Objekt-Qualifikationsanforderungen; Revision 0038 ergänzt fünf Policy-Tabellen, die Berechtigungen `policies.manage`/`policies.read_own` und Append-only-Trigger.
 
 ## Datenhaltungsgrenzen
 
+- Das Schema enthält keine allgemeine Mandantenspalte und keine PostgreSQL-Row-Level-Security-Policies. Fremdschlüssel sichern die Existenz referenzierter Datensätze, erzwingen aber nicht, dass Kunden-, Kontakt-, Objekt- und Dokumentreferenzen fachlich zum selben Kunden oder zum zulässigen Objekt-/Personalbereich gehören. Solche Scope- und Berechtigungsprüfungen sind keine Datenbankconstraints und müssen in den autorisierten Anwendungsabläufen erfolgen.
 - Kunden, Objekte, Personal und Qualifikationen werden überwiegend archiviert statt physisch gelöscht; referenzierte Daten nutzen meist `RESTRICT`.
-- Historien und Auditlogs erfassen für viele Fachänderungen Aktionen/Feldnamen, nicht flächendeckend Vorher-/Nachher-Werte. Direkte privilegierte Datenbankänderungen sind nicht ausgeschlossen.
+- Historien und Auditlogs erfassen für viele Fachänderungen Aktionen/Feldnamen, nicht flächendeckend Vorher-/Nachher-Werte. Append-only-Trigger gelten nur für die in der Constraint-/Indexübersicht genannten Tabellen; sie machen die Historisierung nicht vollständig und schützen nicht gegen privilegierte Datenbankeigentümer oder Superuser.
+- Das Schema selbst legt keine über mehrere Geschäftsabläufe oder Module reichende Transaktionsgrenzen fest. Ob eine fachliche Änderung und zugehörige Historien-/Audit-Einträge gemeinsam committen oder zurückgerollt werden, hängt von den jeweiligen Anwendungs-Transaktionen ab; Constraints und Trigger sichern nur ihre jeweiligen Datenbankregeln.
 - Mitarbeiter-Qualifikationsdateien und OWKS-Anhänge verwenden nach Revision `0033` den gemeinsamen verschlüsselten Dateispeicher. Bis zum expliziten Re-Key-Lauf bleiben Altdateien in `employee_qualification_documents.content` bzw. `owks_attachments.content`; Produktionsabrufe dieser Legacy-BLOBs und Klartextdateien schlagen bis dahin geschlossen fehl. Neue Uploads werden vor Speicherung durch ClamAV geprüft; vorhandene Dateien werden nicht rückwirkend gescannt.
 - Revision `0033` erhält den OWKS-Append-only-Schutz bis auf die eng begrenzte Umstellung eines unveränderten BLOBs auf seinen deterministischen storage key. `sha256` bleibt auf den Klartext bezogen und ist keine Verschlüsselung oder Garantie vollständiger Malware-Erkennung.
 - Dokumentversionen speichern einen privaten `storage_key`, Metadaten und SHA-256; der AES-GCM-verschlüsselte Dateiinhalt liegt im konfigurierten privaten Dateispeicher und nicht in `document_versions`. Neue Dokumente und Versionen werden vor Speicherung durch ClamAV geprüft. Der Hash bleibt auf den Klartext bezogen und ist keine Verschlüsselung oder Garantie vollständiger Malware-Erkennung. Das Dateisystem und die dazugehörigen Schlüssel müssen zusätzlich konsistent gesichert werden.
 - `tasks` referenziert den verantwortlichen Benutzer verpflichtend sowie Ersteller, Kunden und Objekt optional. Kommentare und Verlauf hängen mit `CASCADE` an Aufgaben; personenbezogene Autoren-/Akteur-FKs werden bei Benutzerlöschung `SET NULL`. Historie und App-Audit werden mit Aufgabenänderungen transaktional erzeugt; Beziehungen zu fachlichen Aufgabenereignissen oder automatische Folgeaufgaben bestehen nicht.
-- `notification_outbox` persistiert Ereignisse für spätere Verarbeitung, `notification_outbox_attempts` protokolliert Claims/Ergebnisse append-only, und `notifications` speichert empfängergebundene In-App-Einträge samt Lesestatus. Der separate Worker verarbeitet ausschließlich `task.assigned` und `task.status_changed` idempotent, mit PostgreSQL-Claims, Lease/Wiederaufnahme, Backoff/Retry und Dead-Letter-Status. `notifications` verweist auf Outbox, Empfänger und Aufgabe; Attempt-Zeilen verweisen mit `RESTRICT` auf die Outbox. Empfängerzeilen werden bei Benutzerlöschung mit `CASCADE` gelöscht, Aufgabe und Outbox dürfen wegen `RESTRICT` nicht gelöscht werden, solange Benachrichtigungen referenzieren. E-Mail/Push, Task-Erinnerungen/Eskalationen und Ereignisse aus anderen Modulen sind nicht enthalten.
+- `notification_outbox` persistiert Ereignisse für spätere Verarbeitung, `notification_outbox_attempts` protokolliert Claims/Ergebnisse append-only, und `notifications` speichert empfängergebundene In-App-Einträge samt Lesestatus. Der separate Worker verarbeitet unterstützte Aufgaben-, OWKS- und Rechnungsfreigabe-Ereignisse sowie daraus erzeugte Automatisierungsbenachrichtigungen mit PostgreSQL-Claims, Lease/Wiederaufnahme, Backoff/Retry und Dead-Letter-Status. `notifications` verweist auf Outbox und Empfänger sowie genau eines der Ziele Aufgabe, Objekt oder Rechnung; Attempt-Zeilen verweisen mit `RESTRICT` auf die Outbox. Empfängerzeilen werden bei Benutzerlöschung mit `CASCADE` gelöscht, referenzierte Aufgaben, Objekte, Rechnungen und Outbox-Ereignisse mit `RESTRICT` geschützt. E-Mail/Push und Task-Erinnerungen/Eskalationen sind nicht enthalten.
 - Die Revision verlagert den OWKS-Prüfzyklus aus dem API-Lifespan in den separaten Worker; der PostgreSQL-Advisory-Lock bleibt bestehen. Retry- und Attempt-Daten enthalten Fehlercodes, nicht Fehlertexte oder Payloads. Die CI bzw. Merge-PR-Checks belegen weder produktive Verfügbarkeit noch Zustell-/Restorebetrieb.
 - `physical_keys` hält Nummer, Beschreibung, Pflichtobjekt, Status und optionalen aktuellen Mitarbeiter; `key_movements` hält Ausgabe, Rückgabe, Verlust, Defekt und Inventur als append-only Historie. Änderungen am Schlüsselstatus, Bewegung und Audit werden transaktional gespeichert; der PostgreSQL-Trigger blockiert UPDATE/DELETE auf Bewegungen. Ausgabe verlangt aktive Mitarbeiter mit aktiver Objektzuweisung und bestätigter Quittierung. Die Quittierung ist keine qualifizierte elektronische Signatur oder ein physischer Verwahrnachweis. Freitext-Zutrittsangaben bestehender Objekte werden weder migriert noch als Schlüsselbestand übernommen.
 - `incidents` speichert objektbezogene Vorfälle mit verantwortlicher Person, Status, Frist und optionaler OWKS-Ereignisreferenz desselben Objekts. `incident_sensitive_details` trennt Hergang und Abschlussbericht; `incident_people` schützt Beteiligte/Zeugen; `incident_attachments` enthält nur private Speicherreferenz und Datei-Metadaten. Maßnahmen und Statuswechsel werden zusammen mit Audit und `incident_history` transaktional protokolliert. PostgreSQL-Trigger blockieren UPDATE/DELETE auf Verlauf, Personenbezügen und Dateireferenzen; privilegierte Datenbankadministration bleibt außerhalb der Anwendungsschutzgrenze. Dateiinhalte liegen im privaten Dokumentenspeicher, werden vor Ablage fail-closed mit ClamAV geprüft und über separate Berechtigungsprüfungen ausgeliefert. OWKS wird nur referenziert; es gibt keine automatische Aufgabenanlage, Benachrichtigung, Fristerinnerung oder Eskalationsregel.
@@ -558,14 +629,271 @@ Der aktuelle Stack setzt die späteren PR-Revisionen linear fort: `0036_billing_
 - Abwesenheitsdaten und sensible Personal-/Objektdaten sind personenbezogen/sensibel; Verschlüsselung at rest, Aufbewahrung und Löschung müssen für die konkrete Betriebsumgebung entschieden werden.
 - Lokale API-Tests laufen standardmäßig gegen SQLite. PostgreSQL-Constraints, Migrationen und konkurrierende Schreibvorgänge benötigen PostgreSQL-Prüfungen. Backup-/Restore-Skripte und ein synthetischer Restoretest in CI sind vorhanden; das belegt keine Wiederherstellung produktiver Sicherungen.
 
-## Kundenportal-Erweiterung (PR #42)
+## Aktuelle Schemaergänzung auf `main` (Revision 0038)
 
-Der vorstehende Tabellen- und Migrationskatalog ist eine historische `main`-Momentaufnahme vom 09.11.2026 und endet daher absichtlich bei `0024_notification_outbox_worker`. PR #40 integrierte danach `0025_unique_incident_owks_event`; PR #42 integrierte die folgenden Portalrevisionen `0026`–`0028`. Spätere Migrationen ergänzen `main` bis `0036_billing_approval_automation`; dieser PR-Stack ergänzt danach `0037_object_qual_requirements` und `0038_digital_policies`. Aktueller PR- und Migrationsstatus steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
+Der bisherige Tabellen-/Spaltenkatalog und die Betriebs-/Migrationshinweise bleiben erhalten; die folgende Übersicht ergänzt sie um alle PK/FK-Beziehungen des aktuellen Schemas einschließlich der später hinzugekommenen Tabellen. `PK` steht für Primärschlüssel; Fremdschlüssel nennen auch die tatsächliche `ON DELETE`-Regel. `audit_log_integrity` wird von Migration 0029 direkt in PostgreSQL angelegt und hat kein ORM-Modell. Neuere Tabellen und Spaltenänderungen der Revisionen 0025–0038 sind in den folgenden Katalogen ergänzt. Der aktuelle PR- und Migrationsstatus steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
-| Revision | Vorgänger | Schemaänderung |
+| Bereich | Tabelle | PK | Fremdschlüssel |
+|---|---|---|---|
+| Identität/Audit | `users` | `id` | — |
+| Identität/Audit | `roles` | `id` | — |
+| Identität/Audit | `permissions` | `id` | — |
+| Identität/Audit | `user_roles` | (`user_id`, `role_id`) | `user_id` → `users.id` (CASCADE); `role_id` → `roles.id` (CASCADE) |
+| Identität/Audit | `role_permissions` | (`role_id`, `permission_id`) | `role_id` → `roles.id` (CASCADE); `permission_id` → `permissions.id` (CASCADE) |
+| Identität/Audit | `user_sessions` | `id` | `user_id` → `users.id` (CASCADE) |
+| Identität/Audit | `user_mfa_recovery_codes` | `id` | `user_id` → `users.id` (CASCADE) |
+| Identität/Audit | `audit_logs` | `id` | — (`actor_id` absichtlich ohne FK) |
+| Identität/Audit | `audit_log_integrity` | `audit_log_id` | `audit_log_id` → `audit_logs.id` (RESTRICT; zugleich PK) |
+| Kunden/Objekte | `customers` | `id` | — |
+| Kunden/Objekte | `customer_addresses` | `id` | `customer_id` → `customers.id` (RESTRICT) |
+| Kunden/Objekte | `customer_contacts` | `id` | `customer_id` → `customers.id` (RESTRICT) |
+| Kunden/Objekte | `customer_history` | `id` | `customer_id` → `customers.id` (RESTRICT); `actor_id` → `users.id` (SET NULL) |
+| Kunden/Objekte | `objects` | `id` | `customer_id` → `customers.id` (RESTRICT) |
+| Kunden/Objekte | `object_qualification_requirements` | `id` | `object_id` → `objects.id` (RESTRICT) |
+| Kunden/Objekte | `object_addresses` | `id` | `object_id` → `objects.id` (RESTRICT) |
+| Kunden/Objekte | `object_contacts` | `id` | `object_id` → `objects.id` (RESTRICT) |
+| Kunden/Objekte | `object_history` | `id` | `object_id` → `objects.id` (RESTRICT); `actor_id` → `users.id` (SET NULL) |
+| Kunden/Objekte | `object_assignments` | `id` | `object_id` → `objects.id` (RESTRICT); `user_id` → `users.id` (RESTRICT); `assigned_by_id` → `users.id` (SET NULL) |
+| Kunden/Objekte | `object_security_details` | `object_id` | `object_id` → `objects.id` (RESTRICT; zugleich PK) |
+| Kundenportal | `customer_portal_links` | `id` | `user_id` → `users.id` (RESTRICT); `contact_id` → `customer_contacts.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Kundenportal | `customer_portal_link_history` | `id` | `user_id` → `users.id` (RESTRICT); `contact_id` → `customer_contacts.id` (RESTRICT); `actor_id` → `users.id` (SET NULL) |
+| Kundenportal | `customer_portal_document_grants` | `id` | `document_id` → `documents.id` (RESTRICT); `version_id` → `document_versions.id` (RESTRICT); `customer_id` → `customers.id` (RESTRICT); `granted_by_id`, `revoked_by_id` → `users.id` (SET NULL) |
+| Kundenportal | `customer_portal_document_grant_history` | `id` | `grant_id` → `customer_portal_document_grants.id` (RESTRICT); `actor_id` → `users.id` (SET NULL) |
+| Kundenportal | `customer_portal_requests` | `id` | `customer_id` → `customers.id` (RESTRICT); `contact_id` → `customer_contacts.id` (RESTRICT); `object_id` → `objects.id` (RESTRICT) |
+| Kundenportal | `customer_portal_request_messages` | `id` | `request_id` → `customer_portal_requests.id` (RESTRICT); `author_id` → `users.id` (SET NULL) |
+| Kundenportal | `customer_portal_request_attachments` | `id` | `request_id` → `customer_portal_requests.id` (RESTRICT); `uploaded_by_id` → `users.id` (SET NULL) |
+| Kundenportal | `customer_portal_request_history` | `id` | `request_id` → `customer_portal_requests.id` (RESTRICT); `actor_id` → `users.id` (SET NULL) |
+| Personal/Qualifikation | `employees` | `id` | `user_id` → `users.id` (SET NULL; UNIQUE) |
+| Personal/Qualifikation | `employee_qualifications` | `id` | `employee_id` → `employees.id` (RESTRICT) |
+| Personal/Qualifikation | `employee_qualification_documents` | `id` | `qualification_id` → `employee_qualifications.id` (RESTRICT); `uploaded_by_id` → `users.id` (SET NULL) |
+| Personal/Qualifikation | `employee_absences` | `id` | `employee_id` → `employees.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Personal/Qualifikation | `employee_sensitive_details` | `employee_id` | `employee_id` → `employees.id` (RESTRICT; zugleich PK) |
+| Personal/Qualifikation | `employee_history` | `id` | `employee_id` → `employees.id` (RESTRICT); `actor_id` → `users.id` (SET NULL) |
+| Personal/Qualifikation | `employee_object_assignment_history` | `id` | `employee_id` → `employees.id` (RESTRICT); `object_id` → `objects.id` (RESTRICT); `user_id`, `actor_id` → `users.id` (SET NULL) |
+| Dienstanweisungen/Unterweisungen | `policy_items` | `id` | `object_id` → `objects.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Dienstanweisungen/Unterweisungen | `policy_versions` | `id` | `policy_item_id` → `policy_items.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Dienstanweisungen/Unterweisungen | `policy_version_closures` | `policy_version_id` | `policy_version_id` → `policy_versions.id` (RESTRICT; zugleich PK); `closed_by_id` → `users.id` (SET NULL) |
+| Dienstanweisungen/Unterweisungen | `policy_assignments` | `id` | `policy_version_id` → `policy_versions.id` (RESTRICT); `employee_id` → `employees.id` (RESTRICT); `assigned_by_id` → `users.id` (SET NULL) |
+| Dienstanweisungen/Unterweisungen | `policy_receipts` | `id` | `assignment_id` → `policy_assignments.id` (RESTRICT); `actor_id` → `users.id` (RESTRICT) |
+| Personal/Planung | `employee_availability_windows` | `id` | `employee_id` → `employees.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Personal/Planung | `schedule_availability_requests` | `id` | `employee_id` → `employees.id` (RESTRICT); `created_by_id`, `reviewed_by_id` → `users.id` (SET NULL) |
+| Mitarbeiterportal | `employee_portal_document_grants` | `id` | `employee_id` → `employees.id` (RESTRICT); `user_id` → `users.id` (RESTRICT); `qualification_document_id` → `employee_qualification_documents.id` (RESTRICT); `granted_by_id` → `users.id` (SET NULL); `revoked_by_id` → `users.id` (RESTRICT) |
+| Mitarbeiterportal | `employee_portal_document_grant_history` | `id` | `grant_id` → `employee_portal_document_grants.id` (RESTRICT); `actor_id` → `users.id` (SET NULL) |
+| Dienstplanung | `schedule_settings` | `id` | `updated_by_id` → `users.id` (SET NULL) |
+| Dienstplanung | `schedule_shifts` | `id` | `employee_id` → `employees.id` (RESTRICT); `object_id` → `objects.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Dienstplanung | `schedule_shift_history` | `id` | `shift_id` → `schedule_shifts.id` (RESTRICT); `actor_id` → `users.id` (SET NULL) |
+| Zeiterfassung | `time_entries` | `id` | `employee_id` → `employees.id` (RESTRICT); `object_id` → `objects.id` (RESTRICT); `shift_id` → `schedule_shifts.id` (RESTRICT); `created_by_id`, `reviewed_by_id` → `users.id` (SET NULL) |
+| Zeiterfassung | `time_entry_segments` | `id` | `entry_id` → `time_entries.id` (RESTRICT) |
+| Zeiterfassung | `time_entry_corrections` | `id` | `entry_id` → `time_entries.id` (RESTRICT); `requested_by_id`, `decided_by_id` → `users.id` (SET NULL) |
+| Zeiterfassung | `time_entry_correction_segments` | `id` | `correction_id` → `time_entry_corrections.id` (RESTRICT) |
+| Zeiterfassung | `time_entry_history` | `id` | `entry_id` → `time_entries.id` (RESTRICT); `actor_id` → `users.id` (SET NULL) |
+| Zeiterfassung | `time_tracking_settings` | `id` | `updated_by_id` → `users.id` (SET NULL) |
+| Zeiterfassung | `time_surcharge_rules` | `id` | `created_by_id` → `users.id` (SET NULL) |
+| Zeiterfassung | `time_surcharge_calculations` | `id` | `entry_id` → `time_entries.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Zeiterfassung | `time_tracking_periods` | `id` | `locked_by_id` → `users.id` (SET NULL) |
+| OWKS | `owks_control_points` | `id` | `object_id` → `objects.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| OWKS | `owks_routes` | `id` | `object_id` → `objects.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| OWKS | `owks_route_points` | `id` | `route_id` → `owks_routes.id` (RESTRICT); `control_point_id` → `owks_control_points.id` (RESTRICT) |
+| OWKS | `owks_challenges` | `id` | `object_id` → `objects.id` (RESTRICT); `user_id` → `users.id` (RESTRICT) |
+| OWKS | `owks_events` | `id` | `object_id` → `objects.id` (RESTRICT); `route_id` → `owks_routes.id` (RESTRICT); `control_point_id` → `owks_control_points.id` (RESTRICT); `corrects_event_id` → `owks_events.id` (RESTRICT); `employee_id` → `employees.id` (RESTRICT); `actor_id` → `users.id` (RESTRICT); `challenge_id` → `owks_challenges.id` (RESTRICT) |
+| OWKS | `owks_event_statuses` | `id` | `event_id` → `owks_events.id` (RESTRICT); `actor_id` → `users.id` (RESTRICT) |
+| OWKS | `owks_attachments` | `id` | `event_id` → `owks_events.id` (RESTRICT); `uploaded_by_id` → `users.id` (RESTRICT) |
+| Vorfälle | `incidents` | `id` | `object_id` → `objects.id` (RESTRICT); `assigned_to_id` → `users.id` (RESTRICT); `owks_event_id` → `owks_events.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Vorfälle | `incident_sensitive_details` | `incident_id` | `incident_id` → `incidents.id` (RESTRICT; zugleich PK); `updated_by_id` → `users.id` (SET NULL) |
+| Vorfälle | `incident_measures` | `id` | `incident_id` → `incidents.id` (RESTRICT); `assigned_to_id` → `users.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Vorfälle | `incident_people` | `id` | `incident_id` → `incidents.id` (RESTRICT); `created_by_id` → `users.id` (RESTRICT) |
+| Vorfälle | `incident_attachments` | `id` | `incident_id` → `incidents.id` (RESTRICT); `uploaded_by_id` → `users.id` (RESTRICT) |
+| Vorfälle | `incident_history` | `id` | `incident_id` → `incidents.id` (RESTRICT); `actor_id` → `users.id` (RESTRICT) |
+| Dokumente/Verträge | `documents` | `id` | `customer_id` → `customers.id` (RESTRICT); `object_id` → `objects.id` (RESTRICT); `employee_id` → `employees.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Dokumente/Verträge | `document_versions` | `id` | `document_id` → `documents.id` (RESTRICT); `uploaded_by_id` → `users.id` (SET NULL) |
+| Dokumente/Verträge | `document_approvals` | `id` | `version_id` → `document_versions.id` (RESTRICT); `requested_by_id`, `decided_by_id` → `users.id` (SET NULL) |
+| Dokumente/Verträge | `document_read_receipts` | `id` | `version_id` → `document_versions.id` (RESTRICT); `user_id` → `users.id` (RESTRICT) |
+| Dokumente/Verträge | `document_history` | `id` | `document_id` → `documents.id` (RESTRICT); `actor_id` → `users.id` (SET NULL) |
+| Dokumente/Verträge | `contracts` | `id` | `customer_id` → `customers.id` (RESTRICT); `object_id` → `objects.id` (RESTRICT); `employee_id` → `employees.id` (RESTRICT); `document_id` → `documents.id` (SET NULL); `created_by_id` → `users.id` (SET NULL) |
+| Dokumente/Verträge | `contract_history` | `id` | `contract_id` → `contracts.id` (RESTRICT); `actor_id` → `users.id` (SET NULL) |
+| Dokumente/Verträge | `document_contract_reminder_settings` | `id` | `updated_by_id` → `users.id` (SET NULL) |
+| Dokumente/Verträge | `document_contract_reminders` | `id` | `document_id` → `documents.id` (RESTRICT); `contract_id` → `contracts.id` (RESTRICT) |
+| Abrechnung | `billing_rates` | `id` | `created_by_id` → `users.id` (SET NULL) |
+| Abrechnung | `billing_invoices` | `id` | `customer_id` → `customers.id` (RESTRICT); `contract_id` → `contracts.id` (RESTRICT); `correction_of_id` → `billing_invoices.id` (RESTRICT); `created_by_id`, `approved_by_id` → `users.id` (SET NULL) |
+| Abrechnung | `billing_invoice_lines` | `id` | `invoice_id` → `billing_invoices.id` (RESTRICT); `rate_id` → `billing_rates.id` (SET NULL) |
+| Abrechnung | `billing_payments` | `id` | `invoice_id` → `billing_invoices.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Abrechnung | `billing_exports` | `id` | `invoice_id` → `billing_invoices.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Aufgaben/Benachrichtigungen | `tasks` | `id` | `assigned_to_id` → `users.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL); `customer_id` → `customers.id` (RESTRICT); `object_id` → `objects.id` (RESTRICT) |
+| Aufgaben/Benachrichtigungen | `task_comments` | `id` | `task_id` → `tasks.id` (CASCADE); `author_id` → `users.id` (SET NULL) |
+| Aufgaben/Benachrichtigungen | `task_history` | `id` | `task_id` → `tasks.id` (CASCADE); `actor_id` → `users.id` (SET NULL) |
+| Aufgaben/Benachrichtigungen | `notification_outbox` | `id` | — (`aggregate_type`/`aggregate_id` ohne FK) |
+| Aufgaben/Benachrichtigungen | `notification_outbox_attempts` | `id` | `outbox_id` → `notification_outbox.id` (RESTRICT) |
+| Aufgaben/Benachrichtigungen | `notification_worker_heartbeats` | `worker_name` | — |
+| Aufgaben/Benachrichtigungen | `notifications` | `id` | `outbox_id` → `notification_outbox.id` (RESTRICT); `recipient_id` → `users.id` (CASCADE); `task_id` → `tasks.id` (RESTRICT); `object_id` → `objects.id` (RESTRICT); `invoice_id` → `billing_invoices.id` (RESTRICT) |
+| Automatisierungen | `automation_rules` | `id` | `created_by_id`, `updated_by_id` → `users.id` (SET NULL) |
+| Automatisierungen | `automation_runs` | `id` | `rule_id` → `automation_rules.id` (RESTRICT); `source_event_id`, `action_event_id` → `notification_outbox.id` (RESTRICT) |
+| Inventar/Schlüssel | `physical_keys` | `id` | `object_id` → `objects.id` (RESTRICT); `current_employee_id` → `employees.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Inventar/Schlüssel | `key_movements` | `id` | `key_id` → `physical_keys.id` (RESTRICT); `object_id` → `objects.id` (RESTRICT); `employee_id` → `employees.id` (RESTRICT); `actor_id` → `users.id` (RESTRICT) |
+| Inventar/Schlüssel | `inventory_assets` | `id` | `object_id` → `objects.id` (RESTRICT); `current_employee_id` → `employees.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
+| Inventar/Schlüssel | `inventory_events` | `id` | `asset_id` → `inventory_assets.id` (RESTRICT); `object_id`, `from_object_id`, `to_object_id` → `objects.id` (RESTRICT); `from_employee_id`, `to_employee_id` → `employees.id` (RESTRICT); `actor_id` → `users.id` (RESTRICT) |
+
+Die Basistabellen `customers`/`objects`/`employees` und die vorangehenden Tabellen-/Nullable-Spaltenlisten behalten ihre vollständigen bisherigen Spaltenangaben. Für die neueren Revisionen und Änderungen gelten zusätzlich folgende Spalten (nicht aufgeführte nullable-Eigenschaften und Constraint-Details stehen in den referenzierten Modellen/Migrationen):
+
+| Revision | Tabelle/Änderung | Spalten |
 |---|---|---|
-| `0026_customer_portal_access` | `0025_unique_incident_owks_event` | Manuelle, eindeutige Benutzer-/Kundenkontakt-Verknüpfungen und append-only Verknüpfungshistorie; Portalrolle/Rechte. |
-| `0027_customer_document_grants` | `0026_customer_portal_access` | Explizite Dokumentversionsfreigaben mit Akteur/Zeitpunkt und append-only Freigabe-/Widerrufshistorie; Aktivierungsstatus der Verknüpfung. |
-| `0028_customer_portal_requests` | `0027_customer_document_grants` | Kundenanfragen mit Nachrichten, Status- und append-only Verlauf sowie privaten Anhang-Metadaten. |
+| `0031_safe_automations` | `automation_rules` | PK `id`; `name`, `description`, `trigger_type`, `conditions`, `action_type`, `is_active`, `deleted_at`, `created_by_id`, `updated_by_id`, `created_at`, `updated_at` |
+| `0031_safe_automations` | `automation_runs` | PK `id`; `rule_id`, `rule_name`, `source_event_id`, `action_event_id`, `trigger_type`, `status`, `last_error`, `manual_retry_count`, `created_at`, `updated_at` |
+| `0031_safe_automations` | `notification_outbox` | Ergänzt `failure_count`, `manual_retry_count`; Checks auf nichtnegative Fehlerzahl und manuelle Wiederholungen 0–3 |
+| `0032_employee_portal` | `employee_portal_document_grants` | PK `id`; `employee_id`, `user_id`, `qualification_document_id`, `granted_by_id`, `granted_at`, `revoked_by_id`, `revoked_at` |
+| `0032_employee_portal` | `employee_portal_document_grant_history` | PK `id`; `grant_id`, `actor_id`, `action`, `created_at` |
+| `0033_encrypted_document_storage` | `employee_qualification_documents`, `owks_attachments` | Ergänzt nullable `storage_key`; `content` wird nullable; DB-Check verlangt genau eine der beiden Ablageformen |
+| `0034_owks_automation_events` | `notifications` | `task_id` wird nullable; ergänzt nullable `object_id` mit FK auf `objects.id`; Check verlangt genau eines von `task_id` oder `object_id` |
+| `0035_worker_monitoring` | `notification_worker_heartbeats` | PK `worker_name`; `heartbeat_at` |
+| `0036_billing_approval_automation` | `notifications` | Ergänzt nullable `invoice_id` mit FK auf `billing_invoices.id` (`RESTRICT`); der Ziel-Check erlaubt genau eines von `task_id`, `object_id` oder `invoice_id`; `automation_rules.trigger_type` erlaubt `billing.invoice_approved` |
+| `0037_object_qual_requirements` | `object_qualification_requirements` | PK `id`; `object_id` mit FK auf `objects.id` (`RESTRICT`); `name`; eindeutig je Objekt und Name |
+| `0038_digital_policies` | `policy_items`, `policy_versions`, `policy_version_closures`, `policy_assignments`, `policy_receipts` | Versionierte Dienstanweisungen/Unterweisungen, Gültigkeitsabschlüsse, Mitarbeiterzuweisungen und append-only Lese-/Bestätigungsnachweise; Details zu Spalten, Constraints und Fremdschlüsseln stehen in den vorstehenden Katalogen |
 
-Die zugehörigen Tabellen sind `customer_portal_links`, `customer_portal_link_history`, `customer_portal_document_grants`, `customer_portal_document_grant_history`, `customer_portal_requests`, `customer_portal_request_messages`, `customer_portal_request_attachments` und `customer_portal_request_history`. Datei-Inhalte von Kundenanhängen liegen im privaten Dateispeicher; die Datenbank hält Speicherreferenz und validierte Metadaten. Zugriffsprotokolle speichern nur notwendige Metadaten, keine Dokument- oder Nachrichteninhalte. Der Portalzugriff ist an die exakte aktive Verknüpfung von Login, Kundenkontakt und Kunde gebunden; Kundenfreigaben werden nicht aus internen Dokumentfreigaben abgeleitet.
+### Ergänzende aktuelle ER-Diagramme
+
+Die folgende Diagrammserie ergänzt das ER-Diagramm des bisherigen Katalogs um alle aktuellen Schema-Module. Kanten repräsentieren Fremdschlüssel, keine zusätzlichen Anwendungs- oder Mandantenregeln. `users`-Referenzen als Ersteller, Prüfer und Akteure sind aus Gründen der Lesbarkeit nicht überall eingezeichnet; sie stehen vollständig im FK-Katalog. `audit_log_integrity` ist migrationsdefiniert, kein ORM-Modell und im ersten Diagramm als Datenbanktabelle dargestellt. Die FK-Kanten validieren keine fachliche Zugehörigkeit zu einem gemeinsamen Kunden oder Berechtigungsscope.
+
+```mermaid
+erDiagram
+    CUSTOMERS ||--o{ CUSTOMER_ADDRESSES : addresses
+    CUSTOMERS ||--o{ CUSTOMER_CONTACTS : contacts
+    CUSTOMERS ||--o{ CUSTOMER_HISTORY : history
+    CUSTOMERS ||--o{ OBJECTS : owns
+    OBJECTS ||--o| OBJECT_ADDRESSES : address
+    OBJECTS ||--o{ OBJECT_CONTACTS : contacts
+    OBJECTS ||--o{ OBJECT_HISTORY : history
+    OBJECTS ||--o{ OBJECT_ASSIGNMENTS : access_assignments
+    USERS ||--o{ OBJECT_ASSIGNMENTS : assigned_user
+    OBJECTS ||--o{ OBJECT_QUALIFICATION_REQUIREMENTS : qualification_requirements
+    OBJECTS ||--o| OBJECT_SECURITY_DETAILS : restricted_details
+    USERS ||--o{ USER_SESSIONS : sessions
+    USERS ||--o{ USER_MFA_RECOVERY_CODES : recovery_codes
+    USERS ||--o{ USER_ROLES : memberships
+    ROLES ||--o{ USER_ROLES : memberships
+    ROLES ||--o{ ROLE_PERMISSIONS : grants
+    PERMISSIONS ||--o{ ROLE_PERMISSIONS : granted
+    USERS o|--o| EMPLOYEES : account
+    EMPLOYEES ||--o{ EMPLOYEE_QUALIFICATIONS : qualifications
+    EMPLOYEE_QUALIFICATIONS ||--o{ EMPLOYEE_QUALIFICATION_DOCUMENTS : evidence_versions
+    EMPLOYEES ||--o| EMPLOYEE_SENSITIVE_DETAILS : restricted_details
+    EMPLOYEES ||--o{ EMPLOYEE_ABSENCES : absences
+    EMPLOYEES ||--o{ EMPLOYEE_OBJECT_ASSIGNMENT_HISTORY : assignment_history
+    OBJECTS ||--o{ EMPLOYEE_OBJECT_ASSIGNMENT_HISTORY : assignment_history
+    USERS ||--o| CUSTOMER_PORTAL_LINKS : login
+    CUSTOMER_CONTACTS ||--o| CUSTOMER_PORTAL_LINKS : contact
+    USERS ||--o{ CUSTOMER_PORTAL_LINK_HISTORY : linked_user
+    CUSTOMER_CONTACTS ||--o{ CUSTOMER_PORTAL_LINK_HISTORY : linked_contact
+    CUSTOMERS ||--o{ CUSTOMER_PORTAL_REQUESTS : requests
+    CUSTOMER_CONTACTS ||--o{ CUSTOMER_PORTAL_REQUESTS : submitted_by
+    OBJECTS ||--o{ CUSTOMER_PORTAL_REQUESTS : about_object
+    CUSTOMER_PORTAL_REQUESTS ||--o{ CUSTOMER_PORTAL_REQUEST_MESSAGES : messages
+    CUSTOMER_PORTAL_REQUESTS ||--o{ CUSTOMER_PORTAL_REQUEST_ATTACHMENTS : attachments
+    CUSTOMER_PORTAL_REQUESTS ||--o{ CUSTOMER_PORTAL_REQUEST_HISTORY : history
+    DOCUMENTS ||--o{ CUSTOMER_PORTAL_DOCUMENT_GRANTS : grants
+    DOCUMENT_VERSIONS ||--o{ CUSTOMER_PORTAL_DOCUMENT_GRANTS : granted_version
+    CUSTOMERS ||--o{ CUSTOMER_PORTAL_DOCUMENT_GRANTS : customer_scope
+    CUSTOMER_PORTAL_DOCUMENT_GRANTS ||--o{ CUSTOMER_PORTAL_DOCUMENT_GRANT_HISTORY : history
+    EMPLOYEES ||--o{ EMPLOYEE_PORTAL_DOCUMENT_GRANTS : grants
+    USERS ||--o{ EMPLOYEE_PORTAL_DOCUMENT_GRANTS : portal_login
+    EMPLOYEE_QUALIFICATION_DOCUMENTS ||--o{ EMPLOYEE_PORTAL_DOCUMENT_GRANTS : granted_file
+    EMPLOYEE_PORTAL_DOCUMENT_GRANTS ||--o{ EMPLOYEE_PORTAL_DOCUMENT_GRANT_HISTORY : history
+```
+
+```mermaid
+erDiagram
+    EMPLOYEES ||--o{ EMPLOYEE_AVAILABILITY_WINDOWS : availability
+    EMPLOYEES ||--o{ SCHEDULE_AVAILABILITY_REQUESTS : requests
+    EMPLOYEES ||--o{ SCHEDULE_SHIFTS : scheduled
+    OBJECTS ||--o{ SCHEDULE_SHIFTS : location
+    SCHEDULE_SHIFTS ||--o{ SCHEDULE_SHIFT_HISTORY : history
+    EMPLOYEES ||--o{ TIME_ENTRIES : records
+    OBJECTS ||--o{ TIME_ENTRIES : location
+    SCHEDULE_SHIFTS o|--o{ TIME_ENTRIES : optional_shift
+    TIME_ENTRIES ||--o{ TIME_ENTRY_SEGMENTS : segments
+    TIME_ENTRIES ||--o{ TIME_ENTRY_CORRECTIONS : correction_requests
+    TIME_ENTRY_CORRECTIONS ||--o{ TIME_ENTRY_CORRECTION_SEGMENTS : proposed_segments
+    TIME_ENTRIES ||--o{ TIME_ENTRY_HISTORY : history
+    TIME_ENTRIES ||--o{ TIME_SURCHARGE_CALCULATIONS : snapshots
+    OBJECTS ||--o{ OWKS_CONTROL_POINTS : checkpoints
+    OBJECTS ||--o{ OWKS_ROUTES : routes
+    OWKS_ROUTES ||--o{ OWKS_ROUTE_POINTS : ordered_points
+    OWKS_CONTROL_POINTS ||--o{ OWKS_ROUTE_POINTS : route_membership
+    OBJECTS ||--o{ OWKS_CHALLENGES : challenges
+    OBJECTS ||--o{ OWKS_EVENTS : events
+    OWKS_ROUTES o|--o{ OWKS_EVENTS : optional_route
+    OWKS_CONTROL_POINTS o|--o{ OWKS_EVENTS : optional_checkpoint
+    OWKS_CHALLENGES o|--o{ OWKS_EVENTS : optional_challenge
+    EMPLOYEES o|--o{ OWKS_EVENTS : optional_employee
+    OWKS_EVENTS o|--o{ OWKS_EVENTS : corrects_event
+    OWKS_EVENTS ||--o{ OWKS_EVENT_STATUSES : status_history
+    OWKS_EVENTS ||--o{ OWKS_ATTACHMENTS : attachments
+    OBJECTS ||--o{ INCIDENTS : incidents
+    OWKS_EVENTS o|--o| INCIDENTS : optional_incident_reference
+    INCIDENTS ||--o| INCIDENT_SENSITIVE_DETAILS : restricted_details
+    INCIDENTS ||--o{ INCIDENT_MEASURES : measures
+    INCIDENTS ||--o{ INCIDENT_PEOPLE : people
+    INCIDENTS ||--o{ INCIDENT_ATTACHMENTS : attachments
+    INCIDENTS ||--o{ INCIDENT_HISTORY : history
+    OBJECTS ||--o{ PHYSICAL_KEYS : key_register
+    EMPLOYEES o|--o{ PHYSICAL_KEYS : current_holder
+    PHYSICAL_KEYS ||--o{ KEY_MOVEMENTS : movement_history
+    OBJECTS ||--o{ KEY_MOVEMENTS : object_scope
+    OBJECTS o|--o{ INVENTORY_ASSETS : object_scope
+    EMPLOYEES o|--o{ INVENTORY_ASSETS : current_holder
+    INVENTORY_ASSETS ||--o{ INVENTORY_EVENTS : event_history
+    OBJECTS o|--o{ INVENTORY_EVENTS : object_scope
+    OBJECTS o|--o{ INVENTORY_EVENTS : transfer_from_object
+    OBJECTS o|--o{ INVENTORY_EVENTS : transfer_to_object
+    EMPLOYEES o|--o{ INVENTORY_EVENTS : transfer_from_employee
+    EMPLOYEES o|--o{ INVENTORY_EVENTS : transfer_to_employee
+    NOTIFICATION_WORKER_HEARTBEATS {
+        string worker_name PK
+        datetime heartbeat_at
+    }
+```
+
+```mermaid
+erDiagram
+    DOCUMENTS ||--o{ DOCUMENT_VERSIONS : versions
+    DOCUMENT_VERSIONS ||--o{ DOCUMENT_APPROVALS : approvals
+    DOCUMENT_VERSIONS ||--o{ DOCUMENT_READ_RECEIPTS : read_receipts
+    DOCUMENTS ||--o{ DOCUMENT_HISTORY : history
+    CUSTOMERS o|--o{ DOCUMENTS : optional_customer
+    OBJECTS o|--o{ DOCUMENTS : optional_object
+    EMPLOYEES o|--o{ DOCUMENTS : optional_employee
+    CUSTOMERS ||--o{ CONTRACTS : contracts
+    OBJECTS o|--o{ CONTRACTS : optional_object
+    EMPLOYEES o|--o{ CONTRACTS : optional_employee
+    DOCUMENTS o|--o{ CONTRACTS : optional_document
+    CONTRACTS ||--o{ CONTRACT_HISTORY : history
+    DOCUMENTS o|--o{ DOCUMENT_CONTRACT_REMINDERS : reminders
+    CONTRACTS o|--o{ DOCUMENT_CONTRACT_REMINDERS : reminders
+    CUSTOMERS ||--o{ BILLING_INVOICES : invoices
+    CONTRACTS o|--o{ BILLING_INVOICES : contract
+    BILLING_INVOICES o|--o{ BILLING_INVOICES : corrects
+    BILLING_INVOICES ||--o{ BILLING_INVOICE_LINES : lines
+    BILLING_RATES o|--o{ BILLING_INVOICE_LINES : optional_rate
+    BILLING_INVOICES ||--o{ BILLING_PAYMENTS : payments
+    BILLING_INVOICES ||--o{ BILLING_EXPORTS : exports
+    USERS ||--o{ TASKS : assignee
+    CUSTOMERS o|--o{ TASKS : optional_customer
+    OBJECTS o|--o{ TASKS : optional_object
+    TASKS ||--o{ TASK_COMMENTS : comments
+    TASKS ||--o{ TASK_HISTORY : history
+    NOTIFICATION_OUTBOX ||--o{ NOTIFICATION_OUTBOX_ATTEMPTS : attempts
+    NOTIFICATION_OUTBOX ||--o{ NOTIFICATIONS : notifications
+    USERS ||--o{ NOTIFICATIONS : recipient
+    TASKS o|--o{ NOTIFICATIONS : optional_task
+    OBJECTS o|--o{ NOTIFICATIONS : optional_object
+    BILLING_INVOICES o|--o{ NOTIFICATIONS : optional_invoice
+    AUTOMATION_RULES ||--o{ AUTOMATION_RUNS : executions
+    NOTIFICATION_OUTBOX ||--o{ AUTOMATION_RUNS : source_event
+    NOTIFICATION_OUTBOX o|--o| AUTOMATION_RUNS : optional_action_event
+    OBJECTS o|--o{ POLICY_ITEMS : optional_scope
+    POLICY_ITEMS ||--o{ POLICY_VERSIONS : versions
+    POLICY_VERSIONS ||--o| POLICY_VERSION_CLOSURES : optional_closure
+    POLICY_VERSIONS ||--o{ POLICY_ASSIGNMENTS : assignments
+    EMPLOYEES ||--o{ POLICY_ASSIGNMENTS : assigned_employee
+    POLICY_ASSIGNMENTS ||--o{ POLICY_RECEIPTS : receipts
+```
+
+Das Schema enthält keine allgemeine `tenant_id`, keine PostgreSQL-Row-Level-Security-Policies und keine mandantenbezogenen Partitionen. Die Kunden-/Objekt-Scopes bilden Geschäftsbeziehungen, aber einzelne Fremdschlüssel erzwingen nicht, dass beispielsweise Kontakt, Objekt, Kunde und Dokument zur selben Organisation gehören. Solche Scope-Prüfungen sind Anwendungsregeln und müssen serverseitig erfolgen. Historientabellen sind nur dort gegen `UPDATE`/`DELETE` geschützt, wo Migrationen explizit PostgreSQL-Trigger dafür anlegen; ein History-Tabellenname allein garantiert keine Unveränderlichkeit. Die vorhandenen DB-Trigger und Audit-Integritätsgrenzen sind im Abschnitt „Datenhaltungsgrenzen“ dokumentiert; sie schützen nicht gegen privilegierte Datenbank-Owner oder Superuser.
