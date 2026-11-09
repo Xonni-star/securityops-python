@@ -21,6 +21,7 @@ CUSTOMER_REQUESTS_REVISION = "0028_customer_portal_requests"
 AUDIT_REVISION = "0029_audit_integrity"
 INVENTORY_REVISION = "0030_inventory_management"
 AUTOMATION_REVISION = "0031_safe_automations"
+EMPLOYEE_PORTAL_REVISION = "0032_employee_portal"
 
 
 def admin_connection_options() -> dict[str, str | int]:
@@ -66,7 +67,13 @@ def verify_revision_chain() -> None:
     automation_revision = script.get_revision(AUTOMATION_REVISION)
     if automation_revision is None or automation_revision.down_revision != INVENTORY_REVISION:
         raise RuntimeError(f"{AUTOMATION_REVISION} folgt nicht auf {INVENTORY_REVISION}.")
-    if script.get_heads() != [AUTOMATION_REVISION]:
+    employee_portal_revision = script.get_revision(EMPLOYEE_PORTAL_REVISION)
+    if (
+        employee_portal_revision is None
+        or employee_portal_revision.down_revision != AUTOMATION_REVISION
+    ):
+        raise RuntimeError(f"{EMPLOYEE_PORTAL_REVISION} folgt nicht auf {AUTOMATION_REVISION}.")
+    if script.get_heads() != [EMPLOYEE_PORTAL_REVISION]:
         raise RuntimeError(f"Unerwartete Alembic-Heads: {script.get_heads()}")
 
 
@@ -175,9 +182,9 @@ def main() -> None:
         with engine.connect() as connection:
             if (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                != AUTOMATION_REVISION
+                != EMPLOYEE_PORTAL_REVISION
             ):
-                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0031 geendet.")
+                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0032 geendet.")
             if (
                 connection.execute(
                     text("SELECT company_name FROM customers WHERE id = :id"),
@@ -213,6 +220,8 @@ def main() -> None:
                 "customer_portal_request_messages",
                 "customer_portal_request_attachments",
                 "customer_portal_request_history",
+                "employee_portal_document_grants",
+                "employee_portal_document_grant_history",
             ):
                 if not connection.execute(
                     text("SELECT to_regclass(:table_name) IS NOT NULL"),
@@ -249,6 +258,32 @@ def main() -> None:
                     {"table_name": table_name},
                 ).scalar_one():
                     raise RuntimeError(f"Automatisierungstabelle {table_name} fehlt.")
+            if (
+                connection.execute(
+                    text(
+                        "SELECT count(*) FROM role_permissions rp "
+                        "JOIN roles r ON r.id = rp.role_id "
+                        "JOIN permissions p ON p.id = rp.permission_id "
+                        "WHERE r.code = 'employee' "
+                        "AND p.code IN ('documents.read', 'documents.download')"
+                    )
+                ).scalar_one()
+                != 0
+            ):
+                raise RuntimeError(
+                    "Die Mitarbeiterrolle besitzt weiterhin generische Dokumentrechte."
+                )
+            if (
+                connection.execute(
+                    text(
+                        "SELECT count(*) FROM pg_trigger "
+                        "WHERE tgname = 'employee_portal_document_grant_history_append_only' "
+                        "AND NOT tgisinternal"
+                    )
+                ).scalar_one()
+                != 1
+            ):
+                raise RuntimeError("Der Mitarbeiterdokument-Freigabeverlauf ist nicht append-only.")
             if (
                 connection.execute(
                     text("SELECT count(*) FROM permissions WHERE code = 'automations.manage'")

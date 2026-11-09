@@ -13,6 +13,14 @@ vi.mock("./api", () => ({
   createCustomerContact: vi.fn(),
   createEmployeePortalAbsence: vi.fn(),
   createEmployeePortalAvailabilityRequest: vi.fn(),
+  employeePortalDocumentUrl: vi.fn(
+    (document: { employee_id: string; qualification_id: string; document_id: string }) =>
+      `/api/v1/employees/${document.employee_id}` +
+      `/qualifications/${document.qualification_id}` +
+      `/documents/${document.document_id}?download=true`,
+  ),
+  getEmployeePortalDocumentGrants: vi.fn(),
+  getEmployeePortalDocuments: vi.fn(),
   createScheduleAvailabilityRequest: vi.fn(),
   deleteCustomerContact: vi.fn(),
   getCustomer: vi.fn(),
@@ -38,8 +46,12 @@ vi.mock("./api", () => ({
   getEmployeePortalShifts: vi.fn(),
   getEmployeePortalTasks: vi.fn(),
   getEmployeePortalTimeOverview: vi.fn(),
+  grantEmployeePortalDocument: vi.fn(),
+  revokeEmployeePortalDocument: vi.fn(),
   updateEmployeePortalAbsence: vi.fn(),
   updateEmployeePortalAvailabilityRequest: vi.fn(),
+  withdrawEmployeePortalAbsence: vi.fn(),
+  withdrawEmployeePortalAvailabilityRequest: vi.fn(),
   getObjects: vi.fn(),
   getNotifications: vi.fn(),
   getSession: vi.fn(),
@@ -159,6 +171,7 @@ describe("Kundenformulare", () => {
     vi.mocked(api.getEmployeePortalShifts).mockResolvedValue([]);
     vi.mocked(api.getEmployeePortalTasks).mockResolvedValue([]);
     vi.mocked(api.getEmployeePortalNotifications).mockResolvedValue([]);
+    vi.mocked(api.getEmployeePortalDocuments).mockResolvedValue([]);
     vi.mocked(api.getEmployeePortalQualifications).mockResolvedValue([]);
     vi.mocked(api.getEmployeePortalTimeOverview).mockResolvedValue({
       items: [],
@@ -854,7 +867,7 @@ describe("Kundenformulare", () => {
     fireEvent.click(screen.getByRole("button", { name: "Abwesenheit & Verfügbarkeit" }));
     expect(screen.getAllByText(/Verlauf: Eingereicht am/)).toHaveLength(2);
     expect(screen.getByText(/Angenommen am/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Zurückziehen" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Zurückziehen" })).toHaveLength(1);
 
     fireEvent.click(screen.getAllByRole("button", { name: "Bearbeiten" })[0]);
     const form = screen.getByDisplayValue("2026-12-01").closest("form")!;
@@ -873,6 +886,46 @@ describe("Kundenformulare", () => {
         ends_on: "2026-12-04",
       });
     });
+
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.click(await screen.findByRole("button", { name: "Zurückziehen" }));
+    await waitFor(() => {
+      expect(api.withdrawEmployeePortalAbsence).toHaveBeenCalledWith("absence-1");
+    });
+  });
+
+  it("zeigt nur ausdrücklich freigegebene persönliche Dokumente mit privatem Downloadpfad", async () => {
+    vi.mocked(api.getSession).mockResolvedValue({
+      user: {
+        id: "employee-user",
+        username: "mitarbeiter",
+        email: "mitarbeiter@example.de",
+        full_name: "Mitarbeiter",
+        is_active: true,
+        roles: ["employee"],
+        permissions: [],
+      },
+    });
+    vi.mocked(api.getEmployeePortalDocuments).mockResolvedValue([{
+      grant_id: "grant-1",
+      employee_id: "employee-1",
+      qualification_id: "qualification-1",
+      document_id: "document-1",
+      qualification_name: "Ersthelferqualifikation",
+      version: 2,
+      file_name: "nachweis.pdf",
+      media_type: "application/pdf",
+      size_bytes: 4096,
+      granted_at: "2026-11-09T08:00:00Z",
+    }]);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Freigegebene Dokumente" }));
+    expect(await screen.findByText("Ersthelferqualifikation")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Nachweis öffnen" }).getAttribute("href"))
+      .toBe(
+        "/api/v1/employees/employee-1/qualifications/qualification-1/documents/document-1?download=true",
+      );
   });
 
   it("lädt Dienstdetails und markiert eigene Portalbenachrichtigungen", async () => {

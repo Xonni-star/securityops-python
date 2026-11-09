@@ -21,13 +21,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.assignment_history import record_employee_object_assignment_event
-from app.auth import add_audit_entry, require_permission
+from app.auth import AuthPrincipal, add_audit_entry, get_auth_principal, require_permission
 from app.database import get_db
 from app.models import (
     Employee,
     EmployeeAbsence,
     EmployeeHistory,
     EmployeeObjectAssignmentHistory,
+    EmployeePortalDocumentGrant,
     EmployeeQualification,
     EmployeeQualificationDocument,
     EmployeeSensitiveDetails,
@@ -1175,26 +1176,87 @@ def upload_employee_qualification_document(
     "/employees/{employee_id}/qualifications/{qualification_id}/documents/{document_id}",
 )
 def get_employee_qualification_document(
+    request: Request,
     employee_id: UUID,
     qualification_id: UUID,
     document_id: UUID,
     download: bool = Query(default=False),
     db: Session = Depends(get_db),
-    _principal=Depends(require_permission("employees.documents.read")),
+    principal: AuthPrincipal = Depends(get_auth_principal),
 ) -> Response:
-    get_employee_or_404(db, employee_id)
-    stored = db.scalar(
-        select(EmployeeQualificationDocument)
-        .join(
-            EmployeeQualification,
-            EmployeeQualification.id == EmployeeQualificationDocument.qualification_id,
+    can_read_personnel_documents = "employees.documents.read" in principal.permission_codes
+    if not can_read_personnel_documents and (
+        principal.customer_portal_restricted or "employee" not in principal.role_codes
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung für diese Aktion",
         )
-        .where(
-            EmployeeQualification.employee_id == employee_id,
-            EmployeeQualification.id == qualification_id,
-            EmployeeQualificationDocument.id == document_id,
+    employee = get_employee_or_404(db, employee_id)
+    if not can_read_personnel_documents:
+        if (
+            employee.user_id != principal.user.id
+            or employee.employment_status != "active"
+            or employee.archived_at is not None
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Qualifikationsdokument nicht gefunden",
+            )
+        qualification = db.scalar(
+            select(EmployeeQualification).where(
+                EmployeeQualification.id == qualification_id,
+                EmployeeQualification.employee_id == employee.id,
+                EmployeeQualification.archived_at.is_(None),
+            )
         )
-    )
+        if qualification is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Qualifikationsdokument nicht gefunden",
+            )
+        stored = db.scalar(
+            select(EmployeeQualificationDocument).where(
+                EmployeeQualificationDocument.id == document_id,
+                EmployeeQualificationDocument.qualification_id == qualification.id,
+            )
+        )
+        grant_id = db.scalar(
+            select(EmployeePortalDocumentGrant.id).where(
+                EmployeePortalDocumentGrant.employee_id == employee.id,
+                EmployeePortalDocumentGrant.user_id == principal.user.id,
+                EmployeePortalDocumentGrant.qualification_document_id == document_id,
+                EmployeePortalDocumentGrant.revoked_at.is_(None),
+            )
+        )
+        if stored is None or grant_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Qualifikationsdokument nicht gefunden",
+            )
+        add_audit_entry(
+            db,
+            actor_id=principal.user.id,
+            action="employee_portal.document_downloaded",
+            entity_type="employee_qualification_document",
+            entity_id=str(stored.id),
+            ip_address=request.client.host if request.client else None,
+            details={"version": stored.version, "grant_id": str(grant_id)},
+        )
+        db.commit()
+    else:
+        stored = db.scalar(
+            select(EmployeeQualificationDocument)
+            .join(
+                EmployeeQualification,
+                EmployeeQualification.id == EmployeeQualificationDocument.qualification_id,
+            )
+            .where(
+                EmployeeQualification.employee_id == employee_id,
+                EmployeeQualification.id == qualification_id,
+                EmployeeQualificationDocument.id == document_id,
+            )
+        )
     if stored is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -76,6 +76,7 @@ class EmployeePortalRequestHistoryRead(BaseModel):
         "approved",
         "accepted",
         "rejected",
+        "withdrawn",
     ]
     occurred_at: datetime
 
@@ -87,7 +88,7 @@ class EmployeePortalAbsenceRead(BaseModel):
     absence_type: EmployeeAbsenceType
     starts_on: date
     ends_on: date
-    status: Literal["pending", "approved", "rejected"]
+    status: Literal["pending", "approved", "rejected", "withdrawn"]
     created_at: datetime
     updated_at: datetime
     history: list[EmployeePortalRequestHistoryRead]
@@ -129,7 +130,7 @@ class EmployeePortalAvailabilityRead(BaseModel):
     starts_at: datetime
     ends_at: datetime
     time_zone: str
-    status: Literal["open", "accepted", "rejected"]
+    status: Literal["open", "accepted", "rejected", "withdrawn"]
     created_at: datetime
     updated_at: datetime
     reviewed_at: datetime | None
@@ -182,3 +183,37 @@ class EmployeePortalAvailabilityUpdate(BaseModel):
         ):
             raise ValueError("Das Ende des Zeitraums muss nach dem Beginn liegen.")
         return self
+
+
+class EmployeePortalDocumentRead(BaseModel):
+    grant_id: UUID
+    employee_id: UUID
+    qualification_id: UUID
+    document_id: UUID
+    qualification_name: str
+    version: int
+    file_name: str
+    media_type: Literal["application/pdf", "image/jpeg", "image/png"]
+    size_bytes: int
+    granted_at: datetime
+
+
+class EmployeePortalDocumentGrantCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    employee_id: UUID
+    qualification_document_id: UUID
+
+
+class EmployeePortalDocumentGrantRead(BaseModel):
+    id: UUID
+    employee_id: UUID
+    user_id: UUID
+    qualification_document_id: UUID
+    qualification_name: str
+    version: int
+    file_name: str
+    granted_by_id: UUID | None
+    granted_at: datetime
+    revoked_by_id: UUID | None
+    revoked_at: datetime | None

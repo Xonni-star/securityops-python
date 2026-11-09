@@ -50,6 +50,8 @@ from app.models import (
     EmployeeAvailabilityWindow,
     EmployeeHistory,
     EmployeeObjectAssignmentHistory,
+    EmployeePortalDocumentGrant,
+    EmployeePortalDocumentGrantHistory,
     EmployeeQualification,
     EmployeeQualificationDocument,
     EmployeeSensitiveDetails,
@@ -155,6 +157,7 @@ def client() -> Generator[TestClient, None, None]:
                 "notification_outbox_attempts",
                 "customer_portal_link_history",
                 "customer_portal_document_grant_history",
+                "employee_portal_document_grant_history",
                 "customer_portal_request_messages",
                 "customer_portal_request_attachments",
                 "customer_portal_request_history",
@@ -203,6 +206,8 @@ def client() -> Generator[TestClient, None, None]:
         db.execute(delete(DocumentReadReceipt))
         db.execute(delete(CustomerPortalDocumentGrantHistory))
         db.execute(delete(CustomerPortalDocumentGrant))
+        db.execute(delete(EmployeePortalDocumentGrantHistory))
+        db.execute(delete(EmployeePortalDocumentGrant))
         db.execute(delete(CustomerPortalRequestHistory))
         db.execute(delete(CustomerPortalRequestAttachment))
         db.execute(delete(CustomerPortalRequestMessage))
@@ -258,6 +263,7 @@ def client() -> Generator[TestClient, None, None]:
                 "notification_outbox_attempts",
                 "customer_portal_link_history",
                 "customer_portal_document_grant_history",
+                "employee_portal_document_grant_history",
                 "customer_portal_request_messages",
                 "customer_portal_request_attachments",
                 "customer_portal_request_history",

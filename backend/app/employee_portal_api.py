@@ -2,12 +2,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.auth import AuthPrincipal, add_audit_entry, get_auth_principal
+from app.auth import AuthPrincipal, add_audit_entry, get_auth_principal, require_permission
 from app.database import get_db
 from app.employee_portal_schemas import (
     EmployeePortalAbsenceCreate,
@@ -16,6 +16,9 @@ from app.employee_portal_schemas import (
     EmployeePortalAvailabilityCreate,
     EmployeePortalAvailabilityRead,
     EmployeePortalAvailabilityUpdate,
+    EmployeePortalDocumentGrantCreate,
+    EmployeePortalDocumentGrantRead,
+    EmployeePortalDocumentRead,
     EmployeePortalNotificationRead,
     EmployeePortalProfileRead,
     EmployeePortalQualificationRead,
@@ -29,7 +32,10 @@ from app.models import (
     AuditLog,
     Employee,
     EmployeeAbsence,
+    EmployeePortalDocumentGrant,
+    EmployeePortalDocumentGrantHistory,
     EmployeeQualification,
+    EmployeeQualificationDocument,
     Notification,
     ObjectAssignment,
     ScheduleAvailabilityRequest,
@@ -37,6 +43,7 @@ from app.models import (
     SecurityObject,
     Task,
     TimeEntry,
+    User,
 )
 from app.scheduling_api import (
     as_utc,
@@ -130,6 +137,11 @@ def request_history(
             "employee_portal.availability_updated",
         }:
             event = "updated"
+        elif item.action in {
+            "employee_portal.absence_withdrawn",
+            "employee_portal.availability_withdrawn",
+        }:
+            event = "withdrawn"
         elif item.action == "scheduling.availability_request_reviewed" and kind == "availability":
             decision = item.details.get("status")
             event = decision if decision in {"accepted", "rejected"} else None
@@ -635,3 +647,348 @@ def update_employee_availability_request(
         )
         commit_portal_request(db)
     return read_availability_request(db, item, settings.time_zone)
+
+
+@router.post(
+    "/employee-portal/me/absences/{absence_id}/withdraw",
+    response_model=EmployeePortalAbsenceRead,
+)
+def withdraw_employee_absence_request(
+    absence_id: UUID,
+    request: Request,
+    db: PortalSession,
+    employee: CurrentEmployee,
+    principal: PortalPrincipal,
+) -> EmployeePortalAbsenceRead:
+    absence = db.scalar(
+        select(EmployeeAbsence)
+        .where(
+            EmployeeAbsence.id == absence_id,
+            EmployeeAbsence.employee_id == employee.id,
+        )
+        .with_for_update()
+    )
+    if absence is None:
+        raise HTTPException(status_code=404, detail="Abwesenheitsantrag nicht gefunden.")
+    if absence.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Nur noch offene Abwesenheitsanträge können zurückgezogen werden.",
+        )
+    absence.status = "withdrawn"
+    add_audit_entry(
+        db,
+        actor_id=principal.user.id,
+        action="employee_portal.absence_withdrawn",
+        entity_type="employee_absence",
+        entity_id=str(absence.id),
+        ip_address=request.client.host if request.client else None,
+        details={"from_status": "pending", "to_status": "withdrawn"},
+    )
+    commit_portal_request(db)
+    return read_absence(db, absence)
+
+
+@router.post(
+    "/employee-portal/me/availability-requests/{request_id}/withdraw",
+    response_model=EmployeePortalAvailabilityRead,
+)
+def withdraw_employee_availability_request(
+    request_id: UUID,
+    request: Request,
+    db: PortalSession,
+    employee: CurrentEmployee,
+    principal: PortalPrincipal,
+) -> EmployeePortalAvailabilityRead:
+    item = db.scalar(
+        select(ScheduleAvailabilityRequest)
+        .where(
+            ScheduleAvailabilityRequest.id == request_id,
+            ScheduleAvailabilityRequest.employee_id == employee.id,
+        )
+        .with_for_update()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Verfügbarkeitsantrag nicht gefunden.")
+    if item.status != "open":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Nur noch offene Verfügbarkeitsanträge können zurückgezogen werden.",
+        )
+    lock_employee_schedule(db, employee.id)
+    item.status = "withdrawn"
+    add_audit_entry(
+        db,
+        actor_id=principal.user.id,
+        action="employee_portal.availability_withdrawn",
+        entity_type="schedule_availability_request",
+        entity_id=str(item.id),
+        ip_address=request.client.host if request.client else None,
+        details={"from_status": "open", "to_status": "withdrawn"},
+    )
+    commit_portal_request(db)
+    return read_availability_request(db, item, get_schedule_settings(db).time_zone)
+
+
+def portal_document_grant_read(
+    grant: EmployeePortalDocumentGrant,
+    document: EmployeeQualificationDocument,
+    qualification: EmployeeQualification,
+) -> EmployeePortalDocumentGrantRead:
+    return EmployeePortalDocumentGrantRead(
+        id=grant.id,
+        employee_id=grant.employee_id,
+        user_id=grant.user_id,
+        qualification_document_id=document.id,
+        qualification_name=qualification.name,
+        version=document.version,
+        file_name=document.file_name,
+        granted_by_id=grant.granted_by_id,
+        granted_at=grant.granted_at,
+        revoked_by_id=grant.revoked_by_id,
+        revoked_at=grant.revoked_at,
+    )
+
+
+@router.get(
+    "/employee-portal/me/documents",
+    response_model=list[EmployeePortalDocumentRead],
+)
+def list_employee_portal_documents(
+    response: Response,
+    db: PortalSession,
+    employee: CurrentEmployee,
+    principal: PortalPrincipal,
+) -> list[EmployeePortalDocumentRead]:
+    response.headers["Cache-Control"] = "private, no-store"
+    rows = db.execute(
+        select(EmployeePortalDocumentGrant, EmployeeQualificationDocument, EmployeeQualification)
+        .join(
+            EmployeeQualificationDocument,
+            EmployeeQualificationDocument.id
+            == EmployeePortalDocumentGrant.qualification_document_id,
+        )
+        .join(
+            EmployeeQualification,
+            EmployeeQualification.id == EmployeeQualificationDocument.qualification_id,
+        )
+        .where(
+            EmployeePortalDocumentGrant.employee_id == employee.id,
+            EmployeePortalDocumentGrant.user_id == principal.user.id,
+            EmployeePortalDocumentGrant.revoked_at.is_(None),
+            EmployeeQualification.archived_at.is_(None),
+        )
+        .order_by(
+            EmployeePortalDocumentGrant.granted_at.desc(),
+            EmployeePortalDocumentGrant.id,
+        )
+    ).all()
+    return [
+        EmployeePortalDocumentRead(
+            grant_id=grant.id,
+            employee_id=grant.employee_id,
+            qualification_id=qualification.id,
+            document_id=document.id,
+            qualification_name=qualification.name,
+            version=document.version,
+            file_name=document.file_name,
+            media_type=document.media_type,
+            size_bytes=document.size_bytes,
+            granted_at=grant.granted_at,
+        )
+        for grant, document, qualification in rows
+    ]
+
+
+@router.get(
+    "/employee-portal/document-grants",
+    response_model=list[EmployeePortalDocumentGrantRead],
+)
+def list_employee_portal_document_grants(
+    employee_id: UUID,
+    response: Response,
+    db: PortalSession,
+    _principal: Annotated[AuthPrincipal, Depends(require_permission("employees.documents.manage"))],
+) -> list[EmployeePortalDocumentGrantRead]:
+    response.headers["Cache-Control"] = "private, no-store"
+    if db.scalar(select(Employee.id).where(Employee.id == employee_id)) is None:
+        raise HTTPException(status_code=404, detail="Mitarbeiter nicht gefunden.")
+    rows = db.execute(
+        select(EmployeePortalDocumentGrant, EmployeeQualificationDocument, EmployeeQualification)
+        .join(
+            EmployeeQualificationDocument,
+            EmployeeQualificationDocument.id
+            == EmployeePortalDocumentGrant.qualification_document_id,
+        )
+        .join(
+            EmployeeQualification,
+            EmployeeQualification.id == EmployeeQualificationDocument.qualification_id,
+        )
+        .where(EmployeePortalDocumentGrant.employee_id == employee_id)
+        .order_by(
+            EmployeePortalDocumentGrant.granted_at.desc(),
+            EmployeePortalDocumentGrant.id,
+        )
+    ).all()
+    return [
+        portal_document_grant_read(grant, document, qualification)
+        for grant, document, qualification in rows
+    ]
+
+
+@router.post(
+    "/employee-portal/document-grants",
+    response_model=EmployeePortalDocumentGrantRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def grant_employee_portal_document(
+    request: Request,
+    payload: EmployeePortalDocumentGrantCreate,
+    db: PortalSession,
+    principal: Annotated[AuthPrincipal, Depends(require_permission("employees.documents.manage"))],
+) -> EmployeePortalDocumentGrantRead:
+    employee = db.scalar(
+        select(Employee).where(Employee.id == payload.employee_id).with_for_update()
+    )
+    if employee is None:
+        raise HTTPException(status_code=404, detail="Mitarbeiter nicht gefunden.")
+    if (
+        employee.archived_at is not None
+        or employee.employment_status != "active"
+        or employee.user_id is None
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Nur für ein aktives Mitarbeiterkonto kann ein Nachweis freigegeben werden.",
+        )
+    linked_user = db.scalar(select(User).where(User.id == employee.user_id))
+    if (
+        linked_user is None
+        or not linked_user.is_active
+        or "employee" not in {role.code for role in linked_user.roles}
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Das verknüpfte Benutzerkonto ist nicht als aktives Mitarbeiterkonto verfügbar.",
+        )
+
+    record = db.execute(
+        select(EmployeeQualificationDocument, EmployeeQualification)
+        .join(
+            EmployeeQualification,
+            EmployeeQualification.id == EmployeeQualificationDocument.qualification_id,
+        )
+        .where(
+            EmployeeQualificationDocument.id == payload.qualification_document_id,
+            EmployeeQualification.employee_id == employee.id,
+            EmployeeQualification.archived_at.is_(None),
+        )
+        .with_for_update()
+    ).first()
+    if record is None:
+        raise HTTPException(status_code=404, detail="Qualifikationsnachweis nicht gefunden.")
+    document, qualification = record
+    latest_version = db.scalar(
+        select(func.max(EmployeeQualificationDocument.version)).where(
+            EmployeeQualificationDocument.qualification_id == qualification.id
+        )
+    )
+    if document.version != latest_version:
+        raise HTTPException(
+            status_code=409,
+            detail="Nur die aktuelle Version eines Qualifikationsnachweises kann freigegeben werden.",
+        )
+    grant = EmployeePortalDocumentGrant(
+        employee_id=employee.id,
+        user_id=linked_user.id,
+        qualification_document_id=document.id,
+        granted_by_id=principal.user.id,
+    )
+    db.add(grant)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Diese Nachweisversion ist für das Mitarbeiterkonto bereits freigegeben.",
+        ) from exc
+    db.add(
+        EmployeePortalDocumentGrantHistory(
+            grant_id=grant.id,
+            actor_id=principal.user.id,
+            action="granted",
+        )
+    )
+    add_audit_entry(
+        db,
+        actor_id=principal.user.id,
+        action="employee_portal.document_granted",
+        entity_type="employee_qualification_document",
+        entity_id=str(document.id),
+        ip_address=request.client.host if request.client else None,
+        details={
+            "employee_id": str(employee.id),
+            "user_id": str(linked_user.id),
+            "version": document.version,
+        },
+    )
+    commit_portal_request(db)
+    return portal_document_grant_read(grant, document, qualification)
+
+
+@router.delete(
+    "/employee-portal/document-grants/{grant_id}",
+    response_model=EmployeePortalDocumentGrantRead,
+)
+def revoke_employee_portal_document(
+    grant_id: UUID,
+    request: Request,
+    db: PortalSession,
+    principal: Annotated[AuthPrincipal, Depends(require_permission("employees.documents.manage"))],
+) -> EmployeePortalDocumentGrantRead:
+    row = db.execute(
+        select(EmployeePortalDocumentGrant, EmployeeQualificationDocument, EmployeeQualification)
+        .join(
+            EmployeeQualificationDocument,
+            EmployeeQualificationDocument.id
+            == EmployeePortalDocumentGrant.qualification_document_id,
+        )
+        .join(
+            EmployeeQualification,
+            EmployeeQualification.id == EmployeeQualificationDocument.qualification_id,
+        )
+        .where(EmployeePortalDocumentGrant.id == grant_id)
+        .with_for_update(of=EmployeePortalDocumentGrant)
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Dokumentfreigabe nicht gefunden.")
+    grant, document, qualification = row
+    if grant.revoked_at is not None:
+        raise HTTPException(
+            status_code=409, detail="Die Dokumentfreigabe wurde bereits widerrufen."
+        )
+    grant.revoked_by_id = principal.user.id
+    grant.revoked_at = datetime.now(UTC)
+    db.add(
+        EmployeePortalDocumentGrantHistory(
+            grant_id=grant.id,
+            actor_id=principal.user.id,
+            action="revoked",
+        )
+    )
+    add_audit_entry(
+        db,
+        actor_id=principal.user.id,
+        action="employee_portal.document_revoked",
+        entity_type="employee_qualification_document",
+        entity_id=str(document.id),
+        ip_address=request.client.host if request.client else None,
+        details={
+            "employee_id": str(grant.employee_id),
+            "user_id": str(grant.user_id),
+            "version": document.version,
+        },
+    )
+    commit_portal_request(db)
+    return portal_document_grant_read(grant, document, qualification)

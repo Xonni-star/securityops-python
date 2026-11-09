@@ -691,6 +691,78 @@ class CustomerPortalDocumentGrantHistory(Base):
     )
 
 
+class EmployeePortalDocumentGrant(Base):
+    __tablename__ = "employee_portal_document_grants"
+    __table_args__ = (
+        CheckConstraint(
+            "(revoked_at IS NULL AND revoked_by_id IS NULL) OR "
+            "(revoked_at IS NOT NULL AND revoked_by_id IS NOT NULL)",
+            name="ck_employee_portal_document_grants_revocation",
+        ),
+        Index(
+            "uq_employee_portal_document_grants_active",
+            "qualification_document_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("revoked_at IS NULL"),
+            sqlite_where=text("revoked_at IS NULL"),
+        ),
+        Index(
+            "ix_employee_portal_document_grants_employee",
+            "employee_id",
+            "granted_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    employee_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    qualification_document_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("employee_qualification_documents.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    granted_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    revoked_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EmployeePortalDocumentGrantHistory(Base):
+    __tablename__ = "employee_portal_document_grant_history"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('granted', 'revoked')",
+            name="ck_employee_portal_document_grant_history_action",
+        ),
+        Index("ix_employee_portal_document_grant_history_created", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    grant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("employee_portal_document_grants.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    actor_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
 class CustomerPortalRequest(Base):
     __tablename__ = "customer_portal_requests"
     __table_args__ = (
@@ -1494,7 +1566,7 @@ class EmployeeAbsence(Base):
             name="ck_employee_absences_type",
         ),
         CheckConstraint(
-            "status IN ('pending', 'approved', 'rejected')",
+            "status IN ('pending', 'approved', 'rejected', 'withdrawn')",
             name="ck_employee_absences_status",
         ),
         CheckConstraint("ends_on >= starts_on", name="ck_employee_absences_dates"),
@@ -1636,7 +1708,7 @@ class ScheduleAvailabilityRequest(Base):
             name="ck_schedule_availability_requests_kind",
         ),
         CheckConstraint(
-            "status IN ('open', 'accepted', 'rejected')",
+            "status IN ('open', 'accepted', 'rejected', 'withdrawn')",
             name="ck_schedule_availability_requests_status",
         ),
         CheckConstraint(
