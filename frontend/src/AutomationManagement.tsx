@@ -31,6 +31,7 @@ const triggerNames: Record<AutomationTrigger, string> = {
   "owks.missed_control": "Kontrollpunkt nicht kontrolliert",
   "owks.deviation_reported": "OWKS-Auffälligkeit gemeldet",
   "owks.offline_event_synced": "Offline-Ereignis synchronisiert",
+  "billing.invoice_approved": "Rechnung manuell freigegeben",
 };
 const eventNames: Record<string, string> = {
   ...triggerNames,
@@ -220,9 +221,10 @@ export default function AutomationManagement() {
         </div>
         <p className="muted">
           Verfügbar sind registrierte Aufgabenereignisse sowie versäumte Kontrollen,
-          gemeldete OWKS-Auffälligkeiten und erfolgreich synchronisierte Offline-Ereignisse.
-          Benachrichtigungen gehen nur an aktive Benutzer mit Objektzuweisung. Neue Regeln
-          starten deaktiviert.
+          gemeldete OWKS-Auffälligkeiten, erfolgreich synchronisierte Offline-Ereignisse und
+          manuelle Rechnungsfreigaben. Benachrichtigungen gehen nur an aktive Benutzer mit
+          passender Objektzuweisung beziehungsweise Rechnungslese- und Benachrichtigungsrecht.
+          Neue Regeln starten deaktiviert.
         </p>
         <form className="form-panel automation-form" onSubmit={(event) => void saveRule(event)}>
           <label>Regelname<input value={name} onChange={(event) => setName(event.target.value)}
@@ -234,13 +236,14 @@ export default function AutomationManagement() {
               onChange={(event) => {
                 const trigger = event.target.value as AutomationTrigger;
                 setTriggerType(trigger);
-                if (trigger.startsWith("owks.")) setConditionStatus("");
+                if (!trigger.startsWith("task.")) setConditionStatus("");
               }}>
               <option value="task.assigned">Aufgabe zugewiesen</option>
               <option value="task.status_changed">Aufgabenstatus geändert</option>
               <option value="owks.missed_control">Kontrollpunkt nicht kontrolliert</option>
               <option value="owks.deviation_reported">OWKS-Auffälligkeit gemeldet</option>
               <option value="owks.offline_event_synced">Offline-Ereignis synchronisiert</option>
+              <option value="billing.invoice_approved">Rechnung manuell freigegeben</option>
             </select></label>
             {triggerType.startsWith("task.") && <label>Bedingung: Aufgabenstatus<select value={conditionStatus}
               onChange={(event) => setConditionStatus(event.target.value as AutomationTaskStatus | "")}>
@@ -273,11 +276,11 @@ export default function AutomationManagement() {
                 <strong>{rule.name}</strong>
                 <p>{rule.description || "Keine Beschreibung"}</p>
                 <span>{triggerNames[rule.trigger_type]} · {
-                  rule.trigger_type.startsWith("owks.")
-                    ? "keine Bedingung"
-                    : `Status: ${rule.conditions.status
+                  rule.trigger_type.startsWith("task.")
+                    ? `Status: ${rule.conditions.status
                       ? taskStatuses.find((item) => item.value === rule.conditions.status)?.label
                       : "beliebig"}`
+                    : "keine Bedingung"
                 } · Aktion: In-App-Benachrichtigung</span>
               </div>
               <div className="automation-actions">
@@ -346,10 +349,11 @@ export default function AutomationManagement() {
         <h3 id="automation-limits-heading">Nicht verfügbare Auslöser</h3>
         <p>
           Kontrollgang gestartet/beendet oder unvollständig, Qualifikationsablauf,
-          unbesetzte Dienste, Vorfälle, Schlüssel/Inventar, Dokumente/Verträge, Rechnungen,
-          allgemeine Aufgabenfristen und Worker-Ausfall sind nicht registriert und daher nicht
-          auswählbar. Regeln veröffentlichen keine personenbezogenen OWKS-Beschreibungen und
-          ändern keine Aufgaben-, Personal-, OWKS-, Vertrags- oder Rechnungszustände.
+          unbesetzte Dienste, Vorfälle, Schlüssel/Inventar, Dokumente/Verträge, allgemeine
+          Aufgabenfristen und Worker-Ausfall sind nicht registriert und daher nicht auswählbar.
+          Rechnungsfreigaben erzeugen nur eine neutrale In-App-Benachrichtigung für derzeit
+          berechtigte Leser. Regeln veröffentlichen keine personenbezogenen OWKS-Beschreibungen
+          und ändern keine Aufgaben-, Personal-, OWKS-, Vertrags- oder Rechnungszustände.
         </p>
       </section>
     </section>

@@ -9,9 +9,12 @@ AutomationTrigger = Literal[
     "owks.missed_control",
     "owks.deviation_reported",
     "owks.offline_event_synced",
+    "billing.invoice_approved",
 ]
 
 TASK_EVENT_TYPES = frozenset({"task.assigned", "task.status_changed"})
+BILLING_INVOICE_APPROVED_EVENT = "billing.invoice_approved"
+BILLING_AUTOMATION_EVENT_TYPES = frozenset({BILLING_INVOICE_APPROVED_EVENT})
 OWKS_EVENT_MESSAGES = {
     "owks.missed_control": "An einem zugewiesenen Objekt wurde eine Kontrolle als versäumt protokolliert.",
     "owks.deviation_reported": "An einem zugewiesenen Objekt wurde eine OWKS-Auffälligkeit gemeldet.",
@@ -62,17 +65,26 @@ class OWKSAutomationEventPayload(EventPayload):
     object_id: UUID
 
 
+class BillingInvoiceApprovedEventPayload(EventPayload):
+    schema_version: Literal[1]
+    invoice_id: UUID
+
+
 class AutomationNotificationPayload(EventPayload):
     schema_version: Literal[1] | None = None
     automation_run_id: UUID
     task_id: UUID | None = None
     object_id: UUID | None = None
+    invoice_id: UUID | None = None
     title: str = Field(min_length=1, max_length=200)
     body: str = Field(max_length=500)
 
     @model_validator(mode="after")
     def has_exactly_one_target(self) -> "AutomationNotificationPayload":
-        if (self.task_id is None) == (self.object_id is None):
+        if (
+            sum(target is not None for target in (self.task_id, self.object_id, self.invoice_id))
+            != 1
+        ):
             raise ValueError("Genau ein Benachrichtigungsziel ist erforderlich.")
         return self
 
@@ -81,5 +93,6 @@ EVENT_REGISTRY: dict[str, type[EventPayload]] = {
     "task.assigned": TaskNotificationEventPayload,
     "task.status_changed": TaskNotificationEventPayload,
     **{event_type: OWKSAutomationEventPayload for event_type in OWKS_AUTOMATION_EVENT_TYPES},
+    BILLING_INVOICE_APPROVED_EVENT: BillingInvoiceApprovedEventPayload,
     AUTOMATION_NOTIFICATION_EVENT: AutomationNotificationPayload,
 }

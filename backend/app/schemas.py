@@ -485,6 +485,7 @@ class ObjectCreate(BaseModel):
     address: ObjectAddressInput | None = None
     contact: ObjectContactCreate | None = None
     contacts: list[ObjectContactCreate] = Field(default_factory=list, max_length=100)
+    qualification_requirements: list[str] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")
     def at_most_one_primary_contact(self):
@@ -504,6 +505,18 @@ class ObjectCreate(BaseModel):
             raise ValueError("Name und Code dürfen nicht leer sein.")
         return value
 
+    @field_validator("qualification_requirements")
+    @classmethod
+    def qualification_requirements_must_be_unique(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("Qualifikationsanforderungen dürfen nicht leer sein.")
+        if any(len(value) > 160 for value in normalized):
+            raise ValueError("Qualifikationsanforderungen dürfen höchstens 160 Zeichen haben.")
+        if len({value.casefold() for value in normalized}) != len(normalized):
+            raise ValueError("Qualifikationsanforderungen dürfen nicht doppelt vorkommen.")
+        return normalized
+
 
 class ObjectUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -518,6 +531,7 @@ class ObjectUpdate(BaseModel):
     service_times: str | None = Field(default=None, max_length=200)
     staffing_requirements: str | None = Field(default=None, max_length=10000)
     address: ObjectAddressInput | None = None
+    qualification_requirements: list[str] = Field(default_factory=list, max_length=100)
 
     @field_validator("name", "code")
     @classmethod
@@ -528,6 +542,18 @@ class ObjectUpdate(BaseModel):
         if not value:
             raise ValueError("Name und Code dürfen nicht leer sein.")
         return value
+
+    @field_validator("qualification_requirements")
+    @classmethod
+    def qualification_requirements_must_be_unique(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("Qualifikationsanforderungen dürfen nicht leer sein.")
+        if any(len(value) > 160 for value in normalized):
+            raise ValueError("Qualifikationsanforderungen dürfen höchstens 160 Zeichen haben.")
+        if len({value.casefold() for value in normalized}) != len(normalized):
+            raise ValueError("Qualifikationsanforderungen dürfen nicht doppelt vorkommen.")
+        return normalized
 
 
 class ObjectHistoryRead(BaseModel):
@@ -557,6 +583,7 @@ class ObjectRead(BaseModel):
     archived_at: datetime | None
     address: ObjectAddressRead | None
     contacts: list[ObjectContactRead] = Field(default_factory=list)
+    qualification_requirements: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

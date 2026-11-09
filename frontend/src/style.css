@@ -579,6 +579,26 @@ footer span { padding: 0 5px; }
 .portal-request-grid form > .muted { margin: 0; line-height: 1.45; }
 .portal-request-grid form button { justify-self: start; }
 .portal-request-grid .form-row { align-items: end; }
+.policy-module { display: grid; gap: 16px; }
+.policy-module > .panel-heading, .policy-manager .panel-heading { margin: 0; }
+.policy-module .panel { display: grid; gap: 16px; }
+.policy-module h3 { margin: 0; font-size: 1.02rem; }
+.policy-manager > label { display: grid; gap: 7px; color: #64727e; font-size: .82rem; font-weight: 600; }
+.policy-manager > label select { max-width: 620px; border: 1px solid #dfe6ea; border-radius: 7px; background: white; padding: 10px; }
+.policy-versions, .policy-history, .policy-own { display: grid; gap: 12px; }
+.policy-version { display: grid; gap: 5px; padding: 12px; border: 1px solid #e5eaed; border-radius: 8px; }
+.policy-version span, .policy-version small { color: #71808c; font-size: .8rem; }
+.policy-version p, .policy-content { white-space: pre-wrap; overflow-wrap: anywhere; }
+.policy-own-item { display: grid; gap: 8px; }
+.policy-own-item .panel-heading { align-items: start; }
+.policy-own-item .panel-heading small { display: block; margin-top: 5px; color: #71808c; }
+.policy-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.policy-actions button, .policy-history .panel-heading button {
+  border: 1px solid #dfe6ea; border-radius: 7px; background: #f7f9fa; color: #177d79;
+  padding: 9px 12px; font-weight: 600; cursor: pointer;
+}
+.policy-actions button:disabled { opacity: .6; cursor: wait; }
+.policy-module form > small { color: #71808c; line-height: 1.45; }
 .portal-request-history { line-height: 1.45; }
 @media (max-width: 850px) {
   .portal-request-grid { grid-template-columns: 1fr; }
