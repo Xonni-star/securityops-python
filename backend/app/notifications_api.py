@@ -18,7 +18,13 @@ def require_notification_reader(
     principal: AuthPrincipal = Depends(require_permission("notifications.read_own")),
 ) -> AuthPrincipal:
     if not principal.permission_codes.intersection(
-        {"tasks.read_own", "tasks.read_all", "tasks.manage_all", "owks.read"}
+        {
+            "tasks.read_own",
+            "tasks.read_all",
+            "tasks.manage_all",
+            "owks.read",
+            "billing.invoices.read",
+        }
     ):
         raise HTTPException(
             status_code=403,
@@ -41,6 +47,11 @@ def visible_notification_query(principal: AuthPrincipal):
         if "owks.read" in principal.permission_codes
         else false()
     )
+    invoice_scope = (
+        Notification.invoice_id.is_not(None)
+        if "billing.invoices.read" in principal.permission_codes
+        else false()
+    )
     return (
         select(Notification)
         .outerjoin(Task, Notification.task_id == Task.id)
@@ -53,6 +64,7 @@ def visible_notification_query(principal: AuthPrincipal):
                     task_visibility(principal),
                 ),
                 object_scope,
+                invoice_scope,
             ),
         )
     )
