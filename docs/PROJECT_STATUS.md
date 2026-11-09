@@ -1,6 +1,6 @@
 # SecurityOps – Projektstatus
 
-**Geprüft:** 09.11.2026, 18:41 Uhr CET · Checkout und `origin/main` stimmten bei der Live-Prüfung überein · **Alembic-Head:** `0035_worker_monitoring` · **Alembic-Migrationen:** 35 · **Offene Pull Requests (Live-Abfrage):** #62, #64, #65, #66, #68 und #69.
+**Geprüft:** 09.11.2026, 19:07 Uhr CET · Checkout und `origin/main` stimmten bei der Live-Prüfung überein · **Alembic-Head:** `0035_worker_monitoring` · **Alembic-Migrationen:** 35 · **Offene Pull Requests (Live-Abfrage):** #62, #64, #65, #66, #68–#75.
 
 Diese Momentaufnahme wurde mit dem `main`-Quellcode und einer Live-Abfrage von GitHub abgeglichen. Die Momentaufnahme enthält absichtlich keinen Commit-SHA, der nach dem nächsten Merge veraltet wäre. Implementierung, erfolgreiche CI, fachliche Abnahme und produktiver Betrieb sind getrennte Nachweise. Ein Merge oder grüner CI-Lauf belegt für sich weder fachliche, rechtliche oder steuerliche Abnahme noch einen produktiven Rollout. Der CI-Validator prüft lokale Projektfakten; er fragt GitHub nicht ab. GitHub-Statusangaben müssen bei einer Aktualisierung erneut live geprüft werden.
 
@@ -52,16 +52,24 @@ Die bei diesen Merge-PRs angezeigten CI-Prüfungen waren erfolgreich (Backend/Po
 
 ### Offene Pull Requests
 
-Bei der Live-Abfrage am 09.11.2026 um 18:41 CET waren PRs #62, #64, #65, #66, #68 und #69 offen. PRs #62, #64, #65, #66 und #69 hatten erfolgreiche CI- und Security-Checks. PR #65 ist auf PR #64 gestapelt; beide waren auf den bei der Abfrage geprüften Heads grün. Bei PR #68 war nur der verschlüsselte Restore noch ausstehend; Backend/PostgreSQL, SCA, CodeQL (beide Sprachen), Docker und Frontend waren erfolgreich. Die letzten auf `main` gefundenen CI- und Security-Analysis-Läufe waren ebenfalls erfolgreich (Run-Start 15:12 UTC). Diese zeitgebundenen Ergebnisse belegen keine fachliche oder produktive Abnahme.
+Bei der Live-Abfrage am 09.11.2026 um 19:07 CET waren PRs #62, #64, #65, #66, #68, #69, #70, #71, #72, #73, #74 und #75 offen. PRs #62, #64, #65, #66, #68, #69, #70, #71 und #73 hatten erfolgreiche CI- und Security-Checks. PR #65 ist auf #64 gestapelt und PR #72 auf #65. Bei PR #72 war nur der verschlüsselte Restore noch ausstehend. PR #74 hatte einen fehlgeschlagenen Backend-/PostgreSQL-Job; die übrigen gemeldeten Checks waren erfolgreich. Bei PR #75 waren SCA und JavaScript/TypeScript-CodeQL noch ausstehend; Backend/PostgreSQL, Python-CodeQL, Docker, Frontend-Build/Browser-E2E und Restore waren erfolgreich. Diese zeitgebundenen CI-Ergebnisse belegen keine fachliche oder produktive Abnahme.
 
-| PR | Live-Status | Titel |
+| PR | Status und Head zum Prüfzeitpunkt | Thema |
 |---|---|---|
-| [#62](https://github.com/Xonni-star/securityops-python/pull/62) | Offen | Automate project status documentation checks |
-| [#64](https://github.com/Xonni-star/securityops-python/pull/64) | Offen | Add safe invoice-approval automation trigger |
-| [#65](https://github.com/Xonni-star/securityops-python/pull/65) | Offen, gestapelt auf #64 | Objektqualifikationen in der Dienstplanung prüfen |
-| [#66](https://github.com/Xonni-star/securityops-python/pull/66) | Offen | Add transactional backend workflow integration test |
-| [#68](https://github.com/Xonni-star/securityops-python/pull/68) | Offen; Restore ausstehend (Head `9292c3e`) | Dokumentiere GitHub Copilot Repository-Anweisungen |
-| [#69](https://github.com/Xonni-star/securityops-python/pull/69) | Offen; Checks erfolgreich | Test-only-Prüfung, dass Vorfallanhänge verschlüsselten Speicher verwenden |
+| [#62](https://github.com/Xonni-star/securityops-python/pull/62) | Offen · `d3db930` · alle Checks erfolgreich | Automate project status documentation checks |
+| [#64](https://github.com/Xonni-star/securityops-python/pull/64) | Offen · `d94911c` · alle Checks erfolgreich | Add safe invoice-approval automation trigger |
+| [#65](https://github.com/Xonni-star/securityops-python/pull/65) | Offen, auf #64 gestapelt · `11b503b` · alle Checks erfolgreich | Objektqualifikationen in der Dienstplanung prüfen |
+| [#66](https://github.com/Xonni-star/securityops-python/pull/66) | Offen · `dc48048` · alle Checks erfolgreich | Add transactional backend workflow integration test |
+| [#68](https://github.com/Xonni-star/securityops-python/pull/68) | Offen · `4aa43b3` · alle Checks erfolgreich | Dokumentiere GitHub Copilot Repository-Anweisungen |
+| [#69](https://github.com/Xonni-star/securityops-python/pull/69) | Offen · `eacd9a1` · alle Checks erfolgreich | Test-only-Prüfung, dass Vorfallanhänge verschlüsselten Speicher verwenden |
+| [#70](https://github.com/Xonni-star/securityops-python/pull/70) | Offen · `987b96a` · alle Checks erfolgreich | Dokumentiere Betrieb, Deployment und Wiederherstellung |
+| [#71](https://github.com/Xonni-star/securityops-python/pull/71) | Offen · `6b39d7d` · alle Checks erfolgreich | Configure weekly Dependabot version updates |
+| [#72](https://github.com/Xonni-star/securityops-python/pull/72) | Offen, auf #65 gestapelt · `8625719` · Restore ausstehend, übrige Checks erfolgreich | Erklärbare Vorschläge für Dienstvertretungen |
+| [#73](https://github.com/Xonni-star/securityops-python/pull/73) | Offen · `f9f9bf3` · alle Checks erfolgreich | Aktualisiere Datenbankdokumentation auf Main-Schema |
+| [#74](https://github.com/Xonni-star/securityops-python/pull/74) | Offen · `181b9e2` · Backend/PostgreSQL fehlgeschlagen, übrige Checks erfolgreich | Ergänzt sicheren objektbezogenen Betriebsbericht |
+| [#75](https://github.com/Xonni-star/securityops-python/pull/75) | Offen, auf #62 gestapelt · `4b0b305` · SCA und JavaScript/TypeScript-CodeQL ausstehend; übrige Checks erfolgreich | Add synthetic browser E2E for login and object access |
+
+Ein separater MFA-Compose-Key-Forwarding-Commit `7422e1f` auf `lapalousa-mfa-compose-key-forwarding` wurde gemeldet, aber die Live-Abfrage fand weder den Branch auf `origin` noch den Commit über die GitHub-Commit-API; es gibt dafür keinen offenen PR in der obigen Liste. Er wird daher nicht als Bestandteil von `main` gewertet. Für das Repository wurden bei der Live-Abfrage keine Deployments zurückgegeben.
 
 ### Issues
 
@@ -74,14 +82,14 @@ Bei der Live-Abfrage am 09.11.2026 um 18:41 CET waren PRs #62, #64, #65, #66, #6
 | [#48](https://github.com/Xonni-star/securityops-python/issues/48) | Geschlossen am 09.11.2026 | Inventaranforderungen wurden mit PR #50 integriert. |
 | [#51](https://github.com/Xonni-star/securityops-python/issues/51) | Offen | Beschränkte Task- und OWKS-Automatisierung ist implementiert (PRs #54/#59); weitere Trigger und fachlicher Abgleich des Gesamtumfangs bleiben offen. |
 | [#52](https://github.com/Xonni-star/securityops-python/issues/52) | Geschlossen am 09.11.2026 | Antragsrücknahme und Freigabe von Qualifikationsdateien wurden mit PR #55 integriert. Allgemeine Personal-/Vertragsdokumente bleiben ausgeschlossen. |
-| [#56](https://github.com/Xonni-star/securityops-python/issues/56) | Offen · Betreiber-Nachweise fehlen | Verschlüsselter Dateispeicher und expliziter Rekey-Befehl sind mit gemergtem PR #57 in `main` vorhanden. Die Issue-Beschreibung ist hinsichtlich „nicht anwendungsseitig verschlüsselt“ und „Rekey fehlt“ teilweise überholt. PR #69 ergänzt noch offene, test-only Abdeckung für die Verschlüsselung von Vorfallanhängen; sie ist nicht Teil von `main`. Nicht belegt sind Betreiber-Schlüsselbereitstellung, Rekey/Migration bestehender Dateien in einer Zielumgebung und deren Abnahme; das Issue bleibt dafür offen. |
+| [#56](https://github.com/Xonni-star/securityops-python/issues/56) | Offen · Betreiber-Nachweise fehlen | Verschlüsselter Dateispeicher und expliziter Rekey-Befehl sind mit gemergtem PR #57 in `main` vorhanden. Die Issue-Beschreibung ist hinsichtlich „nicht anwendungsseitig verschlüsselt“ und „Rekey fehlt“ teilweise überholt. Die test-only-Abdeckung für Vorfallanhänge liegt in offenem PR #69 und ist noch nicht Teil von `main`. Nicht belegt sind Betreiber-Schlüsselbereitstellung, Rekey/Migration bestehender Dateien in einer Zielumgebung und deren Abnahme; das Issue bleibt dafür offen. |
 | [#63](https://github.com/Xonni-star/securityops-python/issues/63) | Offen · Maintainer-Aktion erforderlich | Dependabot alerts sind laut GitHub deaktiviert; das verfügbare Konto erhielt HTTP 403 und konnte die Einstellung nicht ändern. Ein Repository-Maintainer muss Dependabot alerts unter **Settings → Security → Code security and analysis** aktivieren und den Status verifizieren. Security updates sind gemäß Repository-/Branch-Schutzrichtlinien zu aktivieren, sofern verfügbar. Die vorhandene CI-SCA mit `pip-audit` und `npm audit` ersetzt diese Repository-Einstellung nicht; für Code Scanning wurden keine offenen Alerts gemeldet. |
 
 Die Issues #2–#6 und #8 sind ebenfalls geschlossen. Geschlossene Issues und gemergte PRs werden nicht als offene Arbeit oder als außerhalb von `main` dargestellt. Offene Issues beschreiben verbleibende fachliche beziehungsweise betriebliche Arbeit, nicht zwingend fehlende Grundfunktionen.
 
 ## CI, Abnahme und produktiver Nachweis
 
-Der Code enthält Backend- und Frontendtests sowie CI für Lint/Format, PostgreSQL-Migrationen und -Integration, Frontend-Build/-Tests, Container, Sicherheitsanalyse und einen isolierten Backup-/Restorelauf. Die letzten auf `main` gefundenen CI- und Security-Analysis-Läufe waren beim Live-Abgleich erfolgreich. PRs #62, #64, #65, #66 und #69 waren auf ihren geprüften Heads erfolgreich; bei PR #68 war nur der verschlüsselte Restore noch ausstehend. Laufstatus ist zeitgebunden und kein Nachweis fachlicher Abnahme, Betreiber-Schlüsselkonfiguration, produktiver Rekey-Ausführung oder eines Produktivbetriebs. Diese Projektstatusdatei nennt bewusst keine aggregierten Testzahlen.
+Der Code enthält Backend- und Frontendtests sowie CI für Lint/Format, PostgreSQL-Migrationen und -Integration, Frontend-Build/-Tests, Container, Sicherheitsanalyse und einen isolierten Backup-/Restorelauf. Die letzten auf `main` gefundenen CI- und Security-Analysis-Läufe waren beim Live-Abgleich erfolgreich. Die individuellen offenen PR-Checks sind oben zeitgebunden aufgeführt. Laufstatus ist kein Nachweis fachlicher Abnahme, Betreiber-Schlüsselkonfiguration, produktiver Rekey-Ausführung oder eines Produktivbetriebs. Für das Repository wurden bei dieser Prüfung keine Deployments zurückgegeben. Diese Projektstatusdatei nennt bewusst keine aggregierten Testzahlen.
 
 **Technische Voraussetzungen laut Projekt/CI:** Backend Python `>=3.12` (CI: 3.12); PostgreSQL 17 (CI); Frontend Node.js 22 (CI).
 
