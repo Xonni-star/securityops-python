@@ -88,6 +88,7 @@ const objectReport: ObjectOperationsReport = {
     incidents_created: 1,
     control_events: 3,
     missed_controls: 0,
+    qualification_conflict_shifts: 1,
     task_status_counts: {
       open: 1,
       in_progress: 0,

@@ -106,6 +106,7 @@ class ObjectOperationsReportItem(BaseModel):
     control_events: int
     missed_controls: int
     task_status_counts: dict[str, int]
+    qualification_conflict_shifts: int | None
 
 
 class ObjectOperationsReportRead(BaseModel):

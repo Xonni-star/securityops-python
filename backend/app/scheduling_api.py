@@ -5,7 +5,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -23,6 +23,7 @@ from app.models import (
     ScheduleShiftHistory,
     SecurityObject,
 )
+from app.qualification_checks import missing_qualification_requirements
 from app.schemas import (
     EmployeeAvailabilityUpdate,
     EmployeeAvailabilityWindowRead,
@@ -327,48 +328,37 @@ def check_conflicts(
             )
         )
 
-    required_qualifications: dict[str, tuple[str, str]] = {}
-    if required_qualification:
-        required_qualifications[required_qualification.casefold()] = (
-            required_qualification,
-            "qualification_missing",
-        )
-    for requirement in obj.qualification_requirements:
-        required_qualifications.setdefault(
-            requirement.casefold(),
-            (requirement, "object_qualification_missing"),
-        )
-    for qualification_name, conflict_code in required_qualifications.values():
-        matching_qualification = db.scalar(
-            select(EmployeeQualification.id)
-            .where(
+    object_requirements = obj.qualification_requirements
+    qualifications = (
+        db.scalars(
+            select(EmployeeQualification).where(
                 EmployeeQualification.employee_id == employee.id,
                 EmployeeQualification.archived_at.is_(None),
-                EmployeeQualification.valid_from.is_(None)
-                | (EmployeeQualification.valid_from <= start_day),
-                EmployeeQualification.expires_on.is_(None)
-                | (EmployeeQualification.expires_on >= end_day),
-                or_(
-                    func.lower(EmployeeQualification.name) == qualification_name.lower(),
-                    func.lower(EmployeeQualification.category) == qualification_name.lower(),
+            )
+        ).all()
+        if required_qualification or object_requirements
+        else []
+    )
+    for qualification_name, conflict_code in missing_qualification_requirements(
+        shift_requirement=required_qualification,
+        object_requirements=object_requirements,
+        qualifications=qualifications,
+        starts_on=start_day,
+        ends_on=end_day,
+    ):
+        conflicts.append(
+            ScheduleConflictRead(
+                code=conflict_code,
+                message=(
+                    f"Der gültige Qualifikationsnachweis „{qualification_name}“ "
+                    + (
+                        "für das Objekt fehlt."
+                        if conflict_code == "object_qualification_missing"
+                        else "fehlt."
+                    )
                 ),
             )
-            .limit(1)
         )
-        if matching_qualification is None:
-            conflicts.append(
-                ScheduleConflictRead(
-                    code=conflict_code,
-                    message=(
-                        f"Der gültige Qualifikationsnachweis „{qualification_name}“ "
-                        + (
-                            "für das Objekt fehlt."
-                            if conflict_code == "object_qualification_missing"
-                            else "fehlt."
-                        )
-                    ),
-                )
-            )
 
     overlap_query = select(ScheduleShift.id).where(
         ScheduleShift.employee_id == employee.id,

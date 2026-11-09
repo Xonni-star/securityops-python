@@ -31,13 +31,17 @@ from app.models import (
     EmployeeQualification,
     Incident,
     ObjectAssignment,
+    ObjectQualificationRequirement,
     OWKSEvent,
     OWKSEventStatus,
+    ScheduleSettings,
     ScheduleShift,
     SecurityObject,
     Task,
     User,
 )
+from app.qualification_checks import missing_qualification_requirements
+from app.scheduling_api import as_utc, get_zone
 
 router = APIRouter()
 MAX_ITEMS = 100
@@ -480,6 +484,7 @@ def _object_operations_report(
     task_counts: dict[UUID, dict[str, int]] = {
         item_id: dict.fromkeys(TASK_STATUSES, 0) for item_id in object_ids
     }
+    qualification_conflict_counts: dict[UUID, int] = {}
 
     if object_ids:
         shift_counts = dict(
@@ -527,6 +532,72 @@ def _object_operations_report(
         ).all():
             if task_status in TASK_STATUSES:
                 task_counts[item_id][task_status] = count
+        if "employees.read" in permissions:
+            required_names: dict[UUID, list[str]] = {}
+            for requirement_object_id, requirement_name in db.execute(
+                select(
+                    ObjectQualificationRequirement.object_id,
+                    ObjectQualificationRequirement.name,
+                ).where(ObjectQualificationRequirement.object_id.in_(object_ids))
+            ).all():
+                required_names.setdefault(requirement_object_id, []).append(requirement_name)
+
+            now = datetime.now(UTC)
+            shifts = db.execute(
+                select(
+                    ScheduleShift.object_id,
+                    ScheduleShift.employee_id,
+                    ScheduleShift.starts_at,
+                    ScheduleShift.ends_at,
+                    ScheduleShift.required_qualification,
+                ).where(
+                    ScheduleShift.object_id.in_(object_ids),
+                    ScheduleShift.status == "published",
+                    ScheduleShift.starts_at < range_end,
+                    ScheduleShift.ends_at > range_start,
+                    ScheduleShift.ends_at > now,
+                    or_(
+                        ScheduleShift.required_qualification.is_not(None),
+                        ScheduleShift.object_id.in_(
+                            select(ObjectQualificationRequirement.object_id).where(
+                                ObjectQualificationRequirement.object_id.in_(object_ids)
+                            )
+                        ),
+                    ),
+                )
+            ).all()
+            employee_ids = {shift.employee_id for shift in shifts}
+            qualifications_by_employee: dict[UUID, list[EmployeeQualification]] = {}
+            if employee_ids:
+                for qualification in db.scalars(
+                    select(EmployeeQualification).where(
+                        EmployeeQualification.employee_id.in_(employee_ids),
+                        EmployeeQualification.archived_at.is_(None),
+                    )
+                ).all():
+                    qualifications_by_employee.setdefault(qualification.employee_id, []).append(
+                        qualification
+                    )
+            time_zone = (
+                db.scalar(select(ScheduleSettings.time_zone).where(ScheduleSettings.id == 1))
+                or "Europe/Berlin"
+            )
+            zone = get_zone(time_zone)
+            for shift in shifts:
+                start_day = as_utc(shift.starts_at).astimezone(zone).date()
+                end_day = (
+                    (as_utc(shift.ends_at) - timedelta(microseconds=1)).astimezone(zone).date()
+                )
+                if missing_qualification_requirements(
+                    shift_requirement=shift.required_qualification,
+                    object_requirements=required_names.get(shift.object_id, []),
+                    qualifications=qualifications_by_employee.get(shift.employee_id, []),
+                    starts_on=start_day,
+                    ends_on=end_day,
+                ):
+                    qualification_conflict_counts[shift.object_id] = (
+                        qualification_conflict_counts.get(shift.object_id, 0) + 1
+                    )
 
     return ObjectOperationsReportRead(
         range_start=from_date,
@@ -545,6 +616,11 @@ def _object_operations_report(
                 control_events=control_counts.get(item.id, {}).get("control", 0),
                 missed_controls=control_counts.get(item.id, {}).get("missed", 0),
                 task_status_counts=task_counts[item.id],
+                qualification_conflict_shifts=(
+                    qualification_conflict_counts.get(item.id, 0)
+                    if "employees.read" in permissions
+                    else None
+                ),
             )
             for item in page_objects
         ],
@@ -613,6 +689,7 @@ def export_object_operations_report(
             "Erstellte Vorfälle",
             "Kontrollereignisse",
             "Versäumte Kontrollen",
+            "Veröffentlichte Schichten mit Qualifikationslücken",
             "Aufgaben offen",
             "Aufgaben in Bearbeitung",
             "Aufgaben blockiert",
@@ -632,6 +709,11 @@ def export_object_operations_report(
                 item.incidents_created,
                 item.control_events,
                 item.missed_controls,
+                (
+                    item.qualification_conflict_shifts
+                    if item.qualification_conflict_shifts is not None
+                    else ""
+                ),
                 *(item.task_status_counts[status] for status in TASK_STATUSES),
             )
         )
