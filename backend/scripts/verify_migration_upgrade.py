@@ -26,6 +26,7 @@ DOCUMENT_STORAGE_REVISION = "0033_encrypted_document_storage"
 OWKS_AUTOMATION_REVISION = "0034_owks_automation_events"
 MONITORING_REVISION = "0035_worker_monitoring"
 BILLING_AUTOMATION_REVISION = "0036_billing_approval_automation"
+OBJECT_QUALIFICATION_REVISION = "0037_object_qual_requirements"
 
 
 def admin_connection_options() -> dict[str, str | int]:
@@ -102,7 +103,15 @@ def verify_revision_chain() -> None:
         or billing_automation_revision.down_revision != MONITORING_REVISION
     ):
         raise RuntimeError(f"{BILLING_AUTOMATION_REVISION} folgt nicht auf {MONITORING_REVISION}.")
-    if script.get_heads() != [BILLING_AUTOMATION_REVISION]:
+    object_qualification_revision = script.get_revision(OBJECT_QUALIFICATION_REVISION)
+    if (
+        object_qualification_revision is None
+        or object_qualification_revision.down_revision != BILLING_AUTOMATION_REVISION
+    ):
+        raise RuntimeError(
+            f"{OBJECT_QUALIFICATION_REVISION} folgt nicht auf {BILLING_AUTOMATION_REVISION}."
+        )
+    if script.get_heads() != [OBJECT_QUALIFICATION_REVISION]:
         raise RuntimeError(f"Unerwartete Alembic-Heads: {script.get_heads()}")
 
 
