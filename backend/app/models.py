@@ -973,6 +973,11 @@ class SecurityObject(Base):
     assignments: Mapped[list["ObjectAssignment"]] = relationship(
         back_populates="object", cascade="all, delete-orphan"
     )
+    qualification_requirement_records: Mapped[list["ObjectQualificationRequirement"]] = relationship(
+        back_populates="object",
+        cascade="all, delete-orphan",
+        order_by="ObjectQualificationRequirement.name",
+    )
     security_details: Mapped["ObjectSecurityDetails | None"] = relationship(
         back_populates="object", cascade="all, delete-orphan", uselist=False
     )
@@ -980,6 +985,34 @@ class SecurityObject(Base):
     @property
     def customer_name(self) -> str:
         return self.customer.company_name
+
+    @property
+    def qualification_requirements(self) -> list[str]:
+        return [requirement.name for requirement in self.qualification_requirement_records]
+
+
+class ObjectQualificationRequirement(Base):
+    __tablename__ = "object_qualification_requirements"
+    __table_args__ = (
+        UniqueConstraint(
+            "object_id",
+            "name",
+            name="uq_object_qualification_requirements_object_name",
+        ),
+        CheckConstraint(
+            "length(trim(name)) > 0",
+            name="ck_object_qualification_requirements_name",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    object_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="RESTRICT"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    object: Mapped[SecurityObject] = relationship(
+        back_populates="qualification_requirement_records"
+    )
 
 
 class ObjectAddress(Base):

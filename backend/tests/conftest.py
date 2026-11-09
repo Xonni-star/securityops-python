@@ -78,6 +78,7 @@ from app.models import (
     ObjectAssignment,
     ObjectContact,
     ObjectHistory,
+    ObjectQualificationRequirement,
     ObjectSecurityDetails,
     OWKSAttachment,
     OWKSChallenge,
@@ -247,6 +248,7 @@ def client() -> Generator[TestClient, None, None]:
         db.execute(delete(ObjectHistory))
         db.execute(delete(ObjectAssignment))
         db.execute(delete(ObjectContact))
+        db.execute(delete(ObjectQualificationRequirement))
         db.execute(delete(ObjectAddress))
         db.execute(delete(ObjectSecurityDetails))
         db.execute(delete(EmployeeObjectAssignmentHistory))

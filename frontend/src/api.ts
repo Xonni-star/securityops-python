@@ -1158,6 +1158,7 @@ export type ObjectInput = {
   operating_hours?: string;
   service_times?: string;
   staffing_requirements?: string;
+  qualification_requirements?: string[];
   address?: ObjectAddressInput;
   contacts?: ObjectContactInput[];
 };
@@ -1172,6 +1173,7 @@ export type ObjectUpdateInput = {
   operating_hours?: string | null;
   service_times?: string | null;
   staffing_requirements?: string | null;
+  qualification_requirements?: string[];
   address?: ObjectAddressInput | null;
 };
 

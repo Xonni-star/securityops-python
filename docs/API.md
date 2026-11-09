@@ -46,7 +46,7 @@
 | GET | `/api/v1/objects` | `objects.read`; `q`, `customer_id`, `status`, `include_archived`, `sort_by`, `sort_order`, `limit`, `offset` |
 | POST | `/api/v1/objects` | `objects.manage` und `objects.manage_all` + CSRF |
 | GET | `/api/v1/objects/{object_id}` | `objects.read` und globales Leserecht oder Objektzuweisung |
-| PATCH | `/api/v1/objects/{object_id}` | `objects.manage` und globales Verwaltungsrecht oder Objektzuweisung + CSRF |
+| PATCH | `/api/v1/objects/{object_id}` | `objects.manage` und globales Verwaltungsrecht oder Objektzuweisung + CSRF; optional `qualification_requirements` als Liste (maximal 100 Bezeichnungen) |
 | POST | `/api/v1/objects/{object_id}/archive` | `objects.manage` und globales Verwaltungsrecht oder Objektzuweisung + CSRF |
 | POST | `/api/v1/objects/{object_id}/reactivate` | `objects.manage` und globales Verwaltungsrecht oder Objektzuweisung + CSRF |
 | GET | `/api/v1/objects/{object_id}/history` | `objects.read` und globales Leserecht oder Objektzuweisung |
@@ -295,7 +295,7 @@ Allgemeine Personalantworten enthalten keine Anschrift, Notfallkontakt- oder int
 | `GET /api/v1/scheduling/settings` | `scheduling.read` | – | `200 ScheduleSettingsRead` | `401`, `403` |
 | `PATCH /api/v1/scheduling/settings` | `scheduling.manage` + CSRF | `ScheduleSettingsUpdate` | `200 ScheduleSettingsRead` | `401`, `403`, `422` ungültige IANA-Zeitzone/Einstellungen |
 | `GET /api/v1/scheduling/shifts` | `scheduling.read` + Personal-/Objekt-Scope | `from_date`, `to_date` (gemeinsam, max. 367 Kalendertage), `employee_id`, `object_id`, `include_cancelled`, `limit` (1–500), `offset` | `200 ScheduleShiftRead[]` | `401`, `403`, `422` |
-| `POST /api/v1/scheduling/shifts` | `scheduling.manage` + Objekt-/Personal-Scope + CSRF | `ScheduleShiftCreate` (lokale Datumszeiten, fold-Werte, Mitarbeiter/Objekt) | `201 ScheduleShiftRead` | `401`, `403`, `404`, `409` Konflikt, `422` Zeit/Regelverletzung |
+| `POST /api/v1/scheduling/shifts` | `scheduling.manage` + Objekt-/Personal-Scope + CSRF | `ScheduleShiftCreate` (lokale Datumszeiten, fold-Werte, Mitarbeiter/Objekt, optionale Dienstqualifikation) | `201 ScheduleShiftRead` | `401`, `403`, `404`, `409` Konflikt einschließlich Objekt-/Dienstqualifikation, `422` Zeit/Regelverletzung |
 | `PATCH /api/v1/scheduling/shifts/{shift_id}` | `scheduling.manage` + Objekt-/Personal-Scope + CSRF | `ScheduleShiftUpdate` | `200 ScheduleShiftRead` | `401`, `403`, `404`, `409`, `422` |
 | `POST /api/v1/scheduling/shifts/{shift_id}/publish` | `scheduling.manage` + Objekt-/Personal-Scope + CSRF | – | `200 ScheduleShiftRead` | `401`, `403`, `404`, `409` Konflikt, `422` |
 | `POST /api/v1/scheduling/shifts/{shift_id}/cancel` | `scheduling.manage` + Objekt-/Personal-Scope + CSRF | – | `200 ScheduleShiftRead` | `401`, `403`, `404`, `422` |
@@ -307,7 +307,7 @@ Allgemeine Personalantworten enthalten keine Anschrift, Notfallkontakt- oder int
 | `PATCH /api/v1/scheduling/availability-requests/{request_id}` | `scheduling.manage` + CSRF | Pfad `request_id`, `ScheduleAvailabilityRequestUpdate` | `200 ScheduleAvailabilityRequestRead` | `401`, `403`, `404`, `409` Sperrzeit kollidiert mit Schicht, `422` |
 | `POST /api/v1/scheduling/shifts/{shift_id}/replacement` | `scheduling.manage` + Objekt-/Personal-Scope + CSRF | Pfad `shift_id`, `ScheduleShiftReplacementCreate` (Vertretung, Begründung) | `200 ScheduleShiftRead`; Historieneintrag mit Vertretungsdetails | `401`, `403`, `404`, `409` Konflikt/abgesagt, `422` |
 
-Die Eingabe lokaler Zeiten verwendet eine konfigurierte Zeitzone. Nicht existierende lokale Zeiten werden abgewiesen; doppelte Zeiten sind mit Fold-Auswahl eindeutig zu machen. Konflikte können unter anderem Besetzung, Abwesenheit, Qualifikation, Zuweisung, Überlappung und Ruhezeit betreffen. Das ist keine Rechtskonformitätsprüfung.
+Die Eingabe lokaler Zeiten verwendet eine konfigurierte Zeitzone. Nicht existierende lokale Zeiten werden abgewiesen; doppelte Zeiten sind mit Fold-Auswahl eindeutig zu machen. Konflikte können unter anderem Besetzung, Abwesenheit, Objekt- und Dienstqualifikation, Zuweisung, Überlappung und Ruhezeit betreffen. Qualifikationsnachweise müssen für den gesamten lokalen Dienstzeitraum gültig und nicht archiviert sein. Das ist keine Rechtskonformitätsprüfung.
 
 Wöchentliche Verfügbarkeitsfenster werden als lokale Wochentage/-zeiten gespeichert. Dienstwünsche und Sperrzeiten verwenden konfigurierte lokale Eingabe und werden UTC-zeitbewusst gespeichert; Anträge sind offen, angenommen oder abgelehnt. Änderungen der Verfügbarkeit und Entscheidungen werden auditiert. Eine bestätigte Sperrzeit kann nicht angenommen werden, solange geplante Dienste kollidieren.
 

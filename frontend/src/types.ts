@@ -1116,6 +1116,7 @@ export interface SecurityObject {
   archived_at: string | null;
   address: ObjectAddress | null;
   contacts: ObjectContact[];
+  qualification_requirements?: string[];
   created_at: string;
   updated_at: string;
 }

@@ -20,6 +20,7 @@ from app.models import (
     ObjectAssignment,
     ObjectContact,
     ObjectHistory,
+    ObjectQualificationRequirement,
     ObjectSecurityDetails,
     Role,
     SecurityObject,
@@ -172,6 +173,7 @@ def object_query():
         selectinload(SecurityObject.customer),
         selectinload(SecurityObject.address),
         selectinload(SecurityObject.contacts),
+        selectinload(SecurityObject.qualification_requirement_records),
     )
 
 
@@ -802,11 +804,17 @@ def create_object(
                 is_primary=contact.is_primary,
             )
         )
+    obj.qualification_requirement_records.extend(
+        ObjectQualificationRequirement(name=name)
+        for name in payload.qualification_requirements
+    )
     changed_fields = {"customer_id", "code", "name", "status"}
     if payload.address is not None:
         changed_fields.add("address")
     if initial_contacts:
         changed_fields.add("contact")
+    if payload.qualification_requirements:
+        changed_fields.add("qualification_requirements")
 
     record_object_event(
         db,
@@ -1084,7 +1092,10 @@ def update_object(
     if payload.code is not None:
         ensure_object_code_available(db, payload.code.strip(), exclude_object_id=obj.id)
 
-    changes = payload.model_dump(exclude_unset=True, exclude={"address"})
+    changes = payload.model_dump(
+        exclude_unset=True,
+        exclude={"address", "qualification_requirements"},
+    )
     changed_fields = set()
     for field, value in changes.items():
         if isinstance(value, str):
@@ -1123,6 +1134,28 @@ def update_object(
         if previous != new_value:
             set_object_address(db, obj, payload.address)
             changed_fields.add("address")
+    if "qualification_requirements" in payload.model_fields_set:
+        desired = {
+            name.casefold(): name for name in payload.qualification_requirements
+        }
+        existing = {
+            requirement.name.casefold(): requirement
+            for requirement in obj.qualification_requirement_records
+        }
+        for key, requirement in existing.items():
+            if key not in desired:
+                obj.qualification_requirement_records.remove(requirement)
+            elif requirement.name != desired[key]:
+                requirement.name = desired[key]
+                changed_fields.add("qualification_requirements")
+        for key, name in desired.items():
+            if key not in existing:
+                obj.qualification_requirement_records.append(
+                    ObjectQualificationRequirement(name=name)
+                )
+                changed_fields.add("qualification_requirements")
+        if set(existing) != set(desired):
+            changed_fields.add("qualification_requirements")
     if changed_fields:
         record_object_event(
             db,

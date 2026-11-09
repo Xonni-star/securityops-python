@@ -2,7 +2,7 @@
 
 ## Quelle und Stand
 
-Diese Referenz beschreibt das zusammengeführte Schema in `backend/app/models.py` und `backend/migrations/versions/`. PostgreSQL ist für den Betrieb vorgesehen. Laufzeitverbindungen verwenden `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` und `POSTGRES_PASSWORD`; Compose setzt dafür ausschließlich `securityops_runtime`. Alembic verwendet `securityops_migrator`, der Datenbankadministrator `POSTGRES_ADMIN_USER` und `POSTGRES_ADMIN_PASSWORD`. Die drei Rollen haben getrennte Zugangsdaten. API und Worker erhalten keine Administrator- oder Migrationszugangsdaten. Die lineare Migrationskette endet in diesem PR-Stack bei `0030_inventory_management`; normales Modell-Metadaten-`create_all` ist nur in Tests zulässig.
+Diese Referenz beschreibt das zusammengeführte Schema in `backend/app/models.py` und `backend/migrations/versions/`. PostgreSQL ist für den Betrieb vorgesehen. Laufzeitverbindungen verwenden `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` und `POSTGRES_PASSWORD`; Compose setzt dafür ausschließlich `securityops_runtime`. Alembic verwendet `securityops_migrator`, der Datenbankadministrator `POSTGRES_ADMIN_USER` und `POSTGRES_ADMIN_PASSWORD`. Die drei Rollen haben getrennte Zugangsdaten. API und Worker erhalten keine Administrator- oder Migrationszugangsdaten. Die lineare Migrationskette wird durch `0036_object_qualification_requirements` für Objekt-Qualifikationsanforderungen erweitert; normales Modell-Metadaten-`create_all` ist nur in Tests zulässig.
 
 UUID-Primärschlüssel werden in PostgreSQL als UUID geführt. Datums-/Zeitpunktfelder mit `DateTime(timezone=True)` werden als zeitzonenbewusste Zeitpunkte (`TIMESTAMPTZ`) abgebildet; APIs normalisieren Zeitpunkte für operative Zeitdaten nach UTC. JSON-Spalten und Binärdaten verwenden PostgreSQL-JSON bzw. `BYTEA`. Nicht aufgeführte `CHECK`-Regeln können zusätzlich in Schemas/Service-Code validiert werden; hier werden Datenbankconstraints und -indizes dokumentiert.
 
@@ -11,6 +11,7 @@ UUID-Primärschlüssel werden in PostgreSQL als UUID geführt. Datums-/Zeitpunkt
 - `customer_contacts`: Ansprechpartner mit Kontaktdaten und Primärkennzeichnung. Ein partieller eindeutiger Index erzwingt höchstens einen primären Ansprechpartner pro Kunde.
 - `customer_history`: Kundenereignisse mit Akteur, Ereignis, Zeit und geänderten Feldnamen; keine Feldwerte.
 - `objects`: eindeutiger Objektcode, Kunde (FK mit RESTRICT), Status, Betriebs-/Personalangaben sowie Archivierungs- und Zeitstempel.
+- `object_qualification_requirements`: normalisierte, eindeutige Qualifikationsbezeichnungen je Objekt; die Einsatzprüfung gleicht sie mit den gültigen, nicht archivierten Mitarbeiterqualifikationen ab.
 - `object_addresses`: optionale 1:1-Anschrift; `object_contacts`: mehrere Ansprechpartner mit partiellem eindeutigem Index für höchstens einen Primärkontakt.
 - `object_history`: Akteur, Aktion, Zeit und geänderte Feldnamen; sensible Werte werden nicht in der Historie gespeichert.
 - `object_assignments`: eindeutige Objekt-/Benutzerzuweisung mit Zuordnungszeit und zuordnendem Benutzer.

@@ -14,7 +14,7 @@ Die globale Suche wird nur angezeigt, wenn mindestens ein Suchleserecht vorhande
 
 ## Objektverwaltung
 
-Benutzer mit Objektleserecht können die Objektliste suchen, nach Kunde und Status filtern, sortieren und Details zu erreichbaren Objekten öffnen. Objekte können mit einem vorhandenen Kunden angelegt, bearbeitet, archiviert und reaktiviert werden. Anschriften und mehrere Ansprechpartner lassen sich in der Detailansicht pflegen; Änderungen an einem Ansprechpartner löschen keine weiteren Kontakte. Die Historie zeigt Ereignisse und geänderte Feldnamen.
+Benutzer mit Objektleserecht können die Objektliste suchen, nach Kunde und Status filtern, sortieren und Details zu erreichbaren Objekten öffnen. Objekte können mit einem vorhandenen Kunden angelegt, bearbeitet, archiviert und reaktiviert werden. Anschriften und mehrere Ansprechpartner lassen sich in der Detailansicht pflegen; Änderungen an einem Ansprechpartner löschen keine weiteren Kontakte. Je Objekt können erforderliche Qualifikationen zeilenweise hinterlegt werden. Die Historie zeigt Ereignisse und geänderte Feldnamen.
 
 In einer Kundendetailansicht zeigt die Liste „Zugeordnete Objekte“ nur Objekte, die das angemeldete Konto auch über die Objektberechtigungen erreichen darf. Archivierte Kunden bleiben über die Archivfilter und ihre Historie nachvollziehbar. Dokumenten- und Vertragsakten werden im nachfolgenden Abschnitt beschrieben.
 
@@ -22,7 +22,7 @@ Objektzugriff ist zusätzlich zum Modulrecht an eine Objektzuweisung gebunden, s
 
 ## Dienstplanung
 
-Berechtigte Einsatzleitungen können Schichtentwürfe mit Mitarbeiter, Objekt, lokaler Start-/Endzeit, Pause und optionaler Qualifikation anlegen, bearbeiten, veröffentlichen oder absagen. Tages-, Wochen- und Monatsansichten lassen sich nach Zeitraum, Mitarbeiter und Objekt filtern; der Verlauf zeigt geänderte Felder. Schreibzugriffe und der sichtbare Objekt-/Personalbereich werden serverseitig kontrolliert.
+Berechtigte Einsatzleitungen können Schichtentwürfe mit Mitarbeiter, Objekt, lokaler Start-/Endzeit, Pause und optionaler Dienstqualifikation anlegen, bearbeiten, veröffentlichen oder absagen. Für das Objekt und für den konkreten Dienst hinterlegte Qualifikationen werden serverseitig gegen die nicht archivierten Mitarbeiterqualifikationen und deren Gültigkeitszeitraum geprüft. Fehlende oder nicht für den gesamten Dienst gültige Qualifikationen verhindern Anlegen, Ändern, Veröffentlichen und Vertretung; ungeeignete Vertretungen erscheinen nicht als Kandidaten. Tages-, Wochen- und Monatsansichten lassen sich nach Zeitraum, Mitarbeiter und Objekt filtern; der Verlauf zeigt geänderte Felder. Schreibzugriffe und der sichtbare Objekt-/Personalbereich werden serverseitig kontrolliert.
 
 Zeitzone und Mindestabstand zwischen Diensten werden in den Planungseinstellungen festgelegt. Lokale Eingaben werden anhand der IANA-Zeitzone in UTC umgerechnet; nicht existierende Uhrzeiten bei einer Zeitumstellung werden abgewiesen und doppelte Uhrzeiten sind über die Auswahl des ersten/zweiten Auftretens unterscheidbar. Bei Zeitkonflikten, fehlender Qualifikation, unpassendem Beschäftigungszeitraum, Abwesenheit oder fehlender Objektzuweisung wird die Änderung mit einem Konflikthinweis abgelehnt. PostgreSQL verhindert überlappende aktive Schichten auch bei parallelen Schreibzugriffen.
 
