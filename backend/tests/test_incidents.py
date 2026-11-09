@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import delete, inspect, select, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
+from app.config import get_settings
 from app.identity_api import password_hasher
 from app.models import (
     Incident,
@@ -310,11 +311,6 @@ def test_incident_attachment_uses_private_scanned_storage_and_checks_scope(
     incident = create_incident(client, admin_headers, object_id, "Test mit Dateianhang")
     assert incident.status_code == 201, incident.text
     incident_id = incident.json()["id"]
-    storage: dict[str, bytes] = {}
-    monkeypatch.setattr(
-        "app.incidents_api.store_file", lambda key, data: storage.__setitem__(key, data)
-    )
-    monkeypatch.setattr("app.incidents_api.read_file", lambda key: storage[key])
 
     upload = client.post(
         f"/api/v1/incidents/{incident_id}/attachments",
@@ -323,7 +319,12 @@ def test_incident_attachment_uses_private_scanned_storage_and_checks_scope(
     )
     assert upload.status_code == 201, upload.text
     attachment_id = upload.json()["id"]
-    assert storage
+    with TestingSessionLocal() as db:
+        attachment = db.get(IncidentAttachment, UUID(attachment_id))
+        assert attachment is not None
+        encoded_file = (get_settings().document_storage_path / attachment.storage_key).read_bytes()
+        assert encoded_file.startswith(b"SECOPS-DOC\x00")
+        assert b"%PDF-synthetischer-test" not in encoded_file
 
     downloaded = client.get(
         f"/api/v1/incidents/{incident_id}/attachments/{attachment_id}/download",
