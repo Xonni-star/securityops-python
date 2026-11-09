@@ -4,7 +4,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.automation_events import OWKS_AUTOMATION_EVENT_TYPES, AutomationTrigger
+from app.automation_events import (
+    BILLING_AUTOMATION_EVENT_TYPES,
+    OWKS_AUTOMATION_EVENT_TYPES,
+    AutomationTrigger,
+)
+
+NO_CONDITION_AUTOMATION_EVENT_TYPES = OWKS_AUTOMATION_EVENT_TYPES | BILLING_AUTOMATION_EVENT_TYPES
 
 AutomationAction = Literal["notify_event_recipients"]
 TaskStatus = Literal["open", "in_progress", "blocked", "completed", "cancelled"]
@@ -44,8 +50,11 @@ class AutomationRuleCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_trigger_conditions(self) -> "AutomationRuleCreate":
-        if self.trigger_type in OWKS_AUTOMATION_EVENT_TYPES and self.conditions.status is not None:
-            raise ValueError("OWKS-Auslöser unterstützen keine Aufgabenstatus-Bedingung.")
+        if (
+            self.trigger_type in NO_CONDITION_AUTOMATION_EVENT_TYPES
+            and self.conditions.status is not None
+        ):
+            raise ValueError("Dieser Auslöser unterstützt keine Aufgabenstatus-Bedingung.")
         return self
 
 

@@ -363,7 +363,7 @@ class AutomationRule(Base):
         CheckConstraint(
             "trigger_type IN ('task.assigned', 'task.status_changed', "
             "'owks.missed_control', 'owks.deviation_reported', "
-            "'owks.offline_event_synced')",
+            "'owks.offline_event_synced', 'billing.invoice_approved')",
             name="ck_automation_rules_trigger_type",
         ),
         CheckConstraint(
@@ -462,8 +462,9 @@ class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
         CheckConstraint(
-            "(task_id IS NOT NULL AND object_id IS NULL) "
-            "OR (task_id IS NULL AND object_id IS NOT NULL)",
+            "(task_id IS NOT NULL AND object_id IS NULL AND invoice_id IS NULL) "
+            "OR (task_id IS NULL AND object_id IS NOT NULL AND invoice_id IS NULL) "
+            "OR (task_id IS NULL AND object_id IS NULL AND invoice_id IS NOT NULL)",
             name="ck_notifications_target",
         ),
         UniqueConstraint("outbox_id", "recipient_id", name="uq_notifications_event_recipient"),
@@ -485,6 +486,9 @@ class Notification(Base):
     object_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="RESTRICT"), nullable=True
     )
+    invoice_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("billing_invoices.id", ondelete="RESTRICT"), nullable=True
+    )
     event_type: Mapped[str] = mapped_column(String(80), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     body: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -495,6 +499,7 @@ class Notification(Base):
     recipient: Mapped[User] = relationship()
     task: Mapped[Task | None] = relationship()
     object: Mapped["SecurityObject | None"] = relationship()
+    invoice: Mapped["BillingInvoice | None"] = relationship()
     outbox_event: Mapped[NotificationOutbox] = relationship()
 
 

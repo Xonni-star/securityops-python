@@ -310,7 +310,10 @@ def list_employee_notifications(
 ) -> list[EmployeePortalNotificationRead]:
     notifications = db.scalars(
         select(Notification)
-        .where(Notification.recipient_id == principal.user.id)
+        .where(
+            Notification.recipient_id == principal.user.id,
+            Notification.invoice_id.is_(None),
+        )
         .order_by(Notification.created_at.desc(), Notification.id.desc())
         .limit(100)
     ).all()
@@ -331,6 +334,7 @@ def mark_employee_notification_read(
         select(Notification).where(
             Notification.id == notification_id,
             Notification.recipient_id == principal.user.id,
+            Notification.invoice_id.is_(None),
         )
     )
     if notification is None:

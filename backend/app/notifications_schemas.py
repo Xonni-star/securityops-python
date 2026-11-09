@@ -11,6 +11,7 @@ class NotificationRead(BaseModel):
     id: UUID
     task_id: UUID | None
     object_id: UUID | None
+    invoice_id: UUID | None
     event_type: NotificationEventType
     title: str
     body: str

@@ -37,6 +37,7 @@ from app.models import (
     TimeEntryCorrection,
     TimeSurchargeCalculation,
 )
+from app.notifications_service import enqueue_invoice_approved_event
 
 router = APIRouter()
 CENT = Decimal("0.01")
@@ -596,6 +597,7 @@ def approve_invoice(
             "gross_amount": str(invoice.gross_amount),
         },
     )
+    enqueue_invoice_approved_event(db, invoice)
     commit_or_conflict(db, "Rechnung konnte nicht freigegeben werden.")
     return get_invoice(db, invoice.id)
 
