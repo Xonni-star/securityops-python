@@ -8,7 +8,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-revision: str = "0032_employee_portal_requests_and_documents"
+revision: str = "0032_employee_portal"
 down_revision: str | None = "0031_safe_automations"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

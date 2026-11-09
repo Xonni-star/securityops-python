@@ -21,7 +21,7 @@ CUSTOMER_REQUESTS_REVISION = "0028_customer_portal_requests"
 AUDIT_REVISION = "0029_audit_integrity"
 INVENTORY_REVISION = "0030_inventory_management"
 AUTOMATION_REVISION = "0031_safe_automations"
-EMPLOYEE_PORTAL_REVISION = "0032_employee_portal_requests_and_documents"
+EMPLOYEE_PORTAL_REVISION = "0032_employee_portal"
 
 
 def admin_connection_options() -> dict[str, str | int]:

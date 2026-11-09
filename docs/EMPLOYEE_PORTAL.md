@@ -1,6 +1,6 @@
 # Mitarbeiterportal
 
-Das Mitarbeiterportal stellt angemeldeten Mitarbeitenden eine getrennte Self-Service-Oberfläche unter `/employee-portal/me` bereit. Diese Dokumentation beschreibt den Erweiterungsstand mit Migration `0032_employee_portal_requests_and_documents`, gestapelt auf `0031_safe_automations`; dieser Stand ist erst nach Merge der zugehörigen Pull Requests Teil von `main`.
+Das Mitarbeiterportal stellt angemeldeten Mitarbeitenden eine getrennte Self-Service-Oberfläche unter `/employee-portal/me` bereit. Diese Dokumentation beschreibt den Erweiterungsstand mit Migration `0032_employee_portal`, gestapelt auf `0031_safe_automations`; dieser Stand ist erst nach Merge der zugehörigen Pull Requests Teil von `main`.
 
 ## Zugriff und Datenschutz
 
