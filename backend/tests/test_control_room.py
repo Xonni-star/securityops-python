@@ -449,7 +449,7 @@ def test_object_operations_report_aggregates_date_bounded_data_without_narrative
                     employee_id=report_employee.id,
                     object_id=UUID(object_a_id),
                     starts_at=range_end - timedelta(hours=1),
-                    ends_at=range_end + timedelta(hours=1),
+                    ends_at=range_end,
                     status="published",
                 ),
                 ScheduleShift(
