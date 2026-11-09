@@ -582,6 +582,192 @@ def test_employee_must_be_assigned_to_the_scheduled_object(client: TestClient) -
     assert conflict.json()["detail"]["conflicts"][0]["code"] == "object_assignment"
 
 
+def test_object_qualification_requirements_cover_all_shift_assignment_paths(
+    client: TestClient,
+) -> None:
+    employee, obj, csrf = setup_schedule(client)
+    substitute = add_employee_to_object(client, obj, csrf, "qualifikation-vertretung")
+    work_date = date.today() + timedelta(days=50)
+    starts_at = datetime.combine(work_date, time(9))
+    payload = shift_payload(employee, obj, starts_at, starts_at + timedelta(days=1, hours=2))
+
+    draft = client.post(
+        "/api/v1/scheduling/shifts",
+        headers={"X-CSRF-Token": csrf},
+        json=payload,
+    )
+    assert draft.status_code == 201, draft.text
+
+    requirements_response = client.patch(
+        f"/api/v1/objects/{obj['id']}",
+        headers={"X-CSRF-Token": csrf},
+        json={"qualification_requirements": ["Brandschutzhelfer"]},
+    )
+    assert requirements_response.status_code == 200, requirements_response.text
+    assert requirements_response.json()["qualification_requirements"] == ["Brandschutzhelfer"]
+
+    duplicate_requirements = client.patch(
+        f"/api/v1/objects/{obj['id']}",
+        headers={"X-CSRF-Token": csrf},
+        json={"qualification_requirements": ["Brandschutzhelfer", " brandschutzhelfer "]},
+    )
+    assert duplicate_requirements.status_code == 422
+    assert client.get(f"/api/v1/objects/{obj['id']}").json()["qualification_requirements"] == [
+        "Brandschutzhelfer"
+    ]
+
+    missing_qualification = client.post(
+        "/api/v1/scheduling/shifts",
+        headers={"X-CSRF-Token": csrf},
+        json=payload,
+    )
+    assert missing_qualification.status_code == 409
+    conflict = missing_qualification.json()["detail"]["conflicts"][0]
+    assert conflict["code"] == "object_qualification_missing"
+    assert "Brandschutzhelfer" in conflict["message"]
+    assert (
+        client.post(
+            f"/api/v1/scheduling/shifts/{draft.json()['id']}/publish",
+            headers={"X-CSRF-Token": csrf},
+        ).status_code
+        == 409
+    )
+    assert (
+        client.patch(
+            f"/api/v1/scheduling/shifts/{draft.json()['id']}",
+            headers={"X-CSRF-Token": csrf},
+            json={"break_minutes": 20},
+        ).status_code
+        == 409
+    )
+
+    with TestingSessionLocal() as db:
+        db.add_all(
+            [
+                EmployeeQualification(
+                    employee_id=UUID(substitute["id"]),
+                    category="Brandschutzhelfer",
+                    name="Brandschutzhelfer",
+                    valid_from=work_date - timedelta(days=10),
+                    expires_on=work_date,
+                ),
+                EmployeeQualification(
+                    employee_id=UUID(substitute["id"]),
+                    category="Brandschutzhelfer",
+                    name="Brandschutzhelfer",
+                    valid_from=work_date + timedelta(days=1),
+                ),
+                EmployeeQualification(
+                    employee_id=UUID(substitute["id"]),
+                    category="Brandschutzhelfer",
+                    name="Brandschutzhelfer",
+                    valid_from=work_date - timedelta(days=10),
+                    expires_on=work_date + timedelta(days=10),
+                    archived_at=datetime.now(UTC),
+                ),
+            ]
+        )
+        db.commit()
+
+    candidates_url = f"/api/v1/scheduling/shifts/{draft.json()['id']}/replacement-candidates"
+    assert client.get(candidates_url).json() == []
+    rejected_replacement = client.post(
+        f"/api/v1/scheduling/shifts/{draft.json()['id']}/replacement",
+        headers={"X-CSRF-Token": csrf},
+        json={"employee_id": substitute["id"], "reason": "short_notice"},
+    )
+    assert rejected_replacement.status_code == 409
+    assert (
+        rejected_replacement.json()["detail"]["conflicts"][0]["code"]
+        == "object_qualification_missing"
+    )
+
+    with TestingSessionLocal() as db:
+        db.add(
+            EmployeeQualification(
+                employee_id=UUID(substitute["id"]),
+                category="Brandschutzhelfer",
+                name="Brandschutzhelfer",
+                valid_from=work_date - timedelta(days=10),
+                expires_on=work_date + timedelta(days=10),
+            )
+        )
+        db.commit()
+
+    candidates = client.get(candidates_url)
+    assert candidates.status_code == 200
+    assert [item["employee_id"] for item in candidates.json()] == [substitute["id"]]
+    replacement = client.post(
+        f"/api/v1/scheduling/shifts/{draft.json()['id']}/replacement",
+        headers={"X-CSRF-Token": csrf},
+        json={"employee_id": substitute["id"], "reason": "short_notice"},
+    )
+    assert replacement.status_code == 200, replacement.text
+    published = client.post(
+        f"/api/v1/scheduling/shifts/{draft.json()['id']}/publish",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert published.status_code == 200, published.text
+
+    employee_csrf = sign_in(
+        client,
+        "dienstplan-qualifikation-vertretung",
+        "dienstplan-test-passwort-2026",
+    )
+    denied = client.patch(
+        f"/api/v1/objects/{obj['id']}",
+        headers={"X-CSRF-Token": employee_csrf},
+        json={"qualification_requirements": []},
+    )
+    assert denied.status_code == 403
+
+
+def test_object_qualification_requirement_migration_is_registered() -> None:
+    import importlib
+
+    migration = importlib.import_module(
+        "migrations.versions.0037_object_qualification_requirements"
+    )
+    assert migration.revision == "0037_object_qual_requirements"
+    assert migration.down_revision == "0036_billing_approval_automation"
+
+
+@pytest.mark.skipif(
+    test_engine.dialect.name != "postgresql",
+    reason="PostgreSQL-Migration und data-safe Downgrade",
+)
+def test_postgresql_object_qualification_requirements_migration_preserves_data(
+    client: TestClient,
+) -> None:
+    import importlib
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import inspect
+
+    _, obj, csrf = setup_schedule(client)
+    saved = client.patch(
+        f"/api/v1/objects/{obj['id']}",
+        headers={"X-CSRF-Token": csrf},
+        json={"qualification_requirements": ["Brandschutzhelfer"]},
+    )
+    assert saved.status_code == 200, saved.text
+
+    migration = importlib.import_module(
+        "migrations.versions.0037_object_qualification_requirements"
+    )
+    with test_engine.connect() as connection:
+        context = MigrationContext.configure(connection)
+        with (
+            Operations.context(context),
+            pytest.raises(RuntimeError, match="Objektqualifikations-Downgrade"),
+        ):
+            migration.downgrade()
+        connection.rollback()
+        assert context.get_current_revision() == "0038_digital_policies"
+        assert inspect(connection).has_table("object_qualification_requirements")
+
+
 def test_schedule_permissions_are_checked_server_side(client: TestClient) -> None:
     setup_schedule(client)
     settings = client.get("/api/v1/scheduling/settings")

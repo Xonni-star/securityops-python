@@ -26,6 +26,8 @@ DOCUMENT_STORAGE_REVISION = "0033_encrypted_document_storage"
 OWKS_AUTOMATION_REVISION = "0034_owks_automation_events"
 MONITORING_REVISION = "0035_worker_monitoring"
 BILLING_AUTOMATION_REVISION = "0036_billing_approval_automation"
+OBJECT_QUALIFICATION_REVISION = "0037_object_qual_requirements"
+DIGITAL_POLICIES_REVISION = "0038_digital_policies"
 
 
 def admin_connection_options() -> dict[str, str | int]:
@@ -102,7 +104,23 @@ def verify_revision_chain() -> None:
         or billing_automation_revision.down_revision != MONITORING_REVISION
     ):
         raise RuntimeError(f"{BILLING_AUTOMATION_REVISION} folgt nicht auf {MONITORING_REVISION}.")
-    if script.get_heads() != [BILLING_AUTOMATION_REVISION]:
+    object_qualification_revision = script.get_revision(OBJECT_QUALIFICATION_REVISION)
+    if (
+        object_qualification_revision is None
+        or object_qualification_revision.down_revision != BILLING_AUTOMATION_REVISION
+    ):
+        raise RuntimeError(
+            f"{OBJECT_QUALIFICATION_REVISION} folgt nicht auf {BILLING_AUTOMATION_REVISION}."
+        )
+    digital_policies_revision = script.get_revision(DIGITAL_POLICIES_REVISION)
+    if (
+        digital_policies_revision is None
+        or digital_policies_revision.down_revision != OBJECT_QUALIFICATION_REVISION
+    ):
+        raise RuntimeError(
+            f"{DIGITAL_POLICIES_REVISION} folgt nicht auf {OBJECT_QUALIFICATION_REVISION}."
+        )
+    if script.get_heads() != [DIGITAL_POLICIES_REVISION]:
         raise RuntimeError(f"Unerwartete Alembic-Heads: {script.get_heads()}")
 
 
@@ -211,7 +229,7 @@ def main() -> None:
         with engine.connect() as connection:
             if (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                != BILLING_AUTOMATION_REVISION
+                != DIGITAL_POLICIES_REVISION
             ):
                 raise RuntimeError("Die Upgrade-Kette hat nicht beim aktuellen Head geendet.")
             if (
