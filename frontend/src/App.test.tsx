@@ -510,6 +510,7 @@ describe("Kundenformulare", () => {
     render(<App />);
 
     await screen.findByRole("heading", { name: "Kunde hinzufügen" });
+    await screen.findByText("Keine passenden Kunden vorhanden.");
     fireEvent.change(screen.getByPlaceholderText("Muster GmbH"), {
       target: { value: "Beispiel GmbH" },
     });
