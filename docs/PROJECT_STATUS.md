@@ -63,7 +63,7 @@ Beide PRs sind Vorschläge auf offenen Branches. Ihre Implementierung und grüne
 | [#48](https://github.com/Xonni-star/securityops-python/issues/48) | Geschlossen am 09.11.2026 | Inventaranforderungen wurden mit PR #50 integriert. |
 | [#51](https://github.com/Xonni-star/securityops-python/issues/51) | Offen | PR #54 schlägt einen begrenzten Aufgabenregel-Umfang vor; Issue bleibt offen, bis die Implementierung integriert und der Gesamtumfang abgeglichen ist. |
 | [#52](https://github.com/Xonni-star/securityops-python/issues/52) | Offen | PR #55 schlägt Antragsrücknahme und Freigabe von Qualifikationsdateien vor; die Folgearbeit ist offen und nicht Bestandteil von `main`. |
-| [#56](https://github.com/Xonni-star/securityops-python/issues/56) | Offen | Private Dateinutzdaten sind nicht anwendungsseitig verschlüsselt; Verschlüsselung des gemeinsamen Speichers, explizite Bestandsmigration und Schlüsselrotation sind offen. Die Umsetzung läuft separat gestapelt auf dem Mitarbeiterportal-Branch und ist nicht Bestandteil von `main` oder PR #53. |
+| [#56](https://github.com/Xonni-star/securityops-python/issues/56) | Offen · sehr hohe Priorität | Private Dateinutzdaten sind nicht anwendungsseitig verschlüsselt; Verschlüsselung des gemeinsamen Speichers, explizite Bestandsmigration und Schlüsselrotation sind offen. Die Umsetzung läuft separat gestapelt auf dem Mitarbeiterportal-Branch und ist nicht Bestandteil von `main` oder PR #53. |
 
 Die Issues #2–#6 und #8 sind ebenfalls geschlossen. Geschlossene Issues und gemergte PRs werden nicht als offene Arbeit oder als außerhalb von `main` dargestellt. Offene Issues beschreiben verbleibende fachliche beziehungsweise betriebliche Arbeit, nicht zwingend fehlende Grundfunktionen.
 
