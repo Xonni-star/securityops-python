@@ -59,6 +59,13 @@ function optionalValue(data: FormData, name: string) {
   return String(data.get(name) ?? "").trim() || undefined;
 }
 
+function qualificationRequirements(data: FormData) {
+  return String(data.get("qualification_requirements") ?? "")
+    .split("\n")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 function formAddress(data: FormData, prefix: string): ObjectAddressInput | undefined {
   const street = optionalValue(data, `${prefix}_street`);
   const houseNumber = optionalValue(data, `${prefix}_house_number`);
@@ -263,6 +270,7 @@ export default function ObjectManagement({
         operating_hours: optionalValue(data, "operating_hours"),
         service_times: optionalValue(data, "service_times"),
         staffing_requirements: optionalValue(data, "staffing_requirements"),
+        qualification_requirements: qualificationRequirements(data),
         address: formAddress(data, "new_object"),
         contacts: firstName && lastName
           ? [{
@@ -307,6 +315,7 @@ export default function ObjectManagement({
         operating_hours: optionalValue(data, "operating_hours") ?? null,
         service_times: optionalValue(data, "service_times") ?? null,
         staffing_requirements: optionalValue(data, "staffing_requirements") ?? null,
+        qualification_requirements: qualificationRequirements(data),
         address,
       });
       await Promise.all([loadObjects(), refreshSelected(updated.id)]);
@@ -549,6 +558,9 @@ export default function ObjectManagement({
             <label>Betriebszeiten<input name="operating_hours" maxLength={200} /></label>
             <label>Leistungszeiten<input name="service_times" maxLength={200} /></label>
             <label>Personalbedarf<textarea name="staffing_requirements" maxLength={10000} rows={2} /></label>
+            <label>Für Dienste erforderliche Qualifikationen (je Zeile eine)
+              <textarea name="qualification_requirements" maxLength={16000} rows={3} />
+            </label>
             <fieldset>
               <legend>Erster Ansprechpartner (optional)</legend>
               <div className="form-row">
@@ -594,12 +606,21 @@ export default function ObjectManagement({
             <label>Betriebszeiten<input name="operating_hours" maxLength={200} defaultValue={selected.operating_hours ?? ""} /></label>
             <label>Leistungszeiten<input name="service_times" maxLength={200} defaultValue={selected.service_times ?? ""} /></label>
             <label>Personalbedarf<textarea name="staffing_requirements" maxLength={10000} rows={2} defaultValue={selected.staffing_requirements ?? ""} /></label>
+            <label>Für Dienste erforderliche Qualifikationen (je Zeile eine)
+              <textarea name="qualification_requirements" maxLength={16000} rows={3}
+                defaultValue={selected.qualification_requirements?.join("\n") ?? ""} />
+            </label>
             <button type="submit" disabled={busy}>Änderungen speichern</button>
           </form> : <div className="detail-summary">
             <p><strong>Kunde:</strong> {selected.customer_name}</p>
             <p><strong>Status:</strong> {selected.archived_at ? "Archiviert" : statusNames[selected.status]}</p>
             {selected.object_type && <p><strong>Objekttyp:</strong> {selected.object_type}</p>}
             {selected.description && <p><strong>Beschreibung:</strong><br />{selected.description}</p>}
+            <p><strong>Für Dienste erforderliche Qualifikationen:</strong><br />
+              {selected.qualification_requirements?.length
+                ? selected.qualification_requirements.join(", ")
+                : "Keine Anforderungen hinterlegt"}
+            </p>
             {selected.address && <p><strong>Objektanschrift:</strong><br />
               {selected.address.street} {selected.address.house_number}<br />
               {selected.address.postal_code} {selected.address.city}<br />{selected.address.country_code}</p>}

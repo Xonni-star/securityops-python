@@ -2,7 +2,7 @@
 
 ## Quelle und Stand
 
-Diese Referenz beschreibt das Schema in `backend/app/models.py` und `backend/migrations/versions/`, enthält aber auch historisch abgegrenzte Teilinventare und PR-Kontext. Der bei der Live-Prüfung aktuelle `main`-Migrationsgraph hat 35 Revisionen und endet auf `0035_worker_monitoring`; den aktuellen Prüfzeitpunkt und PR-/Issue-Status dokumentiert [`PROJECT_STATUS.md`](PROJECT_STATUS.md). PostgreSQL ist für den Betrieb vorgesehen. Laufzeitverbindungen verwenden `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` und `POSTGRES_PASSWORD`; Compose setzt dafür ausschließlich `securityops_runtime`. Alembic verwendet `securityops_migrator`, der Datenbankadministrator `POSTGRES_ADMIN_USER` und `POSTGRES_ADMIN_PASSWORD`. Die drei Rollen haben getrennte Zugangsdaten. API und Worker erhalten keine Administrator- oder Migrationszugangsdaten. Normales Modell-Metadaten-`create_all` ist nur in Tests zulässig.
+Diese Referenz beschreibt das Schema in `backend/app/models.py` und `backend/migrations/versions/`, enthält aber auch historisch abgegrenzte Teilinventare und PR-Kontext. `main` umfasst 36 Alembic-Revisionen bis `0036_billing_approval_automation`; dieser PR-Stack ergänzt `0037_object_qual_requirements` sowie `0038_digital_policies` aus PR #77. Den aktuellen Prüfzeitpunkt und PR-/Issue-Status dokumentiert [`PROJECT_STATUS.md`](PROJECT_STATUS.md). PostgreSQL ist für den Betrieb vorgesehen. Laufzeitverbindungen verwenden `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` und `POSTGRES_PASSWORD`; Compose setzt dafür ausschließlich `securityops_runtime`. Alembic verwendet `securityops_migrator`, der Datenbankadministrator `POSTGRES_ADMIN_USER` und `POSTGRES_ADMIN_PASSWORD`. Die drei Rollen haben getrennte Zugangsdaten. API und Worker erhalten keine Administrator- oder Migrationszugangsdaten. Normales Modell-Metadaten-`create_all` ist nur in Tests zulässig.
 
 UUID-Primärschlüssel werden in PostgreSQL als UUID geführt. Datums-/Zeitpunktfelder mit `DateTime(timezone=True)` werden als zeitzonenbewusste Zeitpunkte (`TIMESTAMPTZ`) abgebildet; APIs normalisieren Zeitpunkte für operative Zeitdaten nach UTC. JSON-Spalten und Binärdaten verwenden PostgreSQL-JSON bzw. `BYTEA`. Nicht aufgeführte `CHECK`-Regeln können zusätzlich in Schemas/Service-Code validiert werden; hier werden Datenbankconstraints und -indizes dokumentiert.
 
@@ -11,6 +11,7 @@ UUID-Primärschlüssel werden in PostgreSQL als UUID geführt. Datums-/Zeitpunkt
 - `customer_contacts`: Ansprechpartner mit Kontaktdaten und Primärkennzeichnung. Ein partieller eindeutiger Index erzwingt höchstens einen primären Ansprechpartner pro Kunde.
 - `customer_history`: Kundenereignisse mit Akteur, Ereignis, Zeit und geänderten Feldnamen; keine Feldwerte.
 - `objects`: eindeutiger Objektcode, Kunde (FK mit RESTRICT), Status, Betriebs-/Personalangaben sowie Archivierungs- und Zeitstempel.
+- `object_qualification_requirements`: normalisierte, eindeutige Qualifikationsbezeichnungen je Objekt; die Einsatzprüfung gleicht sie mit den gültigen, nicht archivierten Mitarbeiterqualifikationen ab.
 - `object_addresses`: optionale 1:1-Anschrift; `object_contacts`: mehrere Ansprechpartner mit partiellem eindeutigem Index für höchstens einen Primärkontakt.
 - `object_history`: Akteur, Aktion, Zeit und geänderte Feldnamen; sensible Werte werden nicht in der Historie gespeichert.
 - `object_assignments`: eindeutige Objekt-/Benutzerzuweisung mit Zuordnungszeit und zuordnendem Benutzer.
@@ -22,6 +23,7 @@ UUID-Primärschlüssel werden in PostgreSQL als UUID geführt. Datums-/Zeitpunkt
 - `employee_history`: Akteur, Ereignis, Zeit und geänderte Feldnamen ohne sensible Feldwerte.
 - `employee_object_assignment_history`: unveränderliche Personalhistorie für Zuweisung und Beendigung bestehender Objektzuweisungen; verweist auf Mitarbeiterakte, Objekt und Benutzer.
 - `employee_qualification_documents`: versionierte Qualifikationsnachweise mit Medien-/Dateimetadaten, SHA-256-Prüfsumme und hochladendem Benutzer; neue Datei-Inhalte liegen verschlüsselt im privaten Dateispeicher, alte `BYTEA`-Inhalte bleiben bis zur expliziten Migration erhalten.
+- `policy_items`, `policy_versions`, `policy_version_closures`, `policy_assignments` und `policy_receipts`: allgemeine oder objektbezogene Anweisungen/Unterweisungen, versionierte Inhalte mit UTC-Gültigkeitszeitraum, append-only Abschlussereignisse für bisher offene Versionen, Mitarbeiterzuweisungen samt Zyklus/Fälligkeit sowie getrennte Lese- und Bestätigungsnachweise. Versionen, Gültigkeitsabschlüsse, Zuweisungen und Quittungen werden durch PostgreSQL-Trigger gegen UPDATE/DELETE geschützt. Wiederholungs- und Erinnerungsvorlauf sind optional konfigurierbar.
 - `schedule_settings`: einzelne Dienstplankonfiguration mit IANA-Zeitzone und konfigurierbarer Mindestruhezeit in Stunden.
 - `employee_availability_windows`: wöchentlich wiederkehrende lokale Zeitfenster je Mitarbeiter und Wochentag.
 - `schedule_availability_requests`: lokale Zeitwünsche und explizite Sperrzeiträume als UTC-Intervalle mit Status, Antragsteller und prüfender Person.
@@ -74,6 +76,11 @@ UUID-Primärschlüssel werden in PostgreSQL als UUID geführt. Datums-/Zeitpunkt
 | `employee_sensitive_details` | PK/FK `employee_id`; `address`, `emergency_contact`, `internal_notes`, `updated_at` |
 | `employee_history` | PK `id`; `employee_id`, `actor_id`, `action`, `changed_fields`, `created_at` |
 | `employee_object_assignment_history` | PK `id`; `employee_id`, `object_id`, `user_id`, `actor_id`, `action`, `created_at` |
+| `policy_items` | PK `id`; `kind`, `title`, `object_id`, `repeat_interval_days`, `reminder_days`, `archived_at`, `created_by_id`, `created_at` |
+| `policy_versions` | PK `id`; `policy_item_id`, `version_number`, `content`, `valid_from`, `valid_until`, `created_by_id`, `created_at` |
+| `policy_version_closures` | PK/FK `policy_version_id`; `valid_until`, `closed_by_id`, `created_at` |
+| `policy_assignments` | PK `id`; `policy_version_id`, `employee_id`, `cycle_number`, `due_at`, `assigned_by_id`, `assigned_at` |
+| `policy_receipts` | PK `id`; `assignment_id`, `action`, `actor_id`, `created_at` |
 | `schedule_settings` | PK `id` (Singleton); `time_zone`, `minimum_rest_hours`, `updated_by_id`, `updated_at` |
 | `employee_availability_windows` | PK `id`; `employee_id`, `weekday`, `starts_at`, `ends_at`, `created_by_id`, `created_at` |
 | `schedule_availability_requests` | PK `id`; `employee_id`, `kind`, `starts_at`, `ends_at`, `status`, `created_by_id`, `reviewed_by_id`, `reviewed_at`, `created_at`, `updated_at` |
@@ -153,6 +160,10 @@ Alle nicht in dieser Liste enthaltenen Spalten sind in den Modellen `nullable=Fa
 | `employee_sensitive_details` | `address`, `emergency_contact`, `internal_notes` |
 | `employee_history` | `actor_id` |
 | `employee_object_assignment_history` | `user_id`, `actor_id` |
+| `policy_items` | `object_id`, `repeat_interval_days`, `reminder_days`, `archived_at`, `created_by_id` |
+| `policy_versions` | `valid_until`, `created_by_id` |
+| `policy_version_closures` | `closed_by_id` |
+| `policy_assignments` | `due_at`, `assigned_by_id` |
 | `schedule_settings` | `updated_by_id` |
 | `employee_availability_windows` | `created_by_id` |
 | `schedule_availability_requests` | `created_by_id`, `reviewed_by_id`, `reviewed_at` |
@@ -213,6 +224,15 @@ Alle nicht in dieser Liste enthaltenen Spalten sind in den Modellen `nullable=Fa
 | `object_assignments.user_id` | `users.id` | `RESTRICT` |
 | `employees.user_id` | `users.id` | `SET NULL`; eindeutig, nullable |
 | `employee_qualifications.employee_id`, `employee_absences.employee_id`, `employee_sensitive_details.employee_id`, `employee_history.employee_id`, `employee_object_assignment_history.employee_id`, `employee_availability_windows.employee_id`, `schedule_availability_requests.employee_id`, `schedule_shifts.employee_id`, `time_entries.employee_id` | `employees.id` | `RESTRICT` |
+| `policy_assignments.employee_id` | `employees.id` | `RESTRICT` |
+| `policy_items.object_id` | `objects.id` | `RESTRICT` |
+| `policy_versions.policy_item_id` | `policy_items.id` | `RESTRICT` |
+| `policy_version_closures.policy_version_id` | `policy_versions.id` | `RESTRICT` |
+| `policy_version_closures.closed_by_id` | `users.id` | `SET NULL` |
+| `policy_assignments.policy_version_id` | `policy_versions.id` | `RESTRICT` |
+| `policy_receipts.assignment_id` | `policy_assignments.id` | `RESTRICT` |
+| `policy_items.created_by_id`, `policy_versions.created_by_id`, `policy_assignments.assigned_by_id` | `users.id` | jeweils `SET NULL` |
+| `policy_receipts.actor_id` | `users.id` | `RESTRICT` |
 | `employee_qualification_documents.qualification_id` | `employee_qualifications.id` | `RESTRICT` |
 | `schedule_shift_history.shift_id` | `schedule_shifts.id` | `RESTRICT` |
 | `time_entries.shift_id` | `schedule_shifts.id` | `RESTRICT` |
@@ -309,6 +329,11 @@ Primärschlüssel sind in der Tabellenübersicht aufgeführt. Die folgenden bena
 | `employee_sensitive_details` | Checks `ck_employee_sensitive_address`, `ck_employee_sensitive_emergency_contact` |
 | `employee_history` | Index `ix_employee_history_employee_created` |
 | `employee_object_assignment_history` | Check `ck_employee_object_assignment_action`; Indizes `ix_employee_object_assignment_history_employee_created`, `ix_employee_object_assignment_history_object_created` |
+| `policy_items` | Checks `ck_policy_items_kind`, `ck_policy_items_title`, `ck_policy_items_repeat_interval`, `ck_policy_items_reminder_days`, `ck_policy_items_instruction_repeat`; Index `ix_policy_items_scope_kind` |
+| `policy_versions` | Unique `uq_policy_versions_number(policy_item_id, version_number)`; Checks `ck_policy_versions_number`, `ck_policy_versions_content`, `ck_policy_versions_validity`; Index `ix_policy_versions_validity`; PostgreSQL-Trigger `policy_versions_append_only` blockiert UPDATE/DELETE |
+| `policy_version_closures` | PK/FK `policy_version_id`; PostgreSQL-Trigger `policy_version_closures_append_only` blockiert UPDATE/DELETE; beendet offene Versionen beim Anlegen einer chronologisch nachfolgenden Fassung, ohne deren Inhalt zu ändern |
+| `policy_assignments` | Unique `uq_policy_assignments_cycle(employee_id, policy_version_id, cycle_number)`; Check `ck_policy_assignments_cycle`; Indizes `ix_policy_assignments_employee_due`, `ix_policy_assignments_version_employee`; PostgreSQL-Trigger `policy_assignments_append_only` blockiert UPDATE/DELETE |
+| `policy_receipts` | Unique `uq_policy_receipts_assignment_action(assignment_id, action)`; Check `ck_policy_receipts_action`; Index `ix_policy_receipts_created`; PostgreSQL-Trigger `policy_receipts_append_only` blockiert UPDATE/DELETE |
 | `schedule_settings` | Checks `ck_schedule_settings_singleton` (`id = 1`), `ck_schedule_settings_rest_hours` (0–168) |
 | `employee_availability_windows` | Checks `ck_employee_availability_weekday` (0–6), `ck_employee_availability_window_time_order`; Index `ix_employee_availability_windows_employee_weekday` |
 | `schedule_availability_requests` | Checks `ck_schedule_availability_requests_kind` (`preferred/blocked`), `ck_schedule_availability_requests_status` (`open/accepted/rejected`), `ck_schedule_availability_requests_time_order`; Indizes `ix_schedule_availability_requests_employee_time`, `ix_schedule_availability_requests_status_time` |
@@ -390,6 +415,12 @@ erDiagram
     EMPLOYEES ||--o{ EMPLOYEE_HISTORY : history
     EMPLOYEES ||--o{ EMPLOYEE_OBJECT_ASSIGNMENT_HISTORY : assignment_history
     OBJECTS ||--o{ EMPLOYEE_OBJECT_ASSIGNMENT_HISTORY : assignment_history
+    POLICY_ITEMS ||--o{ POLICY_VERSIONS : immutable_versions
+    POLICY_VERSIONS ||--o| POLICY_VERSION_CLOSURES : append_only_closure
+    POLICY_VERSIONS ||--o{ POLICY_ASSIGNMENTS : assigned_version
+    EMPLOYEES ||--o{ POLICY_ASSIGNMENTS : assigned_employee
+    POLICY_ASSIGNMENTS ||--o{ POLICY_RECEIPTS : read_and_confirm
+    OBJECTS o|--o{ POLICY_ITEMS : optional_object_scope
     EMPLOYEES ||--o{ SCHEDULE_SHIFTS : scheduled
     EMPLOYEES ||--o{ EMPLOYEE_AVAILABILITY_WINDOWS : availability
     EMPLOYEES ||--o{ SCHEDULE_AVAILABILITY_REQUESTS : requests
@@ -506,7 +537,9 @@ Die Migration `0033_encrypted_document_storage` wurde mit PR #57 in `main` integ
 
 Neue Schemaänderungen benötigen eine neue Alembic-Migration. Ein `Base.metadata.create_all` ist nur in Tests zulässig. Migrationen sollten vor Rollout in PostgreSQL geprüft werden; Daten-destruktive Downgrades sind keine sichere Rollbackstrategie. Release-Migrationen und verschlüsselte Backup-/Restore-Skripte sind vorhanden; produktive Rollouts und Wiederherstellungen sind nicht unabhängig nachgewiesen.
 
-Historischer Hinweis zum ursprünglichen Outbox-PR: PR #39 und die Dokumentationsänderung PR #25 sind gemergt; PR #40 ist ebenfalls gemergt und Bestandteil von `main`. PR #39 fügte `0024_notification_outbox_worker` mit einer Attempt-Tabelle sowie Lock-/Lease-Feldern und einem Index hinzu. Issue #7 bleibt trotz des Billing-Merges offen zur fachlichen Abnahme. Die Migrationskette reicht inzwischen bis `0035_worker_monitoring`; der aktuelle Live-PR- und Migrationsstatus steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
+Historischer Hinweis zum ursprünglichen Outbox-PR: PR #39 und die Dokumentationsänderung PR #25 sind gemergt; PR #40 ist ebenfalls gemergt und Bestandteil von `main`. PR #39 fügte `0024_notification_outbox_worker` mit einer Attempt-Tabelle sowie Lock-/Lease-Feldern und einem Index hinzu. Issue #7 bleibt trotz des Billing-Merges offen zur fachlichen Abnahme. `main` reicht inzwischen bis `0036_billing_approval_automation`; der aktuelle Live-PR- und Migrationsstatus steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
+
+Der aktuelle Stack setzt die späteren PR-Revisionen linear fort: `0036_billing_approval_automation` folgt auf `0035_worker_monitoring`, `0037_object_qual_requirements` auf 0036 und `0038_digital_policies` auf 0037. Revision 0038 ergänzt die vier Policy-Tabellen, die Berechtigungen `policies.manage`/`policies.read_own` und Append-only-Trigger. Sie ist nicht Bestandteil von `main`, solange der Stack nicht gemergt wurde.
 
 ## Datenhaltungsgrenzen
 
@@ -521,12 +554,13 @@ Historischer Hinweis zum ursprünglichen Outbox-PR: PR #39 und die Dokumentation
 - `physical_keys` hält Nummer, Beschreibung, Pflichtobjekt, Status und optionalen aktuellen Mitarbeiter; `key_movements` hält Ausgabe, Rückgabe, Verlust, Defekt und Inventur als append-only Historie. Änderungen am Schlüsselstatus, Bewegung und Audit werden transaktional gespeichert; der PostgreSQL-Trigger blockiert UPDATE/DELETE auf Bewegungen. Ausgabe verlangt aktive Mitarbeiter mit aktiver Objektzuweisung und bestätigter Quittierung. Die Quittierung ist keine qualifizierte elektronische Signatur oder ein physischer Verwahrnachweis. Freitext-Zutrittsangaben bestehender Objekte werden weder migriert noch als Schlüsselbestand übernommen.
 - `incidents` speichert objektbezogene Vorfälle mit verantwortlicher Person, Status, Frist und optionaler OWKS-Ereignisreferenz desselben Objekts. `incident_sensitive_details` trennt Hergang und Abschlussbericht; `incident_people` schützt Beteiligte/Zeugen; `incident_attachments` enthält nur private Speicherreferenz und Datei-Metadaten. Maßnahmen und Statuswechsel werden zusammen mit Audit und `incident_history` transaktional protokolliert. PostgreSQL-Trigger blockieren UPDATE/DELETE auf Verlauf, Personenbezügen und Dateireferenzen; privilegierte Datenbankadministration bleibt außerhalb der Anwendungsschutzgrenze. Dateiinhalte liegen im privaten Dokumentenspeicher, werden vor Ablage fail-closed mit ClamAV geprüft und über separate Berechtigungsprüfungen ausgeliefert. OWKS wird nur referenziert; es gibt keine automatische Aufgabenanlage, Benachrichtigung, Fristerinnerung oder Eskalationsregel.
 - `time_surcharge_calculations` speichert unveränderliche Zeit-/Regelsnapshots; es gibt keine Geldbetrags-Spalte. Geldberechnung ist nicht implementiert.
+- Dienstanweisungs-/Unterweisungsversionen und Zuweisungs-/Quittungszeilen bleiben mit `RESTRICT` referenzierbar und sind in PostgreSQL append-only. Der Anwendungscode verlangt zeitzonenbewusste Ein-/Ausgabezeitpunkte und speichert UTC; Gültigkeitsintervalle sind halboffen. Wiederholungs- und Erinnerungsvorlauf sind nur dann gesetzt, wenn sie explizit konfiguriert wurden. Erinnerung/Überfälligkeit wird beim API-Abruf berechnet; es erfolgt kein E-Mail-/Push-Versand.
 - Abwesenheitsdaten und sensible Personal-/Objektdaten sind personenbezogen/sensibel; Verschlüsselung at rest, Aufbewahrung und Löschung müssen für die konkrete Betriebsumgebung entschieden werden.
 - Lokale API-Tests laufen standardmäßig gegen SQLite. PostgreSQL-Constraints, Migrationen und konkurrierende Schreibvorgänge benötigen PostgreSQL-Prüfungen. Backup-/Restore-Skripte und ein synthetischer Restoretest in CI sind vorhanden; das belegt keine Wiederherstellung produktiver Sicherungen.
 
 ## Kundenportal-Erweiterung (PR #42)
 
-Der vorstehende Tabellen- und Migrationskatalog ist eine historische `main`-Momentaufnahme vom 09.11.2026 und endet daher absichtlich bei `0024_notification_outbox_worker`. PR #40 integrierte danach `0025_unique_incident_owks_event`; PR #42 integrierte die folgenden Portalrevisionen `0026`–`0028`. Spätere Migrationen ergänzen den aktuellen Head `0035_worker_monitoring`. Aktueller PR- und Migrationsstatus steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
+Der vorstehende Tabellen- und Migrationskatalog ist eine historische `main`-Momentaufnahme vom 09.11.2026 und endet daher absichtlich bei `0024_notification_outbox_worker`. PR #40 integrierte danach `0025_unique_incident_owks_event`; PR #42 integrierte die folgenden Portalrevisionen `0026`–`0028`. Spätere Migrationen ergänzen `main` bis `0036_billing_approval_automation`; dieser PR-Stack ergänzt danach `0037_object_qual_requirements` und `0038_digital_policies`. Aktueller PR- und Migrationsstatus steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
 | Revision | Vorgänger | Schemaänderung |
 |---|---|---|

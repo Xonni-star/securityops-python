@@ -327,7 +327,18 @@ def check_conflicts(
             )
         )
 
+    required_qualifications: dict[str, tuple[str, str]] = {}
     if required_qualification:
+        required_qualifications[required_qualification.casefold()] = (
+            required_qualification,
+            "qualification_missing",
+        )
+    for requirement in obj.qualification_requirements:
+        required_qualifications.setdefault(
+            requirement.casefold(),
+            (requirement, "object_qualification_missing"),
+        )
+    for qualification_name, conflict_code in required_qualifications.values():
         matching_qualification = db.scalar(
             select(EmployeeQualification.id)
             .where(
@@ -338,8 +349,8 @@ def check_conflicts(
                 EmployeeQualification.expires_on.is_(None)
                 | (EmployeeQualification.expires_on >= end_day),
                 or_(
-                    func.lower(EmployeeQualification.name) == required_qualification.lower(),
-                    func.lower(EmployeeQualification.category) == required_qualification.lower(),
+                    func.lower(EmployeeQualification.name) == qualification_name.lower(),
+                    func.lower(EmployeeQualification.category) == qualification_name.lower(),
                 ),
             )
             .limit(1)
@@ -347,8 +358,15 @@ def check_conflicts(
         if matching_qualification is None:
             conflicts.append(
                 ScheduleConflictRead(
-                    code="qualification_missing",
-                    message=f"Der gültige Qualifikationsnachweis „{required_qualification}“ fehlt.",
+                    code=conflict_code,
+                    message=(
+                        f"Der gültige Qualifikationsnachweis „{qualification_name}“ "
+                        + (
+                            "für das Objekt fehlt."
+                            if conflict_code == "object_qualification_missing"
+                            else "fehlt."
+                        )
+                    ),
                 )
             )
 
