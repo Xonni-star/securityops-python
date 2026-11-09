@@ -1169,7 +1169,8 @@ class EmployeeQualificationDocumentRead(BaseModel):
 
 
 EmployeeAbsenceType = Literal["vacation", "sick_leave", "other"]
-EmployeeAbsenceStatus = Literal["pending", "approved", "rejected"]
+EmployeeAbsenceStatus = Literal["pending", "approved", "rejected", "withdrawn"]
+EmployeeAbsenceManagedStatus = Literal["pending", "approved", "rejected"]
 
 
 class EmployeeAbsenceCreate(BaseModel):
@@ -1178,7 +1179,7 @@ class EmployeeAbsenceCreate(BaseModel):
     absence_type: EmployeeAbsenceType
     starts_on: date
     ends_on: date
-    status: EmployeeAbsenceStatus = "pending"
+    status: EmployeeAbsenceManagedStatus = "pending"
 
     @model_validator(mode="after")
     def end_date_must_not_precede_start(self):
@@ -1193,7 +1194,7 @@ class EmployeeAbsenceUpdate(BaseModel):
     absence_type: EmployeeAbsenceType | None = None
     starts_on: date | None = None
     ends_on: date | None = None
-    status: EmployeeAbsenceStatus | None = None
+    status: EmployeeAbsenceManagedStatus | None = None
 
     @field_validator("absence_type", "starts_on", "ends_on", "status")
     @classmethod
@@ -1275,7 +1276,7 @@ class EmployeeAvailabilityUpdate(BaseModel):
 
 
 ScheduleAvailabilityRequestKind = Literal["preferred", "blocked"]
-ScheduleAvailabilityRequestStatus = Literal["open", "accepted", "rejected"]
+ScheduleAvailabilityRequestStatus = Literal["open", "accepted", "rejected", "withdrawn"]
 
 
 class ScheduleAvailabilityRequestCreate(BaseModel):

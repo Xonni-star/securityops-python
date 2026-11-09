@@ -293,6 +293,11 @@ class NotificationOutbox(Base):
             name="ck_notification_outbox_status",
         ),
         CheckConstraint("attempt_count >= 0", name="ck_notification_outbox_attempt_count"),
+        CheckConstraint("failure_count >= 0", name="ck_notification_outbox_failure_count"),
+        CheckConstraint(
+            "manual_retry_count BETWEEN 0 AND 3",
+            name="ck_notification_outbox_manual_retry_count",
+        ),
         UniqueConstraint("dedupe_key", name="uq_notification_outbox_dedupe_key"),
         Index("ix_notification_outbox_status_available", "status", "available_at"),
     )
@@ -307,6 +312,10 @@ class NotificationOutbox(Base):
         String(20), default="pending", server_default=text("'pending'"), nullable=False
     )
     attempt_count: Mapped[int] = mapped_column(default=0, server_default=text("0"), nullable=False)
+    failure_count: Mapped[int] = mapped_column(default=0, server_default=text("0"), nullable=False)
+    manual_retry_count: Mapped[int] = mapped_column(
+        default=0, server_default=text("0"), nullable=False
+    )
     available_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
@@ -348,9 +357,115 @@ class NotificationOutboxAttempt(Base):
     )
 
 
+class AutomationRule(Base):
+    __tablename__ = "automation_rules"
+    __table_args__ = (
+        CheckConstraint(
+            "trigger_type IN ('task.assigned', 'task.status_changed', "
+            "'owks.missed_control', 'owks.deviation_reported', "
+            "'owks.offline_event_synced')",
+            name="ck_automation_rules_trigger_type",
+        ),
+        CheckConstraint(
+            "action_type = 'notify_event_recipients'",
+            name="ck_automation_rules_action_type",
+        ),
+        CheckConstraint("length(trim(name)) > 0", name="ck_automation_rules_name"),
+        Index("ix_automation_rules_trigger_active", "trigger_type", "is_active", "deleted_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    trigger_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    conditions: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
+    action_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        default=False, server_default=text("false"), nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+
+class AutomationRun(Base):
+    __tablename__ = "automation_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('condition_not_met', 'skipped_no_recipients', 'queued', "
+            "'succeeded', 'dead_letter')",
+            name="ck_automation_runs_status",
+        ),
+        CheckConstraint(
+            "manual_retry_count BETWEEN 0 AND 3", name="ck_automation_runs_manual_retry_count"
+        ),
+        UniqueConstraint("rule_id", "source_event_id", name="uq_automation_runs_rule_source"),
+        UniqueConstraint("action_event_id", name="uq_automation_runs_action_event"),
+        Index("ix_automation_runs_created", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    rule_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("automation_rules.id", ondelete="RESTRICT"), nullable=False
+    )
+    rule_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_event_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("notification_outbox.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    action_event_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("notification_outbox.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    trigger_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    last_error: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    manual_retry_count: Mapped[int] = mapped_column(
+        default=0, server_default=text("0"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+
+class NotificationWorkerHeartbeat(Base):
+    __tablename__ = "notification_worker_heartbeats"
+
+    worker_name: Mapped[str] = mapped_column(String(80), primary_key=True)
+    heartbeat_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
 class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
+        CheckConstraint(
+            "(task_id IS NOT NULL AND object_id IS NULL) "
+            "OR (task_id IS NULL AND object_id IS NOT NULL)",
+            name="ck_notifications_target",
+        ),
         UniqueConstraint("outbox_id", "recipient_id", name="uq_notifications_event_recipient"),
         Index("ix_notifications_recipient_created", "recipient_id", "created_at"),
     )
@@ -364,8 +479,11 @@ class Notification(Base):
     recipient_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    task_id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("tasks.id", ondelete="RESTRICT"), nullable=False
+    task_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tasks.id", ondelete="RESTRICT"), nullable=True
+    )
+    object_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="RESTRICT"), nullable=True
     )
     event_type: Mapped[str] = mapped_column(String(80), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -375,7 +493,8 @@ class Notification(Base):
     )
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     recipient: Mapped[User] = relationship()
-    task: Mapped[Task] = relationship()
+    task: Mapped[Task | None] = relationship()
+    object: Mapped["SecurityObject | None"] = relationship()
     outbox_event: Mapped[NotificationOutbox] = relationship()
 
 
@@ -581,6 +700,78 @@ class CustomerPortalDocumentGrantHistory(Base):
     grant_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("customer_portal_document_grants.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    actor_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class EmployeePortalDocumentGrant(Base):
+    __tablename__ = "employee_portal_document_grants"
+    __table_args__ = (
+        CheckConstraint(
+            "(revoked_at IS NULL AND revoked_by_id IS NULL) OR "
+            "(revoked_at IS NOT NULL AND revoked_by_id IS NOT NULL)",
+            name="ck_employee_portal_document_grants_revocation",
+        ),
+        Index(
+            "uq_employee_portal_document_grants_active",
+            "qualification_document_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("revoked_at IS NULL"),
+            sqlite_where=text("revoked_at IS NULL"),
+        ),
+        Index(
+            "ix_employee_portal_document_grants_employee",
+            "employee_id",
+            "granted_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    employee_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    qualification_document_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("employee_qualification_documents.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    granted_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    revoked_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EmployeePortalDocumentGrantHistory(Base):
+    __tablename__ = "employee_portal_document_grant_history"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('granted', 'revoked')",
+            name="ck_employee_portal_document_grant_history_action",
+        ),
+        Index("ix_employee_portal_document_grant_history_created", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    grant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("employee_portal_document_grants.id", ondelete="RESTRICT"),
         nullable=False,
     )
     actor_id: Mapped[UUID | None] = mapped_column(
@@ -1041,6 +1232,12 @@ class EmployeeQualificationDocument(Base):
             "length(trim(file_name)) > 0",
             name="ck_employee_qualification_documents_name",
         ),
+        CheckConstraint(
+            "(storage_key IS NULL AND content IS NOT NULL) OR "
+            "(storage_key IS NOT NULL AND content IS NULL)",
+            name="ck_employee_qualification_documents_storage",
+        ),
+        UniqueConstraint("storage_key", name="uq_employee_qualification_documents_storage_key"),
         Index(
             "ix_employee_qualification_documents_qualification_created",
             "qualification_id",
@@ -1059,7 +1256,8 @@ class EmployeeQualificationDocument(Base):
     media_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    storage_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     uploaded_by_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -1395,7 +1593,7 @@ class EmployeeAbsence(Base):
             name="ck_employee_absences_type",
         ),
         CheckConstraint(
-            "status IN ('pending', 'approved', 'rejected')",
+            "status IN ('pending', 'approved', 'rejected', 'withdrawn')",
             name="ck_employee_absences_status",
         ),
         CheckConstraint("ends_on >= starts_on", name="ck_employee_absences_dates"),
@@ -1537,7 +1735,7 @@ class ScheduleAvailabilityRequest(Base):
             name="ck_schedule_availability_requests_kind",
         ),
         CheckConstraint(
-            "status IN ('open', 'accepted', 'rejected')",
+            "status IN ('open', 'accepted', 'rejected', 'withdrawn')",
             name="ck_schedule_availability_requests_status",
         ),
         CheckConstraint(
@@ -2593,6 +2791,12 @@ class OWKSAttachment(Base):
         CheckConstraint(
             "size_bytes > 0 AND size_bytes <= 10485760", name="ck_owks_attachments_size"
         ),
+        CheckConstraint(
+            "(storage_key IS NULL AND content IS NOT NULL) OR "
+            "(storage_key IS NOT NULL AND content IS NULL)",
+            name="ck_owks_attachments_storage",
+        ),
+        UniqueConstraint("storage_key", name="uq_owks_attachments_storage_key"),
         Index("ix_owks_attachments_event_created", "event_id", "created_at"),
     )
 
@@ -2604,7 +2808,8 @@ class OWKSAttachment(Base):
     media_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    storage_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     uploaded_by_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )

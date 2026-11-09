@@ -451,5 +451,5 @@ def test_postgresql_inventory_events_are_append_only_and_data_safe_downgrade(
         ):
             migration.downgrade()
         connection.rollback()
-        assert context.get_current_revision() == "0030_inventory_management"
+        assert context.get_current_revision() == "0035_worker_monitoring"
         assert inspect(connection).has_table("inventory_assets")

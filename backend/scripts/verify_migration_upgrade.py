@@ -1,4 +1,4 @@
-"""Verify the portal migration chain upgrades a database containing existing data."""
+"""Verify the migration chain upgrades a database containing existing data."""
 
 import os
 import subprocess
@@ -20,6 +20,11 @@ DOCUMENT_GRANTS_REVISION = "0027_customer_document_grants"
 CUSTOMER_REQUESTS_REVISION = "0028_customer_portal_requests"
 AUDIT_REVISION = "0029_audit_integrity"
 INVENTORY_REVISION = "0030_inventory_management"
+AUTOMATION_REVISION = "0031_safe_automations"
+EMPLOYEE_PORTAL_REVISION = "0032_employee_portal"
+DOCUMENT_STORAGE_REVISION = "0033_encrypted_document_storage"
+OWKS_AUTOMATION_REVISION = "0034_owks_automation_events"
+MONITORING_REVISION = "0035_worker_monitoring"
 
 
 def admin_connection_options() -> dict[str, str | int]:
@@ -62,7 +67,35 @@ def verify_revision_chain() -> None:
     inventory_revision = script.get_revision(INVENTORY_REVISION)
     if inventory_revision is None or inventory_revision.down_revision != AUDIT_REVISION:
         raise RuntimeError(f"{INVENTORY_REVISION} folgt nicht auf {AUDIT_REVISION}.")
-    if script.get_heads() != [INVENTORY_REVISION]:
+    automation_revision = script.get_revision(AUTOMATION_REVISION)
+    if automation_revision is None or automation_revision.down_revision != INVENTORY_REVISION:
+        raise RuntimeError(f"{AUTOMATION_REVISION} folgt nicht auf {INVENTORY_REVISION}.")
+    employee_portal_revision = script.get_revision(EMPLOYEE_PORTAL_REVISION)
+    if (
+        employee_portal_revision is None
+        or employee_portal_revision.down_revision != AUTOMATION_REVISION
+    ):
+        raise RuntimeError(f"{EMPLOYEE_PORTAL_REVISION} folgt nicht auf {AUTOMATION_REVISION}.")
+    document_storage_revision = script.get_revision(DOCUMENT_STORAGE_REVISION)
+    if (
+        document_storage_revision is None
+        or document_storage_revision.down_revision != EMPLOYEE_PORTAL_REVISION
+    ):
+        raise RuntimeError(
+            f"{DOCUMENT_STORAGE_REVISION} folgt nicht auf {EMPLOYEE_PORTAL_REVISION}."
+        )
+    owks_automation_revision = script.get_revision(OWKS_AUTOMATION_REVISION)
+    if (
+        owks_automation_revision is None
+        or owks_automation_revision.down_revision != DOCUMENT_STORAGE_REVISION
+    ):
+        raise RuntimeError(
+            f"{OWKS_AUTOMATION_REVISION} folgt nicht auf {DOCUMENT_STORAGE_REVISION}."
+        )
+    monitoring_revision = script.get_revision(MONITORING_REVISION)
+    if monitoring_revision is None or monitoring_revision.down_revision != OWKS_AUTOMATION_REVISION:
+        raise RuntimeError(f"{MONITORING_REVISION} folgt nicht auf {OWKS_AUTOMATION_REVISION}.")
+    if script.get_heads() != [MONITORING_REVISION]:
         raise RuntimeError(f"Unerwartete Alembic-Heads: {script.get_heads()}")
 
 
@@ -103,6 +136,7 @@ def main() -> None:
         )
         engine = create_engine(database_url)
         audit_id = uuid4()
+        outbox_id = uuid4()
         with engine.begin() as connection:
             customer_id = connection.execute(
                 text(
@@ -134,6 +168,35 @@ def main() -> None:
                 ),
                 {"id": audit_id},
             )
+            connection.execute(
+                text(
+                    "INSERT INTO notification_outbox "
+                    "(id, dedupe_key, event_type, aggregate_type, aggregate_id, payload, "
+                    "status, attempt_count, available_at) "
+                    "VALUES (:id, :dedupe_key, 'task.assigned', 'task', :aggregate_id, "
+                    "'{}'::json, 'pending', 2, now())"
+                ),
+                {
+                    "id": outbox_id,
+                    "dedupe_key": f"ci-migration:{outbox_id}",
+                    "aggregate_id": uuid4(),
+                },
+            )
+            for attempt_number in (1, 2):
+                connection.execute(
+                    text(
+                        "INSERT INTO notification_outbox_attempts "
+                        "(id, outbox_id, attempt_number, event) "
+                        "VALUES (:id, :outbox_id, :attempt_number, 'claimed'), "
+                        "(:retry_id, :outbox_id, :attempt_number, 'retry_scheduled')"
+                    ),
+                    {
+                        "id": uuid4(),
+                        "retry_id": uuid4(),
+                        "outbox_id": outbox_id,
+                        "attempt_number": attempt_number,
+                    },
+                )
         engine.dispose()
 
         run_migration("head", database_name)
@@ -141,9 +204,9 @@ def main() -> None:
         with engine.connect() as connection:
             if (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                != INVENTORY_REVISION
+                != MONITORING_REVISION
             ):
-                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0030 geendet.")
+                raise RuntimeError("Die Upgrade-Kette hat nicht beim Monitoring-Head geendet.")
             if (
                 connection.execute(
                     text("SELECT company_name FROM customers WHERE id = :id"),
@@ -179,18 +242,40 @@ def main() -> None:
                 "customer_portal_request_messages",
                 "customer_portal_request_attachments",
                 "customer_portal_request_history",
+                "employee_portal_document_grants",
+                "employee_portal_document_grant_history",
             ):
                 if not connection.execute(
                     text("SELECT to_regclass(:table_name) IS NOT NULL"),
                     {"table_name": table_name},
                 ).scalar_one():
                     raise RuntimeError(f"Portal-Tabelle {table_name} fehlt nach dem Upgrade.")
+            for table_name in (
+                "employee_qualification_documents",
+                "owks_attachments",
+            ):
+                if (
+                    connection.execute(
+                        text(
+                            "SELECT count(*) FROM information_schema.columns "
+                            "WHERE table_schema = 'public' AND table_name = :table_name "
+                            "AND column_name = 'storage_key' AND is_nullable = 'YES'"
+                        ),
+                        {"table_name": table_name},
+                    ).scalar_one()
+                    != 1
+                ):
+                    raise RuntimeError(f"Verschlüsselte Dateireferenz fehlt in {table_name}.")
             for table_name in ("inventory_assets", "inventory_events"):
                 if not connection.execute(
                     text("SELECT to_regclass(:table_name) IS NOT NULL"),
                     {"table_name": table_name},
                 ).scalar_one():
                     raise RuntimeError(f"Inventartabelle {table_name} fehlt nach dem Upgrade.")
+            if not connection.execute(
+                text("SELECT to_regclass('notification_worker_heartbeats') IS NOT NULL")
+            ).scalar_one():
+                raise RuntimeError("Die Notification-Worker-Heartbeat-Tabelle fehlt.")
             inventory_permissions = connection.execute(
                 text(
                     "SELECT count(*) FROM permissions "
@@ -199,6 +284,20 @@ def main() -> None:
             ).scalar_one()
             if inventory_permissions != 3:
                 raise RuntimeError("Inventarberechtigungen wurden nicht angelegt.")
+            monitoring_roles = (
+                connection.execute(
+                    text(
+                        "SELECT r.code FROM role_permissions rp "
+                        "JOIN roles r ON r.id = rp.role_id "
+                        "JOIN permissions p ON p.id = rp.permission_id "
+                        "WHERE p.code = 'system.monitoring.read' ORDER BY r.code"
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if monitoring_roles != ["administrator", "operations"]:
+                raise RuntimeError("Die Monitoring-Berechtigung ist falschen Rollen zugewiesen.")
             if (
                 connection.execute(
                     text(
@@ -209,6 +308,64 @@ def main() -> None:
                 != 1
             ):
                 raise RuntimeError("Der Inventar-Append-only-Trigger wurde nicht angelegt.")
+            for table_name in ("automation_rules", "automation_runs"):
+                if not connection.execute(
+                    text("SELECT to_regclass(:table_name) IS NOT NULL"),
+                    {"table_name": table_name},
+                ).scalar_one():
+                    raise RuntimeError(f"Automatisierungstabelle {table_name} fehlt.")
+            if (
+                connection.execute(
+                    text(
+                        "SELECT count(*) FROM role_permissions rp "
+                        "JOIN roles r ON r.id = rp.role_id "
+                        "JOIN permissions p ON p.id = rp.permission_id "
+                        "WHERE r.code = 'employee' "
+                        "AND p.code IN ('documents.read', 'documents.download')"
+                    )
+                ).scalar_one()
+                != 0
+            ):
+                raise RuntimeError(
+                    "Die Mitarbeiterrolle besitzt weiterhin generische Dokumentrechte."
+                )
+            if (
+                connection.execute(
+                    text(
+                        "SELECT count(*) FROM pg_trigger "
+                        "WHERE tgname = 'employee_portal_document_grant_history_append_only' "
+                        "AND NOT tgisinternal"
+                    )
+                ).scalar_one()
+                != 1
+            ):
+                raise RuntimeError("Der Mitarbeiterdokument-Freigabeverlauf ist nicht append-only.")
+            if (
+                connection.execute(
+                    text("SELECT count(*) FROM permissions WHERE code = 'automations.manage'")
+                ).scalar_one()
+                != 1
+            ):
+                raise RuntimeError("Die Automatisierungsberechtigung wurde nicht angelegt.")
+            if (
+                connection.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.columns "
+                        "WHERE table_schema = 'public' AND table_name = 'notification_outbox' "
+                        "AND column_name IN ('failure_count', 'manual_retry_count')"
+                    )
+                ).scalar_one()
+                != 2
+            ):
+                raise RuntimeError("Die Outbox-Wiederholungszähler fehlen.")
+            if (
+                connection.execute(
+                    text("SELECT failure_count FROM notification_outbox WHERE id = :id"),
+                    {"id": outbox_id},
+                ).scalar_one()
+                != 2
+            ):
+                raise RuntimeError("Bestehende Outbox-Fehlversuche wurden nicht übernommen.")
             if (
                 connection.execute(
                     text("SELECT action FROM audit_logs WHERE id = :id"),
@@ -245,6 +402,10 @@ def main() -> None:
             "password": os.environ["POSTGRES_RUNTIME_PASSWORD"],
         }
         with psycopg.connect(**runtime_options) as connection:
+            if connection.execute(
+                "SELECT has_table_privilege('securityops_runtime', 'owks_attachments', 'UPDATE')"
+            ).fetchone()[0]:
+                raise RuntimeError("Die Laufzeitrolle darf OWKS-Anhänge nicht aktualisieren.")
             runtime_audit_id = uuid4()
             connection.execute(
                 """

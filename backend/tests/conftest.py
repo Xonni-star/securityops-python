@@ -3,6 +3,11 @@ from collections.abc import Generator
 
 os.environ.setdefault("POSTGRES_PASSWORD", "test-only-not-for-production")
 os.environ.setdefault("MFA_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+os.environ.setdefault(
+    "DOCUMENT_ENCRYPTION_KEYS",
+    '{"test-v1":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}',
+)
+os.environ.setdefault("DOCUMENT_ENCRYPTION_ACTIVE_VERSION", "test-v1")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,11 +16,14 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.config import get_settings
 from app.database import get_db
 from app.identity_api import password_hasher
 from app.main import app
 from app.models import (
     AuditLog,
+    AutomationRule,
+    AutomationRun,
     Base,
     BillingExport,
     BillingInvoice,
@@ -48,6 +56,8 @@ from app.models import (
     EmployeeAvailabilityWindow,
     EmployeeHistory,
     EmployeeObjectAssignmentHistory,
+    EmployeePortalDocumentGrant,
+    EmployeePortalDocumentGrantHistory,
     EmployeeQualification,
     EmployeeQualificationDocument,
     EmployeeSensitiveDetails,
@@ -63,6 +73,7 @@ from app.models import (
     Notification,
     NotificationOutbox,
     NotificationOutboxAttempt,
+    NotificationWorkerHeartbeat,
     ObjectAddress,
     ObjectAssignment,
     ObjectContact,
@@ -135,6 +146,11 @@ def mock_upload_scanner(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.upload_scanning.scan_upload", lambda _content: None)
 
 
+@pytest.fixture(autouse=True)
+def isolate_document_storage(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "document_storage_path", tmp_path)
+
+
 @pytest.fixture()
 def client() -> Generator[TestClient, None, None]:
     limiter.reset()
@@ -153,6 +169,7 @@ def client() -> Generator[TestClient, None, None]:
                 "notification_outbox_attempts",
                 "customer_portal_link_history",
                 "customer_portal_document_grant_history",
+                "employee_portal_document_grant_history",
                 "customer_portal_request_messages",
                 "customer_portal_request_attachments",
                 "customer_portal_request_history",
@@ -165,8 +182,11 @@ def client() -> Generator[TestClient, None, None]:
         db.execute(delete(TaskComment))
         db.execute(delete(TaskHistory))
         db.execute(delete(Notification))
+        db.execute(delete(AutomationRun))
+        db.execute(delete(AutomationRule))
         db.execute(delete(NotificationOutboxAttempt))
         db.execute(delete(NotificationOutbox))
+        db.execute(delete(NotificationWorkerHeartbeat))
         db.execute(delete(Task))
         db.execute(delete(IncidentHistory))
         db.execute(delete(IncidentPerson))
@@ -199,6 +219,8 @@ def client() -> Generator[TestClient, None, None]:
         db.execute(delete(DocumentReadReceipt))
         db.execute(delete(CustomerPortalDocumentGrantHistory))
         db.execute(delete(CustomerPortalDocumentGrant))
+        db.execute(delete(EmployeePortalDocumentGrantHistory))
+        db.execute(delete(EmployeePortalDocumentGrant))
         db.execute(delete(CustomerPortalRequestHistory))
         db.execute(delete(CustomerPortalRequestAttachment))
         db.execute(delete(CustomerPortalRequestMessage))
@@ -254,6 +276,7 @@ def client() -> Generator[TestClient, None, None]:
                 "notification_outbox_attempts",
                 "customer_portal_link_history",
                 "customer_portal_document_grant_history",
+                "employee_portal_document_grant_history",
                 "customer_portal_request_messages",
                 "customer_portal_request_attachments",
                 "customer_portal_request_history",
@@ -337,6 +360,8 @@ def client() -> Generator[TestClient, None, None]:
             "tasks.assign",
             "tasks.manage_all",
             "notifications.read_own",
+            "automations.manage",
+            "system.monitoring.read",
             "keys.read",
             "keys.manage",
             "keys.move",
@@ -444,6 +469,12 @@ def client() -> Generator[TestClient, None, None]:
                 "contracts.manage_reminders",
             ),
         )
+        operations = get_or_create_role(
+            "operations",
+            "Betrieb",
+            "Betriebs-Testrolle",
+            ("system.monitoring.read",),
+        )
         get_or_create_role(
             "employee",
             "Mitarbeiter",
@@ -546,6 +577,15 @@ def client() -> Generator[TestClient, None, None]:
                 full_name="Test Geschäftsführung",
                 password_hash=password_hasher.hash("management-test-passwort-2026"),
                 roles=[management],
+            )
+        )
+        db.add(
+            User(
+                username="operations",
+                email="operations@example.com",
+                full_name="Test Betrieb",
+                password_hash=password_hasher.hash("operations-test-passwort-2026"),
+                roles=[operations],
             )
         )
         db.commit()

@@ -6,6 +6,7 @@
 |---|---|---|
 | GET | `/health/live` | öffentlich, Prozessstatus |
 | GET | `/health/ready` | öffentlich, Datenbankverbindung und in Produktion Redis |
+| GET | `/api/v1/monitoring/notifications` | `system.monitoring.read` (`administrator`, `operations`); Worker-Heartbeat und datensparsame Outbox-/Dead-Letter-Zählungen |
 | POST | `/api/v1/auth/login` | öffentlich, 5/min je vertrauenswürdiger Client-IP; MFA- oder Wiederherstellungscode falls aktiviert, in Produktion gemeinsam über Redis |
 | GET | `/api/v1/auth/me` | angemeldete Sitzung |
 | POST | `/api/v1/auth/logout` | angemeldet + CSRF |
@@ -144,6 +145,8 @@ Dieses API-Inventar ist eine historische Momentaufnahme vom 09.11.2026 auf Basis
 Außer `/health/live`, `/health/ready` und `/api/v1/auth/login` sind Endpunkte sitzungsgebunden. Schreibende authentifizierte Requests benötigen zusätzlich den CSRF-Cookie und `X-CSRF-Token` mit demselben Tokenwert; die Sitzung enthält nur Token-Hashes. „Scope“ meint eine zusätzliche serverseitige Bereichsprüfung, nicht ein Ersatzrecht. Die Rechtedaten werden aus Rollen im Backend geladen.
 
 **Allgemeine Fehler:** fehlende/ungültige Sitzung `401`; fehlendes Recht oder CSRF-Fehler `403`; fehlende Ressource bzw. bei Scope-Schutz teils absichtlich verborgene Ressource `404`; Status-/Integritätskonflikt häufig `409`; Validierungsfehler `422`. Login-Limit `429`. Health-Readiness bei DB- oder Redis-Ausfall `503`. Uploads können bei Malware-Erkennung `422`, bei Überschreiten des Scannerlimits `413` sowie bei Scanner-/Protokollfehlern, Timeout oder Nichterreichbarkeit `503` liefern; Details: [`UPLOAD_SECURITY.md`](UPLOAD_SECURITY.md). Nicht jede dieser Antworten ist im OpenAPI-Schema als eigene Response modelliert; `HTTPValidationError`/`422` ist dort für viele validierte Parameter und Bodies ausgewiesen.
+
+`GET /api/v1/monitoring/notifications` erfordert eine angemeldete Sitzung und `system.monitoring.read` (Administrator oder Betrieb). Ein fehlender Worker-Heartbeat wird als `unknown`, ein älterer als 90 Sekunden als `stale` gemeldet. Die Antwort enthält ausschließlich Zeitstempel und aggregierte Outbox-Zahlen, keine Payloads, Empfänger, Ereignis-IDs oder Fehlertexte. Der Endpunkt ist für bedarfsgerechte Betriebsabfragen gedacht, nicht für häufiges Polling.
 
 `GET /api/v1/...`-Antworten sind JSON, sofern unten nicht CSV/Datei steht. `[]` bedeutet JSON-Array, `Page` paginierte Antwort. Body-Namen verweisen auf Pydantic-Schemas in `backend/app/schemas.py`; Upload nutzt multipart/form-data. Erfolgsstatus und Response-Schema folgen dem OpenAPI-Output. Parameter in der Spalte **Eingabe** sind zusätzliche Queryparameter und JSON-/Multipart-Bodys; Pfad-IDs stehen im jeweiligen Pfad.
 
@@ -442,10 +445,24 @@ Aufgaben-, Kommentar-, Verlauf-, Audit- und die erfassten Benachrichtigungsände
 
 | Methode und Route | Recht / Bereich | Eingabe | Erfolg / Response | Wesentliche Fehler |
 |---|---|---|---|---|
-| `GET /api/v1/notifications` | `notifications.read_own` und ein Task-Leserecht; zusätzlich Empfänger-ID und Aufgabenbereich | `unread_only` (bool, Standard `false`), `limit` (1–100, Standard 25), `offset` (Standard 0) | `200 NotificationPage` mit Items, Gesamtzahl und ungelesener Anzahl | `401`, `403`, `422` |
-| `PATCH /api/v1/notifications/{notification_id}/read` | `notifications.read_own` und ein Task-Leserecht; nur eigene, sichtbare Einträge + CSRF | UUID-Pfad `notification_id` | `200 NotificationRead`; wiederholtes Markieren ist idempotent | `401`, `403`, `404` fremder/nicht sichtbarer/unbekannter Eintrag |
+| `GET /api/v1/notifications` | `notifications.read_own` und ein Task- oder OWKS-Leserecht; zusätzlich Empfänger-ID sowie Aufgaben- oder aktuelle Objektzuweisung | `unread_only` (bool, Standard `false`), `limit` (1–100, Standard 25), `offset` (Standard 0) | `200 NotificationPage` mit Items, Gesamtzahl und ungelesener Anzahl; `task_id`/`object_id` kennzeichnen genau einen Bezug | `401`, `403`, `422` |
+| `PATCH /api/v1/notifications/{notification_id}/read` | `notifications.read_own` und ein Task- oder OWKS-Leserecht; nur eigene, aktuell sichtbare Einträge + CSRF | UUID-Pfad `notification_id` | `200 NotificationRead`; wiederholtes Markieren ist idempotent | `401`, `403`, `404` fremder/nicht sichtbarer/unbekannter Eintrag |
 
-Die Inbox enthält aktuell nur Aufgaben-Zuweisungs- und Statusänderungsereignisse. Aufgabenänderung, Historie, Audit und Outbox-Ereignis werden transaktional gespeichert; der separate Worker erzeugt Empfänger-Inbox-Einträge anschließend idempotent und schließt das Outbox-Ereignis atomar ab. Migration `0024_notification_outbox_worker` ergänzt Claim-/Lease-Felder und append-only Attempt-Historie. Der Worker stellt keine zusätzlichen HTTP-Endpunkte bereit; E-Mail/Push, Task-Erinnerungen/Eskalationen und Ereignisse aus anderen Modulen sind nicht enthalten. Details: [`NOTIFICATIONS.md`](NOTIFICATIONS.md).
+Die Inbox enthält Aufgaben-Zuweisungs- und Statusänderungsereignisse sowie daraus erzeugte sichere Automatisierungsbenachrichtigungen. Aufgabenänderung, Historie, Audit und Outbox-Ereignis werden transaktional gespeichert; der separate Worker erzeugt Empfänger-Inbox-Einträge anschließend idempotent und schließt das Outbox-Ereignis atomar ab. OWKS-Automationsbenachrichtigungen sind objektgebunden, werden nur an aktive Benutzer mit aktueller Objektzuweisung ausgeliefert und enthalten keine OWKS-Beschreibung oder Hergangsdaten. Migration `0024_notification_outbox_worker` ergänzt Claim-/Lease-Felder und append-only Attempt-Historie. E-Mail/Push und Task-Erinnerungen/Eskalationen sind nicht enthalten. Details: [`NOTIFICATIONS.md`](NOTIFICATIONS.md).
+
+## Automatisierungen
+
+| Methode und Route | Recht / Bereich | Eingabe | Erfolg / Response | Wesentliche Fehler |
+|---|---|---|---|---|
+| `GET /api/v1/automations/rules` | `automations.manage`; standardmäßig Administrator | – | `200 AutomationRuleRead[]` | `401`, `403` |
+| `POST /api/v1/automations/rules` | `automations.manage` + CSRF | Name, Beschreibung, registrierter Aufgaben- oder OWKS-Trigger, optionale Statusbedingung nur für Aufgaben, festes `notify_event_recipients` | `201 AutomationRuleRead`; Regel anfangs deaktiviert | `401`, `403`, `422` |
+| `GET/PATCH/DELETE /api/v1/automations/rules/{rule_id}` | `automations.manage`; Schreibzugriffe + CSRF | UUID und typisierte Regeländerung / leer | `200 AutomationRuleRead`; DELETE deaktiviert weich und antwortet `204` | `401`, `403`, `404`, `422` |
+| `GET /api/v1/automations/runs` | `automations.manage`; `limit` 1–100, `offset` | – | `200 AutomationRunPage`, inklusive bereinigter Outbox-Versuchshistorie | `401`, `403`, `422` |
+| `GET /api/v1/automations/outbox-events` | `automations.manage`; `limit` 1–100 | – | `200 AutomationOutboxEventPage` für registrierte Dead-Letter-Ereignisse | `401`, `403`, `422` |
+| `POST /api/v1/automations/runs/{run_id}/retry` | `automations.manage` + CSRF | UUID eines fehlgeschlagenen Laufs | `202`; Aktion erneut eingereiht | `401`, `403`, `404`, `409` |
+| `POST /api/v1/automations/outbox-events/{event_id}/retry` | `automations.manage` + CSRF | UUID eines fehlgeschlagenen registrierten Outbox-Ereignisses | `202`; Ereignis erneut eingereiht | `401`, `403`, `404`, `409` |
+
+Registriert sind `task.assigned`, `task.status_changed`, `owks.missed_control`, `owks.deviation_reported` und `owks.offline_event_synced`; die optionale Bedingung vergleicht nur bei Aufgaben-Triggern den Aufgabenstatus. OWKS-Empfänger stammen ausschließlich aus aktiven Objektzuweisungen. OWKS-Payloads sind versioniert und strikt validiert; Automationsbenachrichtigungen enthalten keine OWKS-Beschreibungen oder Hergangsdaten und lösen keine weitere Regel aus. Kontrollgangstart/-ende, unvollständige Rundgänge, weitere Fachtrigger, freie Regeln/Ausdrücke, externe Kanäle und rechtlich oder finanziell relevante Zustandsänderungen sind nicht implementiert. Wiederholungen sind je Outbox-Ereignis auf drei manuelle Versuche begrenzt. Siehe [`AUTOMATIONS.md`](AUTOMATIONS.md).
 
 ## Schlüsselverwaltung
 

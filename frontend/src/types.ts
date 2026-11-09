@@ -253,7 +253,8 @@ export interface ControlRoom {
 
 export type EmployeeStatus = "active" | "inactive" | "leave" | "terminated";
 export type EmployeeAbsenceType = "vacation" | "sick_leave" | "other";
-export type EmployeeAbsenceStatus = "pending" | "approved" | "rejected";
+export type EmployeeAbsenceStatus = "pending" | "approved" | "rejected" | "withdrawn";
+export type EmployeeAbsenceManagedStatus = "pending" | "approved" | "rejected";
 export type ScheduleShiftStatus = "draft" | "published" | "cancelled";
 export type TimeEntryStatus =
   | "open"
@@ -541,7 +542,7 @@ export interface EmployeePortalTimeOverview {
 export type EmployeePortalAbsenceType = EmployeeAbsenceType;
 
 export interface EmployeePortalRequestHistory {
-  event: "requested" | "updated" | "approved" | "accepted" | "rejected";
+  event: "requested" | "updated" | "approved" | "accepted" | "rejected" | "withdrawn";
   occurred_at: string;
 }
 
@@ -567,6 +568,33 @@ export interface EmployeePortalAvailabilityRequest {
   updated_at: string;
   reviewed_at: string | null;
   history: EmployeePortalRequestHistory[];
+}
+
+export interface EmployeePortalDocument {
+  grant_id: string;
+  employee_id: string;
+  qualification_id: string;
+  document_id: string;
+  qualification_name: string;
+  version: number;
+  file_name: string;
+  media_type: "application/pdf" | "image/jpeg" | "image/png";
+  size_bytes: number;
+  granted_at: string;
+}
+
+export interface EmployeePortalDocumentGrant {
+  id: string;
+  employee_id: string;
+  user_id: string;
+  qualification_document_id: string;
+  qualification_name: string;
+  version: number;
+  file_name: string;
+  granted_by_id: string | null;
+  granted_at: string;
+  revoked_by_id: string | null;
+  revoked_at: string | null;
 }
 
 export interface EmployeePage {
@@ -672,6 +700,72 @@ export interface AuthUser {
   is_active: boolean;
   roles: string[];
   permissions: string[];
+}
+
+export type AutomationTrigger =
+  | "task.assigned"
+  | "task.status_changed"
+  | "owks.missed_control"
+  | "owks.deviation_reported"
+  | "owks.offline_event_synced";
+export type AutomationTaskStatus = TaskStatus;
+
+export interface AutomationRule {
+  id: string;
+  name: string;
+  description: string | null;
+  trigger_type: AutomationTrigger;
+  conditions: { status?: AutomationTaskStatus };
+  action_type: "notify_event_recipients";
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AutomationAttempt {
+  attempt_number: number;
+  event: "claimed" | "succeeded" | "retry_scheduled" | "dead_lettered";
+  error_code: string | null;
+  created_at: string;
+}
+
+export interface AutomationRun {
+  id: string;
+  rule_id: string;
+  rule_name: string;
+  source_event_id: string;
+  action_event_id: string | null;
+  trigger_type: AutomationTrigger;
+  status: "condition_not_met" | "skipped_no_recipients" | "queued" | "succeeded" | "dead_letter";
+  last_error: string | null;
+  manual_retry_count: number;
+  created_at: string;
+  updated_at: string;
+  attempt_history: AutomationAttempt[];
+}
+
+export interface AutomationRunPage {
+  items: AutomationRun[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AutomationDeadLetter {
+  id: string;
+  event_type: string;
+  aggregate_id: string;
+  status: "dead_letter";
+  attempt_count: number;
+  manual_retry_count: number;
+  last_error: string | null;
+  created_at: string;
+  attempt_history: AutomationAttempt[];
+}
+
+export interface AutomationDeadLetterPage {
+  items: AutomationDeadLetter[];
+  total: number;
 }
 
 export interface CustomerPortalAddress {
@@ -905,11 +999,15 @@ export interface TaskPage {
   offset: number;
 }
 
-export type NotificationEventType = "task.assigned" | "task.status_changed";
+export type NotificationEventType =
+  | "task.assigned"
+  | "task.status_changed"
+  | "automation.notification";
 
 export interface NotificationItem {
   id: string;
-  task_id: string;
+  task_id: string | null;
+  object_id: string | null;
   event_type: NotificationEventType;
   title: string;
   body: string;
@@ -1200,7 +1298,11 @@ export interface EmployeeAvailabilityWindow {
 }
 
 export type ScheduleAvailabilityRequestKind = "preferred" | "blocked";
-export type ScheduleAvailabilityRequestStatus = "open" | "accepted" | "rejected";
+export type ScheduleAvailabilityRequestStatus =
+  | "open"
+  | "accepted"
+  | "rejected"
+  | "withdrawn";
 export type ScheduleReplacementReason =
   | "short_notice"
   | "schedule_change"

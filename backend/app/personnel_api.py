@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import PurePosixPath
 from typing import Literal
 from urllib.parse import quote
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
@@ -21,13 +21,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.assignment_history import record_employee_object_assignment_event
-from app.auth import add_audit_entry, require_permission
+from app.auth import AuthPrincipal, add_audit_entry, get_auth_principal, require_permission
 from app.database import get_db
+from app.document_storage import read_attachment, remove_file, store_file
 from app.models import (
     Employee,
     EmployeeAbsence,
     EmployeeHistory,
     EmployeeObjectAssignmentHistory,
+    EmployeePortalDocumentGrant,
     EmployeeQualification,
     EmployeeQualificationDocument,
     EmployeeSensitiveDetails,
@@ -1135,39 +1137,57 @@ def upload_employee_qualification_document(
         )
         or 0
     ) + 1
+    document_id = uuid4()
+    storage_key = document_id.hex
     stored = EmployeeQualificationDocument(
+        id=document_id,
         qualification_id=qualification.id,
         version=version,
         file_name=filename,
         media_type=media_type,
         size_bytes=len(content),
         sha256=hashlib.sha256(content).hexdigest(),
-        content=content,
+        storage_key=storage_key,
+        content=None,
         uploaded_by_id=principal.user.id,
     )
-    db.add(stored)
-    db.add(
-        EmployeeHistory(
-            employee_id=employee.id,
-            actor_id=principal.user.id,
-            action="qualification_document_uploaded",
-            changed_fields=["qualification_documents"],
+    file_created = False
+    commit_attempted = False
+    try:
+        db.add(stored)
+        db.add(
+            EmployeeHistory(
+                employee_id=employee.id,
+                actor_id=principal.user.id,
+                action="qualification_document_uploaded",
+                changed_fields=["qualification_documents"],
+            )
         )
-    )
-    add_audit_entry(
-        db,
-        actor_id=principal.user.id,
-        action="employees.qualification_document_uploaded",
-        entity_type="employee",
-        entity_id=str(employee.id),
-        ip_address=request.client.host if request.client else None,
-        details={
-            "qualification_id": str(qualification.id),
-            "document_id": str(stored.id),
-            "version": version,
-        },
-    )
-    commit_employee_transaction(db)
+        db.flush()
+        store_file(storage_key, content)
+        file_created = True
+        add_audit_entry(
+            db,
+            actor_id=principal.user.id,
+            action="employees.qualification_document_uploaded",
+            entity_type="employee",
+            entity_id=str(employee.id),
+            ip_address=request.client.host if request.client else None,
+            details={
+                "qualification_id": str(qualification.id),
+                "document_id": str(stored.id),
+                "version": version,
+            },
+        )
+        commit_attempted = True
+        commit_employee_transaction(db)
+    except Exception as exc:
+        db.rollback()
+        if file_created and (
+            not commit_attempted or (isinstance(exc, HTTPException) and exc.status_code == 409)
+        ):
+            remove_file(storage_key)
+        raise
     return EmployeeQualificationDocumentRead.model_validate(stored)
 
 
@@ -1175,26 +1195,87 @@ def upload_employee_qualification_document(
     "/employees/{employee_id}/qualifications/{qualification_id}/documents/{document_id}",
 )
 def get_employee_qualification_document(
+    request: Request,
     employee_id: UUID,
     qualification_id: UUID,
     document_id: UUID,
     download: bool = Query(default=False),
     db: Session = Depends(get_db),
-    _principal=Depends(require_permission("employees.documents.read")),
+    principal: AuthPrincipal = Depends(get_auth_principal),
 ) -> Response:
-    get_employee_or_404(db, employee_id)
-    stored = db.scalar(
-        select(EmployeeQualificationDocument)
-        .join(
-            EmployeeQualification,
-            EmployeeQualification.id == EmployeeQualificationDocument.qualification_id,
+    can_read_personnel_documents = "employees.documents.read" in principal.permission_codes
+    if not can_read_personnel_documents and (
+        principal.customer_portal_restricted or "employee" not in principal.role_codes
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung für diese Aktion",
         )
-        .where(
-            EmployeeQualification.employee_id == employee_id,
-            EmployeeQualification.id == qualification_id,
-            EmployeeQualificationDocument.id == document_id,
+    employee = get_employee_or_404(db, employee_id)
+    if not can_read_personnel_documents:
+        if (
+            employee.user_id != principal.user.id
+            or employee.employment_status != "active"
+            or employee.archived_at is not None
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Qualifikationsdokument nicht gefunden",
+            )
+        qualification = db.scalar(
+            select(EmployeeQualification).where(
+                EmployeeQualification.id == qualification_id,
+                EmployeeQualification.employee_id == employee.id,
+                EmployeeQualification.archived_at.is_(None),
+            )
         )
-    )
+        if qualification is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Qualifikationsdokument nicht gefunden",
+            )
+        stored = db.scalar(
+            select(EmployeeQualificationDocument).where(
+                EmployeeQualificationDocument.id == document_id,
+                EmployeeQualificationDocument.qualification_id == qualification.id,
+            )
+        )
+        grant_id = db.scalar(
+            select(EmployeePortalDocumentGrant.id).where(
+                EmployeePortalDocumentGrant.employee_id == employee.id,
+                EmployeePortalDocumentGrant.user_id == principal.user.id,
+                EmployeePortalDocumentGrant.qualification_document_id == document_id,
+                EmployeePortalDocumentGrant.revoked_at.is_(None),
+            )
+        )
+        if stored is None or grant_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Qualifikationsdokument nicht gefunden",
+            )
+        add_audit_entry(
+            db,
+            actor_id=principal.user.id,
+            action="employee_portal.document_downloaded",
+            entity_type="employee_qualification_document",
+            entity_id=str(stored.id),
+            ip_address=request.client.host if request.client else None,
+            details={"version": stored.version, "grant_id": str(grant_id)},
+        )
+        db.commit()
+    else:
+        stored = db.scalar(
+            select(EmployeeQualificationDocument)
+            .join(
+                EmployeeQualification,
+                EmployeeQualification.id == EmployeeQualificationDocument.qualification_id,
+            )
+            .where(
+                EmployeeQualification.employee_id == employee_id,
+                EmployeeQualification.id == qualification_id,
+                EmployeeQualificationDocument.id == document_id,
+            )
+        )
     if stored is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1204,7 +1285,7 @@ def get_employee_qualification_document(
     encoded_filename = quote(stored.file_name, safe="")
     fallback_filename = f"nachweis{PurePosixPath(stored.file_name).suffix.lower()}"
     return Response(
-        content=stored.content,
+        content=read_attachment(stored.storage_key, stored.content),
         media_type=stored.media_type,
         headers={
             "Content-Disposition": (

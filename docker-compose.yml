@@ -66,6 +66,8 @@ services:
       RATE_LIMIT_STORAGE_URI: ${RATE_LIMIT_STORAGE_URI:-redis://redis:6379/0}
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-172.28.0.10}
       DOCUMENT_STORAGE_PATH: /var/lib/securityops/documents
+      DOCUMENT_ENCRYPTION_KEYS: ${DOCUMENT_ENCRYPTION_KEYS:-}
+      DOCUMENT_ENCRYPTION_ACTIVE_VERSION: ${DOCUMENT_ENCRYPTION_ACTIVE_VERSION:-}
       DOCUMENT_MAX_UPLOAD_BYTES: ${DOCUMENT_MAX_UPLOAD_BYTES:-20971520}
       MALWARE_SCANNER_HOST: clamav
       MALWARE_SCANNER_PORT: 3310
@@ -157,6 +159,27 @@ services:
       POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Bitte POSTGRES_ADMIN_PASSWORD in .env setzen}
       POSTGRES_MIGRATION_PASSWORD: ${POSTGRES_MIGRATION_PASSWORD:?Bitte POSTGRES_MIGRATION_PASSWORD in .env setzen}
       POSTGRES_RUNTIME_PASSWORD: ${POSTGRES_RUNTIME_PASSWORD:?Bitte POSTGRES_RUNTIME_PASSWORD in .env setzen}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - data
+
+  rekey-documents:
+    build: ./backend
+    profiles: ["release"]
+    command: ["python", "-m", "scripts.rekey_document_storage"]
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST:-db}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-securityops}
+      POSTGRES_USER: securityops_migrator
+      POSTGRES_PASSWORD: ${POSTGRES_MIGRATION_PASSWORD:?Bitte POSTGRES_MIGRATION_PASSWORD in .env setzen}
+      DOCUMENT_STORAGE_PATH: /var/lib/securityops/documents
+      DOCUMENT_ENCRYPTION_KEYS: ${DOCUMENT_ENCRYPTION_KEYS:-}
+      DOCUMENT_ENCRYPTION_ACTIVE_VERSION: ${DOCUMENT_ENCRYPTION_ACTIVE_VERSION:-}
+    volumes:
+      - document_storage:/var/lib/securityops/documents
     depends_on:
       db:
         condition: service_healthy

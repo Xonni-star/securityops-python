@@ -13,17 +13,20 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import router
+from app.automations_api import router as automations_router
 from app.billing_api import router as billing_router
 from app.config import get_settings
 from app.control_room_api import router as control_room_router
 from app.customer_portal_api import router as customer_portal_router
 from app.database import engine
+from app.document_storage import validate_production_document_encryption
 from app.documents_contracts_api import router as documents_contracts_router
 from app.employee_portal_api import router as employee_portal_router
 from app.identity_api import router as identity_router
 from app.incidents_api import router as incidents_router
 from app.inventory_api import router as inventory_router
 from app.key_management_api import router as key_management_router
+from app.notification_monitoring import router as notification_monitoring_router
 from app.notifications_api import router as notifications_router
 from app.owks_api import router as owks_router
 from app.personnel_api import router as personnel_router
@@ -35,6 +38,7 @@ from app.time_tracking_api import router as time_tracking_router
 from app.time_tracking_surcharges import router as time_tracking_surcharges_router
 
 settings = get_settings()
+validate_production_document_encryption(settings)
 logger = logging.getLogger(__name__)
 rate_limit_store = (
     Redis.from_url(settings.rate_limit_storage_uri)
@@ -81,6 +85,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
 )
 app.include_router(router, prefix=settings.api_prefix)
+app.include_router(automations_router, prefix=settings.api_prefix)
 app.include_router(personnel_router, prefix=settings.api_prefix)
 app.include_router(employee_portal_router, prefix=settings.api_prefix)
 app.include_router(scheduling_router, prefix=settings.api_prefix)
@@ -88,6 +93,7 @@ app.include_router(time_tracking_router, prefix=settings.api_prefix)
 app.include_router(time_tracking_surcharges_router, prefix=settings.api_prefix)
 app.include_router(tasks_router, prefix=settings.api_prefix)
 app.include_router(notifications_router, prefix=settings.api_prefix)
+app.include_router(notification_monitoring_router, prefix=settings.api_prefix)
 app.include_router(key_management_router, prefix=settings.api_prefix)
 app.include_router(inventory_router, prefix=settings.api_prefix)
 app.include_router(documents_contracts_router, prefix=settings.api_prefix)

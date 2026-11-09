@@ -4,25 +4,55 @@ import json
 import logging
 import re
 import signal
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.automation_events import (
+    AUTOMATION_NOTIFICATION_EVENT,
+    EVENT_REGISTRY,
+    OWKS_AUTOMATION_EVENT_TYPES,
+    OWKS_EVENT_MESSAGES,
+    TASK_EVENT_TYPES,
+    AutomationNotificationPayload,
+    OWKSAutomationEventPayload,
+    TaskNotificationEventPayload,
+)
 from app.config import get_settings
 from app.database import SessionLocal, engine
-from app.models import Notification, NotificationOutbox, NotificationOutboxAttempt
+from app.models import (
+    AutomationRule,
+    AutomationRun,
+    Notification,
+    NotificationOutbox,
+    NotificationOutboxAttempt,
+    NotificationWorkerHeartbeat,
+    ObjectAssignment,
+    SecurityObject,
+    User,
+)
+from app.notification_monitoring import (
+    HEARTBEAT_INTERVAL_SECONDS,
+    HEARTBEAT_STALE_SECONDS,
+    WORKER_NAME,
+    write_worker_heartbeat,
+)
 from app.owks_scheduler import run_monitoring_scheduler
 
 logger = logging.getLogger("app.notification_worker")
 
-SUPPORTED_EVENTS = {"task.assigned", "task.status_changed"}
+TASK_EVENTS = TASK_EVENT_TYPES
+SUPPORTED_EVENTS = frozenset(EVENT_REGISTRY)
+TASK_STATUSES = {"open", "in_progress", "blocked", "completed", "cancelled"}
 BASE_RETRY_SECONDS = 5
 MAX_RETRY_SECONDS = 60 * 60
 
@@ -160,47 +190,145 @@ class NotificationOutboxWorker:
             return self._record_failure(claim, error_code, permanent=False)
 
     def _deliver(self, db: Session, event: NotificationOutbox) -> None:
-        payload = event.payload
         if event.event_type not in SUPPORTED_EVENTS:
             raise InvalidOutboxEvent("unsupported_event")
-        try:
-            task_id = UUID(str(payload["task_id"]))
-            recipients_raw = payload["recipient_ids"]
-        except (KeyError, TypeError, ValueError, AttributeError) as exc:
-            raise InvalidOutboxEvent("invalid_payload") from exc
-        if not isinstance(recipients_raw, list):
-            raise InvalidOutboxEvent("invalid_payload")
-        if task_id != event.aggregate_id:
-            raise InvalidOutboxEvent("invalid_payload")
-        try:
-            recipient_ids = {UUID(str(item)) for item in recipients_raw}
-        except (TypeError, ValueError) as exc:
-            raise InvalidOutboxEvent("invalid_recipient") from exc
-        existing_notifications = db.execute(
-            select(Notification.recipient_id, Notification.title, Notification.body).where(
-                Notification.outbox_id == event.id
+        payload = self._validated_payload(event)
+        if event.event_type in TASK_EVENTS:
+            if not isinstance(payload, TaskNotificationEventPayload):
+                raise InvalidOutboxEvent("invalid_payload")
+            if event.aggregate_type != "task" or payload.task_id != event.aggregate_id:
+                raise InvalidOutboxEvent("invalid_payload")
+            title = payload.title
+            body = payload.body
+            if title is None or body is None:
+                existing_notification = db.execute(
+                    select(Notification.title, Notification.body)
+                    .where(Notification.outbox_id == event.id)
+                    .limit(1)
+                ).first()
+                if existing_notification is None:
+                    raise InvalidOutboxEvent("invalid_payload")
+                title = title or existing_notification.title
+                body = body if body is not None else existing_notification.body
+            self._deliver_notifications(
+                db,
+                event,
+                recipient_ids=set(payload.recipient_ids),
+                task_id=payload.task_id,
+                object_id=None,
+                title=title,
+                body=body,
             )
-        ).all()
-        existing_recipient_ids = {row.recipient_id for row in existing_notifications}
-        missing_recipient_ids = recipient_ids - existing_recipient_ids
-        if not missing_recipient_ids:
+            self._evaluate_automation_rules(
+                db,
+                event,
+                task_id=payload.task_id,
+                object_id=None,
+                event_status=payload.status,
+                recipient_ids=set(payload.recipient_ids),
+                body=payload.body,
+            )
             return
-        title = payload.get("title")
-        body = payload.get("body")
-        if not isinstance(title, str) or not title or len(title) > 200:
-            title = existing_notifications[0].title if existing_notifications else None
-        if not isinstance(body, str) or len(body) > 500:
-            body = existing_notifications[0].body if existing_notifications else None
-        if not isinstance(title, str) or not title or not isinstance(body, str):
-            raise InvalidOutboxEvent("invalid_payload")
 
+        if event.event_type in OWKS_AUTOMATION_EVENT_TYPES:
+            if not isinstance(payload, OWKSAutomationEventPayload):
+                raise InvalidOutboxEvent("invalid_payload")
+            if event.aggregate_type != "owks_event" or payload.owks_event_id != event.aggregate_id:
+                raise InvalidOutboxEvent("invalid_payload")
+            recipient_ids = set(payload.recipient_ids)
+            if not recipient_ids.issubset(self._object_recipient_ids(db, payload.object_id)):
+                raise InvalidOutboxEvent("unauthorized_recipient")
+            self._evaluate_automation_rules(
+                db,
+                event,
+                task_id=None,
+                object_id=payload.object_id,
+                event_status=None,
+                recipient_ids=recipient_ids,
+                body=OWKS_EVENT_MESSAGES[event.event_type],
+            )
+            return
+
+        if event.event_type != AUTOMATION_NOTIFICATION_EVENT:
+            raise InvalidOutboxEvent("unsupported_event")
+        if not isinstance(payload, AutomationNotificationPayload):
+            raise InvalidOutboxEvent("invalid_payload")
+        target_id = payload.task_id or payload.object_id
+        expected_aggregate_type = "task" if payload.task_id is not None else "object"
+        if event.aggregate_type != expected_aggregate_type or event.aggregate_id != target_id:
+            raise InvalidOutboxEvent("invalid_payload")
+        run = db.scalar(
+            select(AutomationRun).where(
+                AutomationRun.id == payload.automation_run_id,
+                AutomationRun.action_event_id == event.id,
+            )
+        )
+        if run is None or run.status not in {"queued", "dead_letter"}:
+            raise InvalidOutboxEvent("invalid_automation_run")
+
+        recipient_ids = set(payload.recipient_ids)
+        if payload.object_id is not None:
+            recipient_ids.intersection_update(self._object_recipient_ids(db, payload.object_id))
+        if recipient_ids:
+            self._deliver_notifications(
+                db,
+                event,
+                recipient_ids=recipient_ids,
+                task_id=payload.task_id,
+                object_id=payload.object_id,
+                title=payload.title,
+                body=payload.body,
+            )
+            run.status = "succeeded"
+        else:
+            run.status = "skipped_no_recipients"
+        run.last_error = None
+
+    def _validated_payload(self, event: NotificationOutbox):
+        payload_model = EVENT_REGISTRY[event.event_type]
+        try:
+            return payload_model.model_validate(event.payload)
+        except ValidationError as exc:
+            raise InvalidOutboxEvent("invalid_payload") from exc
+
+    @staticmethod
+    def _object_recipient_ids(db: Session, object_id: UUID) -> set[UUID]:
+        return set(
+            db.scalars(
+                select(ObjectAssignment.user_id)
+                .join(User, User.id == ObjectAssignment.user_id)
+                .join(SecurityObject, SecurityObject.id == ObjectAssignment.object_id)
+                .where(
+                    ObjectAssignment.object_id == object_id,
+                    User.is_active.is_(True),
+                    SecurityObject.archived_at.is_(None),
+                )
+            ).all()
+        )
+
+    def _deliver_notifications(
+        self,
+        db: Session,
+        event: NotificationOutbox,
+        *,
+        recipient_ids: set[UUID],
+        task_id: UUID | None,
+        object_id: UUID | None,
+        title: str,
+        body: str,
+    ) -> None:
+        existing_recipient_ids = set(
+            db.scalars(
+                select(Notification.recipient_id).where(Notification.outbox_id == event.id)
+            ).all()
+        )
         statement_factory = {
             "postgresql": postgresql_insert,
             "sqlite": sqlite_insert,
         }.get(db.bind.dialect.name)
         if statement_factory is None:
             raise RuntimeError("Unsupported database dialect")
-        for recipient_id in sorted(missing_recipient_ids, key=str):
+        for recipient_id in sorted(recipient_ids - existing_recipient_ids, key=str):
             db.execute(
                 statement_factory(Notification)
                 .values(
@@ -208,12 +336,104 @@ class NotificationOutboxWorker:
                     outbox_id=event.id,
                     recipient_id=recipient_id,
                     task_id=task_id,
+                    object_id=object_id,
                     event_type=event.event_type,
                     title=title,
                     body=body,
                 )
                 .on_conflict_do_nothing(index_elements=["outbox_id", "recipient_id"])
             )
+
+    def _evaluate_automation_rules(
+        self,
+        db: Session,
+        event: NotificationOutbox,
+        *,
+        task_id: UUID | None,
+        object_id: UUID | None,
+        event_status: str | None,
+        recipient_ids: set[UUID],
+        body: str,
+    ) -> None:
+        rules = db.scalars(
+            select(AutomationRule)
+            .where(
+                AutomationRule.is_active.is_(True),
+                AutomationRule.deleted_at.is_(None),
+                AutomationRule.trigger_type == event.event_type,
+            )
+            .order_by(AutomationRule.id)
+            .with_for_update()
+        ).all()
+        for rule in rules:
+            existing_run = db.scalar(
+                select(AutomationRun).where(
+                    AutomationRun.rule_id == rule.id,
+                    AutomationRun.source_event_id == event.id,
+                )
+            )
+            if existing_run is not None:
+                continue
+            conditions = rule.conditions
+            if not isinstance(conditions, dict) or rule.action_type != "notify_event_recipients":
+                raise InvalidOutboxEvent("invalid_automation_rule")
+
+            if event.event_type in TASK_EVENTS:
+                condition_status = conditions.get("status")
+                if (
+                    set(conditions) - {"status"}
+                    or event_status not in TASK_STATUSES
+                    or (condition_status is not None and condition_status not in TASK_STATUSES)
+                ):
+                    raise InvalidOutboxEvent("invalid_automation_rule")
+                matches = condition_status in {None, event_status}
+            else:
+                if conditions:
+                    raise InvalidOutboxEvent("invalid_automation_rule")
+                matches = True
+
+            run_id = uuid4()
+            run = AutomationRun(
+                id=run_id,
+                rule_id=rule.id,
+                rule_name=rule.name,
+                source_event_id=event.id,
+                trigger_type=event.event_type,
+                status=(
+                    "condition_not_met"
+                    if not matches
+                    else "skipped_no_recipients"
+                    if not recipient_ids
+                    else "queued"
+                ),
+            )
+            if not matches or not recipient_ids:
+                db.add(run)
+                continue
+
+            action_event_id = uuid4()
+            run.action_event_id = action_event_id
+            action_payload = AutomationNotificationPayload(
+                schema_version=1,
+                automation_run_id=run_id,
+                task_id=task_id,
+                object_id=object_id,
+                recipient_ids=sorted(recipient_ids, key=str),
+                title=f"Automatisierung: {rule.name}"[:200],
+                body=body[:500],
+            )
+            db.add(
+                NotificationOutbox(
+                    id=action_event_id,
+                    dedupe_key=f"automation:{rule.id}:{event.id}",
+                    event_type=AUTOMATION_NOTIFICATION_EVENT,
+                    aggregate_type="task" if task_id is not None else "object",
+                    aggregate_id=task_id or object_id,
+                    payload=action_payload.model_dump(mode="json"),
+                )
+            )
+            db.flush()
+            db.add(run)
 
     def _record_failure(
         self, claim: ClaimedEvent, error_code: str, *, permanent: bool
@@ -230,7 +450,8 @@ class NotificationOutboxWorker:
             )
             if event is None:
                 return None
-            terminal = permanent or event.attempt_count >= self.max_attempts
+            event.failure_count += 1
+            terminal = permanent or event.failure_count >= self.max_attempts
             now = datetime.now(UTC)
             event.status = "dead_letter" if terminal else "pending"
             event.last_error = error_code
@@ -249,6 +470,14 @@ class NotificationOutboxWorker:
                     error_code=error_code,
                 )
             )
+            if event.event_type == "automation.notification":
+                run = db.scalar(
+                    select(AutomationRun).where(AutomationRun.action_event_id == event.id)
+                )
+                if run is not None:
+                    run.last_error = error_code
+                    if terminal:
+                        run.status = "dead_letter"
             db.commit()
         return "dead_lettered" if terminal else "retry_scheduled"
 
@@ -273,12 +502,15 @@ async def run_worker(
     worker: NotificationOutboxWorker | None = None,
     poll_interval_seconds: float | None = None,
     run_cycle: Callable[[], CycleResult] | None = None,
+    heartbeat_writer: Callable[[], None] | None = None,
 ) -> None:
     settings = get_settings()
     worker = worker or NotificationOutboxWorker()
     run_cycle = run_cycle or worker.run_once
+    heartbeat_writer = heartbeat_writer or write_worker_heartbeat
     poll_interval_seconds = poll_interval_seconds or settings.notification_worker_poll_seconds
     monitor_task = asyncio.create_task(run_monitoring_scheduler(stop))
+    last_heartbeat_attempt: float | None = None
     try:
         while not stop.is_set():
             try:
@@ -291,6 +523,19 @@ async def run_worker(
                     result.retried,
                     result.dead_lettered,
                 )
+                monotonic_now = time.monotonic()
+                if (
+                    last_heartbeat_attempt is None
+                    or monotonic_now - last_heartbeat_attempt >= HEARTBEAT_INTERVAL_SECONDS
+                ):
+                    last_heartbeat_attempt = monotonic_now
+                    try:
+                        await asyncio.to_thread(heartbeat_writer)
+                    except (SQLAlchemyError, OSError, TimeoutError) as exc:
+                        logger.error(
+                            "Notification-Worker-Heartbeat fehlgeschlagen: error_code=%s",
+                            _safe_error_code(exc),
+                        )
             except (SQLAlchemyError, OSError, TimeoutError) as exc:
                 logger.error(
                     "Notification-Outbox-Zyklus fehlgeschlagen: error_code=%s",
@@ -360,6 +605,18 @@ def check_worker_health() -> None:
     with engine.connect() as connection:
         connection.execute(text("SELECT 1"))
         connection.execute(select(func.count()).select_from(NotificationOutbox))
+        heartbeat_at = connection.scalar(
+            select(NotificationWorkerHeartbeat.heartbeat_at).where(
+                NotificationWorkerHeartbeat.worker_name == WORKER_NAME
+            )
+        )
+    if heartbeat_at is None:
+        raise RuntimeError("Notification-Worker-Heartbeat nicht vorhanden")
+    if (
+        datetime.now(UTC)
+        - (heartbeat_at.replace(tzinfo=UTC) if heartbeat_at.tzinfo is None else heartbeat_at)
+    ).total_seconds() > HEARTBEAT_STALE_SECONDS:
+        raise RuntimeError("Notification-Worker-Heartbeat veraltet")
 
 
 def main() -> int:
@@ -378,7 +635,7 @@ def main() -> int:
     if args.command == "health":
         try:
             check_worker_health()
-        except SQLAlchemyError as exc:
+        except (SQLAlchemyError, RuntimeError) as exc:
             logger.error("Worker-Healthcheck fehlgeschlagen: error_code=%s", _safe_error_code(exc))
             return 1
         print(json.dumps({"status": "ready"}))

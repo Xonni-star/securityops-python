@@ -3,7 +3,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
 from urllib.parse import quote
-from uuid import NAMESPACE_URL, UUID, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import (
     APIRouter,
@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import AuthPrincipal, add_audit_entry, get_auth_principal, require_permission
 from app.database import get_db
+from app.document_storage import read_attachment, remove_file, store_file
 from app.models import (
     Employee,
     ObjectAssignment,
@@ -34,6 +35,7 @@ from app.models import (
     OWKSRoutePoint,
     SecurityObject,
 )
+from app.notifications_service import enqueue_owks_automation_event
 from app.schemas import (
     OWKSAttachmentRead,
     OWKSChallengeRead,
@@ -227,6 +229,7 @@ def create_event(
             "event_id": str(event.id),
         },
     )
+    enqueue_owks_automation_event(db, event)
     return event
 
 
@@ -911,6 +914,12 @@ def sync_offline_events(
             sync_status="conflict" if is_unverified_control else "synced",
             request=request,
         )
+        if event.sync_status == "synced":
+            enqueue_owks_automation_event(
+                db,
+                event,
+                trigger_type="owks.offline_event_synced",
+            )
         results.append(
             OWKSSyncResult(
                 client_event_id=item.client_event_id,
@@ -1048,27 +1057,44 @@ def upload_attachment(
     scan_upload_or_reject(
         db, request, content=content, actor_id=principal.user.id, surface="owks_attachment"
     )
+    attachment_id = uuid4()
+    storage_key = attachment_id.hex
     attachment = OWKSAttachment(
+        id=attachment_id,
         event_id=event.id,
         file_name=file_name,
         media_type=allowed[0],
         size_bytes=len(content),
         sha256=hashlib.sha256(content).hexdigest(),
-        content=content,
+        storage_key=storage_key,
+        content=None,
         uploaded_by_id=principal.user.id,
     )
-    db.add(attachment)
-    db.flush()
-    add_audit_entry(
-        db,
-        actor_id=principal.user.id,
-        action="owks.attachment_uploaded",
-        entity_type="owks_event",
-        entity_id=str(event.id),
-        ip_address=request.client.host if request.client else None,
-        details={"attachment_id": str(attachment.id), "size_bytes": len(content)},
-    )
-    commit_or_conflict(db)
+    file_created = False
+    commit_attempted = False
+    try:
+        db.add(attachment)
+        db.flush()
+        store_file(storage_key, content)
+        file_created = True
+        add_audit_entry(
+            db,
+            actor_id=principal.user.id,
+            action="owks.attachment_uploaded",
+            entity_type="owks_event",
+            entity_id=str(event.id),
+            ip_address=request.client.host if request.client else None,
+            details={"attachment_id": str(attachment.id), "size_bytes": len(content)},
+        )
+        commit_attempted = True
+        commit_or_conflict(db)
+    except Exception as exc:
+        db.rollback()
+        if file_created and (
+            not commit_attempted or (isinstance(exc, HTTPException) and exc.status_code == 409)
+        ):
+            remove_file(storage_key)
+        raise
     return OWKSAttachmentRead(
         id=attachment.id,
         event_id=attachment.event_id,
@@ -1130,7 +1156,7 @@ def get_attachment(
     disposition = "attachment" if download else "inline"
     filename = PurePosixPath(stored.file_name).suffix.lower()
     return Response(
-        content=stored.content,
+        content=read_attachment(stored.storage_key, stored.content),
         media_type=stored.media_type,
         headers={
             "Content-Disposition": f"{disposition}; filename=\"anlage{filename}\"; filename*=UTF-8''{quote(stored.file_name, safe='')}",
