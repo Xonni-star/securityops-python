@@ -2828,6 +2828,87 @@ class OWKSEventStatus(Base):
     )
 
 
+class OWKSShiftHandover(Base):
+    __tablename__ = "owks_shift_handovers"
+    __table_args__ = (
+        UniqueConstraint("shift_id", name="uq_owks_shift_handovers_shift"),
+        UniqueConstraint("event_id", name="uq_owks_shift_handovers_event"),
+        CheckConstraint("length(trim(handover_text)) > 0", name="ck_owks_shift_handovers_text"),
+        CheckConstraint(
+            "sender_employee_id != recipient_employee_id",
+            name="ck_owks_shift_handovers_distinct_employees",
+        ),
+        Index("ix_owks_shift_handovers_object_created", "object_id", "created_at"),
+        Index(
+            "ix_owks_shift_handovers_recipient_created",
+            "recipient_employee_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    event_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("owks_events.id", ondelete="RESTRICT"), nullable=False
+    )
+    object_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="RESTRICT"), nullable=False
+    )
+    shift_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("schedule_shifts.id", ondelete="RESTRICT"), nullable=False
+    )
+    sender_employee_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False
+    )
+    recipient_employee_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False
+    )
+    handover_text: Mapped[str] = mapped_column(Text, nullable=False)
+    structured_items: Mapped[list[dict[str, str]]] = mapped_column(
+        JSON, default=list, server_default=text("'[]'"), nullable=False
+    )
+    source_items: Mapped[list[dict[str, str]]] = mapped_column(
+        JSON, default=list, server_default=text("'[]'"), nullable=False
+    )
+    created_by_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class OWKSShiftHandoverConfirmation(Base):
+    __tablename__ = "owks_shift_handover_confirmations"
+    __table_args__ = (
+        UniqueConstraint("handover_id", name="uq_owks_shift_handover_confirmation"),
+        CheckConstraint(
+            "length(trim(note)) <= 1000", name="ck_owks_shift_handover_confirmation_note"
+        ),
+        Index(
+            "ix_owks_shift_handover_confirmations_created",
+            "handover_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    handover_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("owks_shift_handovers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    employee_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False
+    )
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
 class OWKSAttachment(Base):
     __tablename__ = "owks_attachments"
     __table_args__ = (

@@ -205,6 +205,7 @@ export default function ControlRoom() {
     ["Aktive Objekte", "active_objects"],
     ["Laufende Dienste", "active_shifts"],
     ["Offene Kontrollen / Alarme", "open_owks_events"],
+    ["Unbestätigte Übergaben", "pending_handovers"],
     ["Offene Vorfälle", "open_incidents"],
     ["Überfällige Vorfälle", "overdue_incidents"],
     ["Offene Aufgaben", "open_tasks"],
@@ -316,6 +317,17 @@ export default function ControlRoom() {
                 matchesStatus(item.severity, false, item.severity === "critical", item.severity)).map((item) =>
                 <li key={item.id}><strong>{item.title}</strong>
                   <small>{item.object_name} · {statusName(item.event_type)} · {statusName(item.severity)} · {statusName(item.status)} · {dateTime(item.occurred_at)}</small></li>)}</ul>}
+          </article>}
+          {data.pending_handovers && <article className="panel control-room-panel">
+           <h3>Unbestätigte Schichtübergaben <span>{counts.pending_handovers ?? data.pending_handovers.length}</span></h3>
+           {!data.pending_handovers.length
+             ? <p className="empty">Keine unbestätigten Übergaben im erreichbaren Objektbereich.</p>
+             : <ul>{data.pending_handovers.map((item) =>
+               <li key={item.id}>
+                 <strong>{item.sender_name ?? "Mitarbeiter"} → {item.recipient_name ?? "Mitarbeiter"}</strong>
+                 <small>{item.object_name} · Übergabe vom {dateTime(item.created_at)}</small>
+               </li>,
+             )}</ul>}
           </article>}
           {data.incidents && <article className="panel control-room-panel">
             <h3>Offene Vorfälle <span>{counts.open_incidents ?? data.incidents.length}</span></h3>

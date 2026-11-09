@@ -252,6 +252,18 @@ export interface ControlRoomOWKSEvent {
   status: "open" | "in_progress";
 }
 
+export interface ControlRoomHandover {
+  id: string;
+  object_id: string;
+  object_name: string;
+  shift_id: string;
+  sender_employee_id: string;
+  sender_name: string | null;
+  recipient_employee_id: string;
+  recipient_name: string | null;
+  created_at: string;
+}
+
 export interface ControlRoomIncident {
   id: string;
   title: string;
@@ -309,6 +321,7 @@ export interface ControlRoom {
   objects?: ControlRoomObject[];
   shifts?: ControlRoomShift[];
   owks_events?: ControlRoomOWKSEvent[];
+  pending_handovers?: ControlRoomHandover[];
   incidents?: ControlRoomIncident[];
   tasks?: ControlRoomTask[];
   absences?: ControlRoomAbsence[];
@@ -405,6 +418,71 @@ export interface OWKSEvent {
   presence_verified: boolean;
   status: OWKSEventStatus;
   created_at: string;
+}
+
+export type OWKSHandoverCategory =
+  | "task"
+  | "incident"
+  | "key"
+  | "disturbance"
+  | "control"
+  | "instruction"
+  | "measure"
+  | "other";
+
+export interface OWKSStructuredHandoverItem {
+  category: OWKSHandoverCategory;
+  text: string;
+}
+
+export interface OWKSHandoverSource {
+  source_type:
+    | "owks_event"
+    | "task"
+    | "incident"
+    | "incident_measure"
+    | "key"
+    | "inventory_asset"
+    | "instruction";
+  source_id: string;
+  title: string;
+  status: string;
+  severity: string | null;
+  occurred_at: string;
+}
+
+export interface OWKSShiftHandover {
+  id: string;
+  object_id: string;
+  event_id: string;
+  shift_id: string;
+  shift_starts_at: string;
+  shift_ends_at: string;
+  sender_employee_id: string;
+  sender_name: string;
+  recipient_employee_id: string;
+  recipient_name: string;
+  handover_text: string;
+  structured_items: OWKSStructuredHandoverItem[];
+  source_items: OWKSHandoverSource[];
+  status: "pending" | "confirmed";
+  created_at: string;
+  confirmed_at: string | null;
+  confirmation_note: string | null;
+  history: Array<{
+    action: "submitted" | "confirmed";
+    employee_id: string;
+    actor_id: string;
+    note: string;
+    occurred_at: string;
+  }>;
+}
+
+export interface OWKSShiftHandoverContext {
+  current_employee_id: string | null;
+  shifts: Array<{ id: string; starts_at: string; ends_at: string }>;
+  recipients: Array<{ id: string; full_name: string }>;
+  source_items: OWKSHandoverSource[];
 }
 
 export interface OWKSAttachment {

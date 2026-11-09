@@ -2001,6 +2001,128 @@ class OWKSScanCreate(BaseModel):
         return value
 
 
+OWKSHandoverItemCategory = Literal[
+    "task", "incident", "key", "disturbance", "control", "instruction", "measure", "other"
+]
+
+
+class OWKSStructuredHandoverItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: OWKSHandoverItemCategory
+    text: str = Field(min_length=1, max_length=500)
+
+    @field_validator("text")
+    @classmethod
+    def text_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Ein Übergabepunkt darf nicht leer sein.")
+        return value
+
+
+class OWKSShiftHandoverCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    shift_id: UUID
+    recipient_employee_id: UUID
+    handover_text: str = Field(min_length=1, max_length=10000)
+    structured_items: list[OWKSStructuredHandoverItem] = Field(default_factory=list, max_length=50)
+
+    @field_validator("handover_text")
+    @classmethod
+    def handover_text_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Der Übergabetext darf nicht leer sein.")
+        return value
+
+    @field_validator("structured_items")
+    @classmethod
+    def structured_items_must_not_be_duplicated(
+        cls, values: list[OWKSStructuredHandoverItem]
+    ) -> list[OWKSStructuredHandoverItem]:
+        keys = [(item.category, item.text.casefold()) for item in values]
+        if len(set(keys)) != len(keys):
+            raise ValueError("Übergabepunkte dürfen nicht doppelt vorkommen.")
+        return values
+
+
+class OWKSShiftHandoverConfirmationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    note: str = Field(default="", max_length=1000)
+
+    @field_validator("note")
+    @classmethod
+    def note_is_normalized(cls, value: str) -> str:
+        return value.strip()
+
+
+class OWKSHandoverSourceRead(BaseModel):
+    source_type: Literal[
+        "owks_event",
+        "task",
+        "incident",
+        "incident_measure",
+        "key",
+        "inventory_asset",
+        "instruction",
+    ]
+    source_id: UUID
+    title: str
+    status: str
+    severity: str | None
+    occurred_at: datetime
+
+
+class OWKSHandoverShiftOption(BaseModel):
+    id: UUID
+    starts_at: datetime
+    ends_at: datetime
+
+
+class OWKSHandoverEmployeeOption(BaseModel):
+    id: UUID
+    full_name: str
+
+
+class OWKSShiftHandoverContextRead(BaseModel):
+    current_employee_id: UUID | None
+    shifts: list[OWKSHandoverShiftOption]
+    recipients: list[OWKSHandoverEmployeeOption]
+    source_items: list[OWKSHandoverSourceRead]
+
+
+class OWKSShiftHandoverHistoryRead(BaseModel):
+    action: Literal["submitted", "confirmed"]
+    employee_id: UUID
+    actor_id: UUID
+    note: str
+    occurred_at: datetime
+
+
+class OWKSShiftHandoverRead(BaseModel):
+    id: UUID
+    object_id: UUID
+    event_id: UUID
+    shift_id: UUID
+    shift_starts_at: datetime
+    shift_ends_at: datetime
+    sender_employee_id: UUID
+    sender_name: str
+    recipient_employee_id: UUID
+    recipient_name: str
+    handover_text: str
+    structured_items: list[OWKSStructuredHandoverItem]
+    source_items: list[OWKSHandoverSourceRead]
+    status: Literal["pending", "confirmed"]
+    created_at: datetime
+    confirmed_at: datetime | None
+    confirmation_note: str | None
+    history: list[OWKSShiftHandoverHistoryRead]
+
+
 class OWKSEventStateUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

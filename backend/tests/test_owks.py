@@ -18,14 +18,23 @@ from app.identity_api import password_hasher
 from app.malware_scanner import MalwareDetected
 from app.models import (
     Employee,
+    Incident,
+    IncidentMeasure,
+    InventoryAsset,
     NotificationOutbox,
     ObjectAssignment,
     OWKSAttachment,
     OWKSEvent,
     OWKSRoute,
     Permission,
+    PhysicalKey,
+    PolicyAssignment,
+    PolicyItem,
+    PolicyVersion,
     Role,
+    ScheduleShift,
     SecurityObject,
+    Task,
     User,
 )
 from app.owks_api import (
@@ -447,6 +456,361 @@ def test_offline_sync_conflicts_status_corrections_and_secure_attachments(
         },
     )
     assert oversized.status_code == 413
+
+
+def test_shift_handover_is_scoped_snapshotted_and_confirmed_by_recipient(
+    client: TestClient,
+) -> None:
+    admin_headers = {"X-CSRF-Token": sign_in(client)}
+    object_id = create_object(client, admin_headers, "OWKS-HANDOVER-001")
+    create_assigned_employee(object_id, "handover-sender")
+    create_assigned_employee(object_id, "handover-recipient")
+    with TestingSessionLocal() as db:
+        sender = db.scalar(
+            select(Employee)
+            .join(User, Employee.user_id == User.id)
+            .where(User.username == "handover-sender")
+        )
+        recipient = db.scalar(
+            select(Employee)
+            .join(User, Employee.user_id == User.id)
+            .where(User.username == "handover-recipient")
+        )
+        admin = db.scalar(select(User).where(User.username == "admin"))
+        assert sender is not None and recipient is not None and admin is not None
+        shift = ScheduleShift(
+            employee_id=sender.id,
+            object_id=UUID(object_id),
+            starts_at=datetime(2026, 11, 9, 6, tzinfo=UTC),
+            ends_at=datetime(2026, 11, 9, 14, tzinfo=UTC),
+            status="published",
+            created_by_id=admin.id,
+        )
+        db.add(shift)
+        db.commit()
+        shift_id = str(shift.id)
+        sender_id = sender.id
+        recipient_id = recipient.id
+
+    sender_headers = {
+        "X-CSRF-Token": sign_in(client, "handover-sender", "wachkraft-test-passwort-2026")
+    }
+    source = client.post(
+        "/api/v1/owks/events",
+        headers=sender_headers,
+        json={
+            "object_id": object_id,
+            "event_type": "deviation",
+            "title": "Offene Störung am Zugang",
+            "description": "Automatisch übernommener offener OWKS-Punkt.",
+            "severity": "warning",
+            "client_event_id": str(uuid4()),
+        },
+    )
+    assert source.status_code == 201
+    context = client.get(f"/api/v1/owks/objects/{object_id}/handovers/context")
+    assert context.status_code == 200
+    assert [item["id"] for item in context.json()["shifts"]] == [shift_id]
+    assert [item["id"] for item in context.json()["recipients"]] == [str(recipient_id)]
+    assert [item["source_id"] for item in context.json()["source_items"]] == [source.json()["id"]]
+
+    payload = {
+        "shift_id": shift_id,
+        "recipient_employee_id": str(recipient_id),
+        "handover_text": "Zugangstür schließt nicht zuverlässig.",
+        "structured_items": [
+            {"category": "disturbance", "text": "Türschließer prüfen."},
+            {"category": "key", "text": "Ersatzschlüssel liegt im Leitstellenfach."},
+        ],
+    }
+    created = client.post(
+        f"/api/v1/owks/objects/{object_id}/handovers",
+        headers=sender_headers,
+        json=payload,
+    )
+    assert created.status_code == 201
+    handover = created.json()
+    assert handover["status"] == "pending"
+    assert handover["sender_employee_id"] == str(sender_id)
+    assert handover["recipient_employee_id"] == str(recipient_id)
+    assert handover["source_items"][0]["source_id"] == source.json()["id"]
+    assert [item["action"] for item in handover["history"]] == ["submitted"]
+    assert (
+        client.post(
+            f"/api/v1/owks/objects/{object_id}/handovers",
+            headers=sender_headers,
+            json=payload,
+        ).status_code
+        == 409
+    )
+    assert (
+        client.post(
+            f"/api/v1/owks/handovers/{handover['id']}/confirm",
+            headers=sender_headers,
+            json={"note": ""},
+        ).status_code
+        == 403
+    )
+    create_object_manager(object_id, "handover-leitstelle")
+    with TestingSessionLocal() as db:
+        role = db.scalar(select(Role).where(Role.code == "object_manager"))
+        permissions = db.scalars(
+            select(Permission).where(Permission.code.in_(("control_room.read", "employees.read")))
+        ).all()
+        assert role is not None
+        existing_codes = {permission.code for permission in role.permissions}
+        role.permissions = [
+            *role.permissions,
+            *(permission for permission in permissions if permission.code not in existing_codes),
+        ]
+        db.commit()
+    control_room_headers = {
+        "X-CSRF-Token": sign_in(client, "handover-leitstelle", "objektleitung-test-passwort-2026")
+    }
+    control_room = client.get(
+        "/api/v1/control-room",
+        headers=control_room_headers,
+        params={"object_id": object_id},
+    )
+    assert control_room.status_code == 200
+    assert [item["id"] for item in control_room.json()["pending_handovers"]] == [handover["id"]]
+
+    recipient_headers = {
+        "X-CSRF-Token": sign_in(client, "handover-recipient", "wachkraft-test-passwort-2026")
+    }
+    confirmed = client.post(
+        f"/api/v1/owks/handovers/{handover['id']}/confirm",
+        headers=recipient_headers,
+        json={"note": "Geprüft und übernommen."},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["status"] == "confirmed"
+    assert confirmed.json()["confirmation_note"] == "Geprüft und übernommen."
+    assert [item["action"] for item in confirmed.json()["history"]] == ["submitted", "confirmed"]
+    assert (
+        client.post(
+            f"/api/v1/owks/handovers/{handover['id']}/confirm",
+            headers=recipient_headers,
+            json={"note": ""},
+        ).status_code
+        == 409
+    )
+    assert (
+        client.get(f"/api/v1/owks/objects/{object_id}/handovers").json()[0]["id"] == handover["id"]
+    )
+    control_room_headers = {
+        "X-CSRF-Token": sign_in(client, "handover-leitstelle", "objektleitung-test-passwort-2026")
+    }
+    control_room = client.get(
+        "/api/v1/control-room",
+        headers=control_room_headers,
+        params={"object_id": object_id},
+    )
+    assert control_room.status_code == 200
+    assert control_room.json()["pending_handovers"] == []
+
+
+def test_handover_snapshots_module_sources_with_object_and_permission_scopes(
+    client: TestClient,
+) -> None:
+    admin_headers = {"X-CSRF-Token": sign_in(client)}
+    object_id = create_object(client, admin_headers, "OWKS-HANDOVER-SOURCES")
+    other_object_id = create_object(client, admin_headers, "OWKS-HANDOVER-OTHER")
+    create_assigned_employee(object_id, "handover-source-sender")
+    create_assigned_employee(object_id, "handover-source-recipient")
+    with TestingSessionLocal() as db:
+        role = db.scalar(select(Role).where(Role.code == "employee"))
+        permissions = db.scalars(
+            select(Permission).where(
+                Permission.code.in_(
+                    (
+                        "tasks.read_own",
+                        "incidents.read",
+                        "keys.read",
+                        "inventory.read",
+                        "policies.read_own",
+                        "policies.manage",
+                    )
+                )
+            )
+        ).all()
+        sender = db.scalar(
+            select(Employee)
+            .join(User, Employee.user_id == User.id)
+            .where(User.username == "handover-source-sender")
+        )
+        recipient = db.scalar(
+            select(Employee)
+            .join(User, Employee.user_id == User.id)
+            .where(User.username == "handover-source-recipient")
+        )
+        admin = db.scalar(select(User).where(User.username == "admin"))
+        obj = db.get(SecurityObject, UUID(object_id))
+        assert role is not None and sender is not None and recipient is not None
+        assert admin is not None and obj is not None
+        role.permissions = [*role.permissions, *permissions]
+        db.add_all(
+            [
+                Task(
+                    title="Offene Schließrundenaufgabe",
+                    assigned_to_id=recipient.user_id,
+                    object_id=obj.id,
+                    status="open",
+                    priority="high",
+                ),
+                Task(
+                    title="Fremde Objektaufgabe",
+                    assigned_to_id=recipient.user_id,
+                    object_id=UUID(other_object_id),
+                    status="open",
+                ),
+                PhysicalKey(
+                    key_number="TEST-KEY-OPEN",
+                    description="Testschlüssel",
+                    object_id=obj.id,
+                    status="issued",
+                    current_employee_id=recipient.id,
+                ),
+                InventoryAsset(
+                    asset_number="TEST-RADIO-DAMAGED",
+                    name="Funkgerät",
+                    category="radio",
+                    condition="defective",
+                    status="damaged",
+                    location="Wache",
+                    object_id=obj.id,
+                ),
+            ]
+        )
+        incident = Incident(
+            title="Offene Zugangsstörung",
+            report="Synthetischer Bericht",
+            incident_type="incident",
+            severity="high",
+            object_id=obj.id,
+            status="action_required",
+            assigned_to_id=admin.id,
+        )
+        db.add(incident)
+        db.flush()
+        db.add(
+            IncidentMeasure(
+                incident_id=incident.id,
+                title="Türschließer prüfen",
+                assigned_to_id=admin.id,
+                status="open",
+            )
+        )
+        policy = PolicyItem(
+            kind="instruction",
+            title="Zutrittskontrolle",
+            object_id=obj.id,
+        )
+        db.add(policy)
+        db.flush()
+        version = PolicyVersion(
+            policy_item_id=policy.id,
+            version_number=1,
+            content="Synthetische Anweisung",
+            valid_from=datetime.now(UTC) - timedelta(days=1),
+        )
+        db.add(version)
+        db.flush()
+        db.add(
+            PolicyAssignment(
+                policy_version_id=version.id,
+                employee_id=recipient.id,
+                due_at=datetime.now(UTC) - timedelta(hours=1),
+                assigned_by_id=admin.id,
+            )
+        )
+        shift = ScheduleShift(
+            employee_id=sender.id,
+            object_id=obj.id,
+            starts_at=datetime.now(UTC) - timedelta(hours=8),
+            ends_at=datetime.now(UTC),
+            status="published",
+            created_by_id=admin.id,
+        )
+        db.add(shift)
+        db.commit()
+        shift_id = str(shift.id)
+        recipient_id = recipient.id
+
+    sender_headers = {
+        "X-CSRF-Token": sign_in(
+            client,
+            "handover-source-sender",
+            "wachkraft-test-passwort-2026",
+        )
+    }
+    context = client.get(f"/api/v1/owks/objects/{object_id}/handovers/context")
+    assert context.status_code == 200
+    sources = context.json()["source_items"]
+    assert {item["source_type"] for item in sources} == {
+        "task",
+        "incident",
+        "incident_measure",
+        "key",
+        "inventory_asset",
+    }
+    assert "Fremde Objektaufgabe" not in {item["title"] for item in sources}
+
+    created = client.post(
+        f"/api/v1/owks/objects/{object_id}/handovers",
+        headers=sender_headers,
+        json={
+            "shift_id": shift_id,
+            "recipient_employee_id": str(recipient_id),
+            "handover_text": "Offene Punkte zur Nachtschicht.",
+            "structured_items": [],
+        },
+    )
+    assert created.status_code == 201
+    assert {item["source_type"] for item in created.json()["source_items"]} == {
+        "task",
+        "incident",
+        "incident_measure",
+        "key",
+        "inventory_asset",
+        "instruction",
+    }
+    assert (
+        next(
+            item for item in created.json()["source_items"] if item["source_type"] == "instruction"
+        )["status"]
+        == "overdue"
+    )
+    with TestingSessionLocal() as db:
+        read_role = db.scalar(select(Role).where(Role.code == "object_manager"))
+        owks_read = db.scalar(select(Permission).where(Permission.code == "owks.read"))
+        obj = db.get(SecurityObject, UUID(object_id))
+        assert read_role is not None and owks_read is not None and obj is not None
+        read_role.permissions = [owks_read]
+        read_only_user = User(
+            username="handover-source-reader",
+            email="handover-source-reader@example.com",
+            full_name="Test Lesekonto",
+            password_hash=password_hasher.hash("lesekonto-test-passwort-2026"),
+            roles=[read_role],
+        )
+        db.add(read_only_user)
+        db.flush()
+        db.add(ObjectAssignment(object_id=obj.id, user_id=read_only_user.id))
+        db.commit()
+    reader_headers = {
+        "X-CSRF-Token": sign_in(
+            client,
+            "handover-source-reader",
+            "lesekonto-test-passwort-2026",
+        )
+    }
+    handovers = client.get(
+        f"/api/v1/owks/objects/{object_id}/handovers",
+        headers=reader_headers,
+    )
+    assert handovers.status_code == 200
+    assert handovers.json()[0]["source_items"] == []
 
 
 def test_owks_permission_and_foreign_object_attachment_are_denied(client: TestClient) -> None:

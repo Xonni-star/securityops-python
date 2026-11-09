@@ -502,6 +502,12 @@ erDiagram
     OWKS_EVENTS ||--o{ OWKS_EVENT_STATUSES : status_history
     OWKS_EVENTS ||--o{ OWKS_ATTACHMENTS : attachments
     EMPLOYEES o|--o{ OWKS_EVENTS : recorded_for
+    SCHEDULE_SHIFTS ||--o| OWKS_SHIFT_HANDOVERS : outgoing_shift
+    OBJECTS ||--o{ OWKS_SHIFT_HANDOVERS : handovers
+    OWKS_EVENTS ||--o| OWKS_SHIFT_HANDOVERS : handover_event
+    EMPLOYEES ||--o{ OWKS_SHIFT_HANDOVERS : sender
+    EMPLOYEES ||--o{ OWKS_SHIFT_HANDOVERS : recipient
+    OWKS_SHIFT_HANDOVERS ||--o| OWKS_SHIFT_HANDOVER_CONFIRMATIONS : confirmation
     DOCUMENTS ||--o{ DOCUMENT_VERSIONS : versions
     DOCUMENT_VERSIONS ||--o{ DOCUMENT_APPROVALS : approvals
     DOCUMENT_VERSIONS ||--o{ DOCUMENT_READ_RECEIPTS : read_receipts
@@ -603,6 +609,7 @@ erDiagram
 | `0038_digital_policies` | `0037_object_qual_requirements` | Ergänzt Dienstanweisungs-/Unterweisungsstammdaten, immutable Versionen/Abschlüsse, Mitarbeiterzuweisungen und Nachweise sowie Rechte und Append-only-Trigger. |
 | `0039_unique_billing_corrections` | `0038_digital_policies` | In PR #85 ergänzt: partieller eindeutiger Index auf `billing_invoices.correction_of_id`; bei bereits mehrfach korrigierten Originalen bricht die Migration vor Änderungen ab. |
 | `0040_key_issue_automation` | `0039_unique_billing_corrections` | Erlaubt `key.issued` als Automatisierungsauslöser; vorhandene Regeln und Schlüsselbewegungsdaten bleiben unverändert. |
+| `0041_owks_shift_handovers` | `0040_key_issue_automation` | Ergänzt objekt-/schichtgebundene Übergaben, strukturierte Punkte, Quellen-Snapshots und einmalige Empfangsbestätigungen mit RESTRICT-Fremdschlüsseln und Append-only-Triggern. |
 
 Die Migration `0033_encrypted_document_storage` wurde mit PR #57 in `main` integriert. Sie ergänzt optionale `storage_key`-Spalten und nullable Legacy-BLOBs für OWKS-/Personalanhänge. Die Migration ändert keine vorhandenen Inhalte; ein expliziter Wartungsbefehl schreibt verschlüsselte Dateien atomar in den privaten Speicher und löscht den BLOB erst zusammen mit dem Datenbankverweis innerhalb einer Transaktion. Der OWKS-Append-only-Trigger erlaubt ausschließlich diesen eng begrenzten Umzug. Downgrade wird abgelehnt, sobald ein Datensatz auf den Dateispeicher verweist. Die Integration belegt keine durchgeführte Betreiber-Bestandsmigration oder Rotation; den aktuellen Issue- und Betriebsstatus dokumentiert [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
@@ -610,7 +617,7 @@ Neue Schemaänderungen benötigen eine neue Alembic-Migration. Ein `Base.metadat
 
 Historischer Hinweis zum ursprünglichen Outbox-PR: PR #39 und die Dokumentationsänderung PR #25 sind gemergt; PR #40 ist ebenfalls gemergt und Bestandteil von `main`. PR #39 fügte `0024_notification_outbox_worker` mit einer Attempt-Tabelle sowie Lock-/Lease-Feldern und einem Index hinzu. Issue #7 bleibt trotz des Billing-Merges offen zur fachlichen Abnahme. `main` reicht bis `0038_digital_policies`; PR #85 fügt `0039_unique_billing_corrections` hinzu, darauf ist PR #88 mit `0040_key_issue_automation` gestapelt. Der aktuelle Live-PR- und Migrationsstatus steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
-Die aktuelle lineare Kette auf `main` setzt `0036_billing_approval_automation` mit `0037_object_qual_requirements` und `0038_digital_policies` fort. Revision 0037 ergänzt normalisierte Objekt-Qualifikationsanforderungen; Revision 0038 ergänzt fünf Policy-Tabellen, die Berechtigungen `policies.manage`/`policies.read_own` und Append-only-Trigger. Der offene PR #85 ergänzt als Revision 0039 eine Datenbank-Eindeutigkeitssicherung, die pro Originalrechnung höchstens einen Korrektur- oder Stornobeleg zulässt; vor dem Anlegen des Indexes weist die Migration vorhandene Mehrfachbelege zur fachlichen Prüfung zurück. PR #88 baut darauf mit Revision 0040 ausschließlich `key.issued` zum Constraint der registrierten Automatisierungsauslöser aus.
+Die aktuelle lineare Kette auf `main` setzt `0036_billing_approval_automation` mit `0037_object_qual_requirements` und `0038_digital_policies` fort. Revision 0037 ergänzt normalisierte Objekt-Qualifikationsanforderungen; Revision 0038 ergänzt fünf Policy-Tabellen, die Berechtigungen `policies.manage`/`policies.read_own` und Append-only-Trigger. PR #85 ergänzt als Revision 0039 eine Datenbank-Eindeutigkeitssicherung, die pro Originalrechnung höchstens einen Korrektur- oder Stornobeleg zulässt; PR #88 baut darauf mit Revision 0040 ausschließlich `key.issued` zum Constraint der registrierten Automatisierungsauslöser aus. Der gestapelte Arbeitsbranch für PR #89 ergänzt als Revision 0041 Übergabe- und Empfangsbestätigungstabellen mit Triggern gegen UPDATE/DELETE. Das Downgrade verweigert den Rückbau, sobald Übergaben oder Bestätigungen vorliegen. OWKS- und berechtigungsgefilterte Fachquellen werden als unveränderliche JSON-Snapshots gespeichert; Fremdmodule werden nicht per Fremdschlüssel referenziert. Die Bestätigung ist kein Signaturverfahren.
 
 ## Datenhaltungsgrenzen
 

@@ -3,12 +3,16 @@ import {
   createOWKSChallenge,
   createOWKSControlPoint,
   createOWKSEvent,
+  createOWKSShiftHandover,
   createOWKSRoute,
   createIncident,
+  confirmOWKSShiftHandover,
   getOWKSControlPoints,
   getOWKSAttachments,
   getOWKSEvent,
   getOWKSEvents,
+  getOWKSShiftHandoverContext,
+  getOWKSShiftHandovers,
   getOWKSObjects,
   getOWKSRoutes,
   getIncidentChoices,
@@ -32,6 +36,11 @@ import type {
   OWKSObject,
   OWKSRoute,
   OWKSSyncResult,
+  OWKSHandoverSource,
+  OWKSShiftHandover,
+  OWKSShiftHandoverContext,
+  OWKSStructuredHandoverItem,
+  OWKSHandoverCategory,
   IncidentChoices,
   IncidentSeverity,
   IncidentType,
@@ -51,6 +60,16 @@ type NewOfflineItem = Omit<OfflineItem, "event_type"> & {
 };
 
 const QUEUE_KEY = "securityops-owks-offline-queue";
+const HANDOVER_CATEGORIES: Array<{ value: OWKSHandoverCategory; label: string }> = [
+  { value: "task", label: "Aufgabe" },
+  { value: "incident", label: "Vorfall" },
+  { value: "key", label: "Schlüssel" },
+  { value: "disturbance", label: "Störung" },
+  { value: "control", label: "Kontrolle" },
+  { value: "instruction", label: "Anweisung" },
+  { value: "measure", label: "Maßnahme" },
+  { value: "other", label: "Sonstiges" },
+];
 
 function messageFrom(reason: unknown) {
   return reason instanceof Error ? reason.message : "Die OWKS-Aktion ist fehlgeschlagen.";
@@ -70,6 +89,44 @@ function incidentMessageFrom(reason: unknown) {
   return message;
 }
 
+function handoverSourceSummary(source: OWKSHandoverSource) {
+  const sourceLabels: Record<OWKSHandoverSource["source_type"], string> = {
+    owks_event: "Wachbuch",
+    task: "Aufgabe",
+    incident: "Vorfall",
+    incident_measure: "Maßnahme",
+    key: "Schlüssel",
+    inventory_asset: "Inventar",
+    instruction: "Anweisung",
+  };
+  const statusLabels: Record<string, string> = {
+    open: "Offen",
+    in_progress: "In Bearbeitung",
+    blocked: "Blockiert",
+    reported: "Gemeldet",
+    investigating: "In Prüfung",
+    action_required: "Maßnahme erforderlich",
+    issued: "Ausgegeben",
+    lost: "Vermisst",
+    defective: "Defekt",
+    maintenance: "Wartung",
+    damaged: "Beschädigt",
+    pending: "Ausstehend",
+    overdue: "Überfällig",
+  };
+  const severityLabels: Record<string, string> = {
+    info: "Hinweis",
+    warning: "Warnung",
+    critical: "Kritisch",
+    low: "Niedrig",
+    medium: "Mittel",
+    high: "Hoch",
+  };
+  const status = statusLabels[source.status] ?? source.status;
+  const severity = source.severity ? severityLabels[source.severity] ?? source.severity : null;
+  return `${sourceLabels[source.source_type]}: ${source.title} · ${status}${severity ? ` · ${severity}` : ""}`;
+}
+
 export default function OWKSManagement({
   user,
   initialEventId = null,
@@ -80,6 +137,12 @@ export default function OWKSManagement({
   const [objects, setObjects] = useState<OWKSObject[]>([]);
   const [selectedObjectId, setSelectedObjectId] = useState("");
   const [events, setEvents] = useState<OWKSEvent[]>([]);
+  const [handovers, setHandovers] = useState<OWKSShiftHandover[]>([]);
+  const [handoverContext, setHandoverContext] = useState<OWKSShiftHandoverContext | null>(null);
+  const [handoverItems, setHandoverItems] = useState<OWKSStructuredHandoverItem[]>([
+    { category: "other", text: "" },
+  ]);
+  const [confirmationNotes, setConfirmationNotes] = useState<Record<string, string>>({});
   const [incidentChoices, setIncidentChoices] = useState<IncidentChoices | null>(null);
   const [incidentEvent, setIncidentEvent] = useState<OWKSEvent | null>(null);
   const [focusedEvent, setFocusedEvent] = useState<OWKSEvent | null>(null);
@@ -106,15 +169,22 @@ export default function OWKSManagement({
   const loadObjectData = useCallback(async (objectId: string) => {
     if (!objectId) return;
     try {
-      const [nextEvents, nextPoints, nextRoutes] = await Promise.all([
+      const [nextEvents, nextPoints, nextRoutes, nextHandovers] = await Promise.all([
         getOWKSEvents(objectId),
         getOWKSControlPoints(objectId),
         getOWKSRoutes(objectId),
+        getOWKSShiftHandovers(objectId),
       ]);
       setEvents(nextEvents);
       setPoints(nextPoints);
       setRoutes(nextRoutes);
+      setHandovers(nextHandovers);
       setError("");
+      if (canWrite) {
+        setHandoverContext(await getOWKSShiftHandoverContext(objectId));
+      } else {
+        setHandoverContext(null);
+      }
       if (canCreateIncident) {
         try {
           const choices = await getIncidentChoices(objectId);
@@ -129,7 +199,7 @@ export default function OWKSManagement({
     } catch (reason) {
       setError(messageFrom(reason));
     }
-  }, [canCreateIncident]);
+  }, [canCreateIncident, canWrite]);
 
   useEffect(() => {
     getOWKSObjects()
@@ -223,6 +293,60 @@ export default function OWKSManagement({
         await loadObjectData(selectedObjectId);
       }
       formElement.reset();
+    } catch (reason) {
+      setError(messageFrom(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitHandover(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedObjectId || !canWrite || !handoverContext) return;
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const shiftId = String(form.get("handover_shift_id") ?? "");
+    const recipientId = String(form.get("handover_recipient_id") ?? "");
+    const handoverText = String(form.get("handover_text") ?? "").trim();
+    const items = handoverItems
+      .map((item) => ({ ...item, text: item.text.trim() }))
+      .filter((item) => item.text);
+    if (!shiftId || !recipientId || !handoverText) {
+      setError("Bitte eine Schicht, die übernehmende Person und einen Übergabetext auswählen.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const saved = await createOWKSShiftHandover(selectedObjectId, {
+        shift_id: shiftId,
+        recipient_employee_id: recipientId,
+        handover_text: handoverText,
+        structured_items: items,
+      });
+      setHandovers((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+      setHandoverItems([{ category: "other", text: "" }]);
+      setNotice("Schichtübergabe wurde unveränderlich gespeichert und wartet auf die Bestätigung der übernehmenden Person.");
+      formElement.reset();
+      await loadObjectData(selectedObjectId);
+    } catch (reason) {
+      setError(messageFrom(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmHandover(handover: OWKSShiftHandover) {
+    setBusy(true);
+    setError("");
+    try {
+      const confirmed = await confirmOWKSShiftHandover(
+        handover.id,
+        confirmationNotes[handover.id] ?? "",
+      );
+      setHandovers((current) => current.map((item) => item.id === confirmed.id ? confirmed : item));
+      setNotice("Übernahme wurde bestätigt und unveränderlich protokolliert.");
+      await loadObjectData(selectedObjectId);
     } catch (reason) {
       setError(messageFrom(reason));
     } finally {
@@ -516,6 +640,82 @@ export default function OWKSManagement({
         </section>}
 
         {canWrite && <section className="panel owks-panel">
+          <div className="panel-heading"><div><p className="eyebrow">SCHICHTWECHSEL</p><h2>Übergabe erstellen</h2></div></div>
+          {handoverContext?.shifts.length && handoverContext.recipients.length
+            ? <form className="owks-event-form" onSubmit={(event) => void submitHandover(event)}>
+              <label>Eigene veröffentlichte Schicht
+                <select name="handover_shift_id" required defaultValue="">
+                  <option value="" disabled>Bitte Schicht auswählen</option>
+                  {handoverContext.shifts.map((shift) => <option key={shift.id} value={shift.id}>
+                    {new Date(shift.starts_at).toLocaleString("de-DE")} – {new Date(shift.ends_at).toLocaleTimeString("de-DE")}
+                  </option>)}
+                </select>
+              </label>
+              <label>Übernehmende Person
+                <select name="handover_recipient_id" required defaultValue="">
+                  <option value="" disabled>Bitte auswählen</option>
+                  {handoverContext.recipients.map((recipient) =>
+                    <option key={recipient.id} value={recipient.id}>{recipient.full_name}</option>,
+                  )}
+                </select>
+              </label>
+              <label>Übergabetext<textarea name="handover_text" required maxLength={10000} /></label>
+              <fieldset className="owks-event-form">
+                <legend>Strukturierte Übergabepunkte</legend>
+                {handoverItems.map((item, index) => <div className="time-action-row" key={`handover-item-${index}`}>
+                  <label>Kategorie
+                    <select
+                      aria-label={`Kategorie Übergabepunkt ${index + 1}`}
+                      value={item.category}
+                      onChange={(change) => setHandoverItems((current) => current.map((entry, itemIndex) =>
+                        itemIndex === index
+                          ? { ...entry, category: change.target.value as OWKSHandoverCategory }
+                          : entry,
+                      ))}
+                    >
+                      {HANDOVER_CATEGORIES.map((category) =>
+                        <option key={category.value} value={category.value}>{category.label}</option>,
+                      )}
+                    </select>
+                  </label>
+                  <label>Hinweis
+                    <input
+                      aria-label={`Text Übergabepunkt ${index + 1}`}
+                      maxLength={500}
+                      value={item.text}
+                      onChange={(change) => setHandoverItems((current) => current.map((entry, itemIndex) =>
+                        itemIndex === index ? { ...entry, text: change.target.value } : entry,
+                      ))}
+                    />
+                  </label>
+                  {handoverItems.length > 1 && <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setHandoverItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                  >Punkt entfernen</button>}
+                </div>)}
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={handoverItems.length >= 50}
+                  onClick={() => setHandoverItems((current) => [...current, { category: "other", text: "" }])}
+                >Übergabepunkt ergänzen</button>
+              </fieldset>
+              <div>
+                <h3>Automatisch übernommene offene Punkte</h3>
+                {handoverContext.source_items.length
+                  ? <ul>{handoverContext.source_items.map((source) => <li key={`${source.source_type}-${source.source_id}`}>
+                    {handoverSourceSummary(source)}
+                  </li>)}</ul>
+                  : <p className="muted">Keine offenen relevanten Punkte mit den vorhandenen Leseberechtigungen.</p>}
+                <p className="muted">Die Herkunft und der Stand zum Erstellungszeitpunkt werden mit der Übergabe gespeichert.</p>
+              </div>
+              <button className="primary-button" disabled={busy}>Übergabe speichern</button>
+            </form>
+            : <p className="muted">Eine Übergabe ist nur mit eigener veröffentlichter Schicht und einer aktiven, dem Objekt zugewiesenen übernehmenden Person möglich.</p>}
+        </section>}
+
+        {canWrite && <section className="panel owks-panel">
           <div className="panel-heading"><div><p className="eyebrow">QR / NFC</p><h2>Kontrollgang</h2></div></div>
           <p className="muted" role="note">
             {supportsWebNfc()
@@ -618,6 +818,62 @@ export default function OWKSManagement({
             </form>
           </section>}
         </section>}
+
+        <section className="panel owks-panel">
+          <div className="panel-heading">
+            <div><p className="eyebrow">ÜBERGABEVERLAUF</p><h2>Schichtübergaben</h2></div>
+            <span className="result-count">{handovers.filter((item) => item.status === "pending").length} offen</span>
+          </div>
+          {!handovers.length && <p className="empty">Für dieses Objekt liegen noch keine Schichtübergaben vor.</p>}
+          <div className="owks-event-list">{handovers.map((handover) => <article className="owks-event" key={handover.id}>
+            <div className="owks-event-heading">
+              <strong>{handover.sender_name} → {handover.recipient_name}</strong>
+              <time>{new Date(handover.created_at).toLocaleString("de-DE")}</time>
+            </div>
+            <p>{handover.handover_text}</p>
+            <div className="owks-event-meta">
+              <span>{handover.status === "pending" ? "Bestätigung ausstehend – Leitstelle sichtbar" : "Übernahme bestätigt"}</span>
+              <span>
+                Schicht {new Date(handover.shift_starts_at).toLocaleString("de-DE")}
+                – {new Date(handover.shift_ends_at).toLocaleString("de-DE")}
+              </span>
+            </div>
+            {handover.structured_items.length > 0 && <ul>
+              {handover.structured_items.map((item, index) => <li key={`${handover.id}-item-${index}`}>
+                <strong>{HANDOVER_CATEGORIES.find((category) => category.value === item.category)?.label ?? item.category}:</strong> {item.text}
+              </li>)}
+            </ul>}
+            {handover.source_items.length > 0 && <div>
+              <h3>Übernommene offene Punkte</h3>
+              <ul>{handover.source_items.map((source) => <li key={`${source.source_type}-${source.source_id}`}>
+                {handoverSourceSummary(source)}
+              </li>)}</ul>
+            </div>}
+            <ol aria-label="Änderungsverlauf">
+              {handover.history.map((entry, index) => <li key={`${handover.id}-history-${index}`}>
+                {entry.action === "submitted" ? "Übergeben" : "Übernahme bestätigt"} · {new Date(entry.occurred_at).toLocaleString("de-DE")}
+                {entry.note && ` · ${entry.note}`}
+              </li>)}
+            </ol>
+            {handover.status === "pending"
+              && handoverContext?.current_employee_id === handover.recipient_employee_id
+              && <div className="owks-event-form">
+                <label>Bestätigungsnotiz (optional)
+                  <textarea
+                    maxLength={1000}
+                    value={confirmationNotes[handover.id] ?? ""}
+                    onChange={(change) => setConfirmationNotes((current) => ({
+                      ...current,
+                      [handover.id]: change.target.value,
+                    }))}
+                  />
+                </label>
+                <button className="primary-button" disabled={busy} onClick={() => void confirmHandover(handover)}>
+                  Übergabe geprüft und übernommen
+                </button>
+              </div>}
+          </article>)}</div>
+        </section>
 
         <section className="panel owks-panel">
           <div className="panel-heading"><div><p className="eyebrow">APPEND-ONLY-PROTOKOLL</p><h2>Wachbuchereignisse</h2></div><span className="result-count">{events.length} Einträge</span></div>
