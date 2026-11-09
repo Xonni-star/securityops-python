@@ -1,60 +1,55 @@
-# SecurityOps – Implementierungs-Roadmap
+# Priorisierte Implementierungs-Roadmap
 
-Diese Roadmap beschreibt `main` auf Merge-Commit `d066d56b97fbd795be276b0414d6a88b8c779962`, PR #20 und den darauf gestapelten Ergänzungsbranch [PR #21](https://github.com/Xonni-star/securityops-python/pull/21). PR #18: Backend/PostgreSQL, Frontend einschließlich Vitest und Docker CI grün; Issue #6 geschlossen. PR #19 (Dienstplanung) ist in `main`; Issue #10 bleibt bis zur fachlichen Abnahme offen. Issue #2 bleibt wegen ausstehender formaler Abnahme offen. PR #20 ist ungemergt; PR #21 ergänzt Migration 0013, zielt auf seinen Branch und hat grüne Backend/PostgreSQL/Migrationen-, Frontend- und Docker-CI. Issue #4 bleibt offen. Die Geldbetragsberechnung bleibt mangels fachlich festgelegter Lohnbasis, Prozentbasis, Festzuschlagseinheit und Rundung ausdrücklich ausgenommen. Ein Issue wird nicht ohne fachliche Abnahme geschlossen; Produktions-, Datenschutz- und Rechtsfreigaben sind hiervon getrennt.
+Diese Roadmap basiert auf dem tatsächlich gemergten `main`-Stand vom 09.11.2026 (SHA `b275b5a0eb4a82a480e3c15ee09a0a5c85453a6d`) und der aktuellen GitHub-Abfrage. Statusdetails stehen in [`PROJECT_STATUS.md`](PROJECT_STATUS.md). Priorität folgt Sicherheits- und Datenabhängigkeiten, nicht der Nummer offener Issues.
 
-## Statusübersicht
+## Prioritäten
 
-| Bereich | Status | Beleg / nächste Arbeit |
-|---|---|---|
-| Einzelmandanten-Grundgerüst | Teilweise | FastAPI, React/TypeScript, PostgreSQL, Alembic und Compose sind vorhanden; keine Mandantenstrukturen. |
-| Anmeldung und Rollen | Teilweise | Argon2id, serverseitige Sitzungen, CSRF, RBAC und Admin-Bootstrap vorhanden. MFA, Passwortzurücksetzung und Sitzungsverwaltung fehlen. Objektbezogene Rechte sind im aktuellen Branch ergänzt. |
-| Kunden | In `main` umgesetzt; Issue #6 geschlossen | PR #18 ergänzt Website, Vertragsstatus, Filter/Sortierung und berechtigungsgefilterte Objektzuordnungen; Backend/PostgreSQL, Frontend einschließlich Vitest und Docker CI grün. Vertrags- und Dokumentenmodule fehlen weiterhin ([#6](https://github.com/Xonni-star/securityops-python/issues/6)). |
-| Objekte | In `main` umgesetzt; formale Abnahme offen | Backend/API/UI und Migrationen 0005–0007; PR #16 gemergt und CI erfolgreich. Issue #2 bleibt offen, bis die Akzeptanzkriterien formal abgenommen sind ([#2](https://github.com/Xonni-star/securityops-python/issues/2)). |
-| Personal und Qualifikationen | In `main` umgesetzt | Migrationen 0008–0009, Personalakten, Qualifikationen, Abwesenheiten, sensible Daten, Historie, Objektzuweisungen und versionierte Qualifikationsdateien. PR #17 ist gemergt, CI erfolgreich; Issue #5 ist geschlossen. |
-| Dienstplanung | In `main` umgesetzt; Abnahme offen | PR #19 enthält Scheduling-Kern mit UTC-Zeitpunkten, konfigurierbarer IANA-Zeitzone/Ruhezeit, PostgreSQL-Überlappungsschutz, Prüfungen, API/UI und Änderungshistorie. GitHub-CI für PostgreSQL, parallele Integrationstests, Frontend und Docker war erfolgreich; fachliche Issue-Abnahme steht aus ([#10](https://github.com/Xonni-star/securityops-python/issues/10)). |
-| Zeiterfassung | PR #20 offen; gestapelte Ergänzung in PR #21 | Migration 0012 enthält Buchungen/Segmente, Korrekturfreigaben, Rechte und Berichte. Migration 0013 ergänzt Bundesland, Zuschlagsregeln, versionierte Zeitnachweise, CSV und endgültige Periodensperren. Backend/PostgreSQL/Migrationen-, Frontend- und Docker-CI für PR #21 ist grün. Keine Geldbetragsberechnung ohne fachliche Rechenkonvention ([#4](https://github.com/Xonni-star/securityops-python/issues/4)). |
-| OWKS | PR #23 offen; technische Validierung abgeschlossen, fachliche Abnahme offen | Objektbezogenes Wachbuch, Übergaben, Statushistorie, QR-/NFC-Routen, Challenge-gestützte Online-Kontrollen, append-only Ereignisse, sichere Anhänge, Offline-Konflikte und PostgreSQL-Minutenmonitor. QR-Erzeugung, Kamera-Scan und Web-NFC-Lesen/Schreiben sind implementiert; statische Kennungstreffer bleiben als physisch unbestätigt gekennzeichnet und schließen keine Route. Live-PostgreSQL-Migrationen und Backend-, Frontend- sowie Docker-CI erfolgreich; dynamischer kryptografischer Präsenznachweis und fachliche Abnahme stehen aus ([#3](https://github.com/Xonni-star/securityops-python/issues/3)). |
-| Dokumente und Verträge | PR #24 offen, auf PR #23 gestapelt; technische Validierung abgeschlossen, fachliche Abnahme offen | Private Ablage, Versionen, Historie, Freigaben, Lesebestätigungen, Verträge und deduplizierte Erinnerungsplanung. Die Migration 0015 hängt nach OWKS-Migration 0014. Kombinierte PostgreSQL-, Backend-, Frontend- und Docker-CI erfolgreich. Issue #8 bleibt bis zur Nutzerfreigabe offen ([#8](https://github.com/Xonni-star/securityops-python/issues/8)). |
-| Rechnungswesen | Nicht implementiert | Vertragsbasierte, freigegebene und nicht doppelt abgerechnete Leistungen fehlen ([#7](https://github.com/Xonni-star/securityops-python/issues/7)). |
-| CI und Datenbankqualität | Teilweise umgesetzt | GitHub Actions definiert Python-Lint/Format, Backendtests, PostgreSQL-Migrationen, Frontend-Build und Docker-Image-Builds. Der aktuelle Stand braucht einen erneuten CI-Lauf; SCA/SAST und weitere Produktionshärtung bleiben offen ([#9](https://github.com/Xonni-star/securityops-python/issues/9)). |
+### P0 – Betriebs- und Sicherheitsrisiken vor realen Daten schließen
 
-## Priorisierte Umsetzung
+1. Issue #9: vorhandenes Produktions-Compose, TLS/Reverse Proxy, sichere Header/Cookies, Secrets, getrennte Datenbankrollen, Redis-Rate-Limiting, Monitoring/Alerting und Release-Migrationen für die Zielumgebung konfigurieren, testen und betreiben.
+2. Verschlüsselte Backups mit getrenntem Ziel, Aufbewahrungs-/Löschregeln, dokumentiertem Wiederanlaufplan und regelmäßigen Betreiber-Restoreübungen einrichten; vorhandene Werkzeuge und der CI-Test sind kein Betriebsnachweis.
+3. Optionales TOTP-MFA, Recovery-Codes, Sitzungsliste/-widerruf und administrativen Passwortreset aus PR #31 unabhängig sicherheitsprüfen. Ein nutzerinitiierter E-Mail-Passwortreset ist mangels Zustellprovider nicht implementiert; dessen Bedarf und Ablauf sind fachlich zu entscheiden.
+4. Sensible Daten-/Objektbereiche, Uploads, Auditgrenzen und Datenschutz unabhängig prüfen. ClamAV scannt neue Uploads fail-closed; dies ersetzt weder unabhängige Prüfung noch rückwirkenden Bestandsscan. Hashing ist keine Verschlüsselung.
+5. Security-/Dependency-Scanbefunde triagieren und einen Incident-Prozess mit Verantwortlichkeiten/Alarmierungsweg festlegen.
 
-### P0 – Stabilisierung und Sicherheitsgrundlagen
+PR #28 ist gemergt und enthält Nginx-Auslieferung, einen nicht privilegierten API-Container, Redis-Rate-Limiting, getrennte Migrationen, verschlüsselte Backups/Restore und Security-Scanning. PR #31 ist gemergt und ergänzt TOTP-MFA sowie Sitzungsverwaltung. Issue #9 bleibt offen. Diese Bausteine und CI-Restoreläufe ersetzen weder eine Umgebungskonfiguration noch regelmäßige produktive Restoreübungen, Monitoring, Incident-Abläufe oder eine Betriebsfreigabe.
 
-1. **CI und PostgreSQL-Integration:** Für die gestapelte Zeiterfassungsergänzung sind Backend/PostgreSQL/Migrationen-, Frontend- und Docker-CI erfolgreich gelaufen. Lokale Offline-SQL-Generierung allein ersetzt keinen Live-PostgreSQL-Test ([#9](https://github.com/Xonni-star/securityops-python/issues/9)).
-2. **Produktionshärtung:** Frontend nicht über den Vite-Entwicklungsserver ausliefern, TLS/Reverse Proxy und Security-Header dokumentieren, Secrets ohne Standardwerte, gemeinsames Rate-Limit für mehrere Instanzen, SCA/SAST und Wiederherstellung praktisch testen ([#9](https://github.com/Xonni-star/securityops-python/issues/9)).
-3. **Zugriffsgrenzen und Audit:** Sensible Personalberechtigungen und Historien-/Audit-Trennung wurden für PR #17 in PostgreSQL-CI geprüft; Grenzen der Audit-Unveränderbarkeit und Aufbewahrung bleiben festzulegen.
-4. **Datenbankverträglichkeit:** Migrationen gegen PostgreSQL validieren; SQLite bleibt für schnelle isolierte API-Tests, ersetzt aber keine Integrationstests.
+PR #33 hat die Malwareprüfung neuer Dokument-/Vertragsdateien, Dokumentversionen, OWKS-Anhänge und Personal-Qualifikationsdateien integriert. Bereits gespeicherte Dateien werden nicht rückwirkend geprüft. PR #34 hat mit Migration `0019_tasks` einen generischen Aufgaben-Kern integriert. Er ist nicht automatisch mit Fachmodulen verbunden und enthält keine Anhänge, Zustellbenachrichtigungen, Hintergrundjobs oder Eskalationen; diese Ausbaupunkte erfordern eine separat abgestimmte Ereignis-/Integrationssemantik.
 
-### P1 – Kunden und Objekte
+PR #35 ergänzt mit `0020_notifications` In-App-Benachrichtigungen für Aufgaben-Zuweisungen und Statuswechsel. PR #39 ist mit `0024_notification_outbox_worker` in `main` gemergt: ein separater Worker verarbeitet diese Task-Ereignisse mit konkurrierenden Claims, Lease/Wiederaufnahme, Backoff, konfigurierbaren Versuchsgrenzen und Dead-Letter-/Attempt-Historie. Derselbe Dienst führt den OWKS-Prüfzyklus aus. E-Mail/Push, Task-Erinnerungen/Eskalationen und Ereignisse aus anderen Modulen bleiben ausgeschlossen.
 
-1. Vertrags-/Dokumentzuordnungen erst mit den noch nicht vorhandenen Modulen ergänzen; Issue #6 ist nach PR #18 geschlossen ([#6](https://github.com/Xonni-star/securityops-python/issues/6)).
-2. Akzeptanzkriterien von Issue #2 formal bewerten; Issue bis zur bestätigten Abnahme offen halten.
+PR #36 ist mit Migration `0021_key_management` gemergt und ergänzt ein objektgebundenes Schlüsselregister mit Ausgabe, Rückgabe, Verlust-/Defektmeldung, Inventur und append-only Bewegungsverlauf. Ausgabe erfordert eine aktive, dem Objekt zugewiesene Person und eine digitale Quittierung. Die Quittierung ist keine qualifizierte elektronische Signatur oder ein Nachweis physischer Verwahrung; bestehende Freitext-Zutrittsangaben werden nicht als Schlüsselbestand migriert. Betriebsprozesse für tatsächliche Schlüsselübergabe und physische Sicherung bleiben erforderlich.
 
-### P2 – Personal und Einsatzbetrieb
+PR #37 ist mit Migration `0022_incident_management` gemergt und ergänzt objektbezogene Vorfälle/Beschwerden, Maßnahmen, Fristen, Statusübergänge und Abschlussbericht. Separate Sensitivitätsrechte schützen Hergang, Abschlussbericht, Beteiligte/Zeugen und Dateizugriff; alle Endpunkte prüfen zusätzlich Objekt-Scope. Vorfallanhänge werden fail-closed mit ClamAV geprüft, privat gespeichert und nur autorisiert abgerufen; vorhandene Dateien werden nicht rückwirkend geprüft. Maßnahmen, Fristen und Eskalationen bleiben manuell: es gibt keine automatische Aufgaben-/Benachrichtigungsintegration, Fristerinnerung oder Eskalationsregel.
 
-1. Personalverwaltung bei Bedarf nach der in `main` erfolgten Implementierung fachlich weiterentwickeln ([#5](https://github.com/Xonni-star/securityops-python/issues/5)).
-2. Fachliche Abnahme der Dienstplanung und Issue #10 getrennt vom Zeiterfassungs-PR fortführen. Dieser Feature-Branch ergänzt zum in `main` integrierten PR #19 regelmäßige Mitarbeiter-Verfügbarkeiten, Wunsch-/Sperrzeiträume und nachvollziehbare Schichtvertretungen (Migration 0016); CI und fachliche Abnahme stehen noch aus ([#10](https://github.com/Xonni-star/securityops-python/issues/10)).
-3. Gestapelte Zeiterfassungsergänzung gegen den PR-20-Branch reviewen; PostgreSQL-Migration und Docker-CI sind erfolgreich. Originalsegmente und Berechnungssnapshots bleiben historisiert. Geldbeträge erfordern vorgelagerte Fachentscheidungen. Issue #4 bis zur Abnahme offen halten ([#4](https://github.com/Xonni-star/securityops-python/issues/4)).
-4. OWKS-PR #23 fachlich abnehmen; statische Kennungstreffer bleiben bis zu einem dynamischen kryptografischen Präsenznachweis unbestätigt. Issue #3 bis zur bestätigten Abnahme offen halten ([#3](https://github.com/Xonni-star/securityops-python/issues/3)).
+### P1 – Abnahme und Bestand konsolidieren
 
-### P3 – Dokumente, Verträge und Abrechnung
+1. Issue #10: Dienstplanung fachlich abnehmen. PR #26 ist gemergt und ergänzt wöchentliche Verfügbarkeitsfenster, befristete Dienstwünsche/Sperrzeiten und nachvollziehbare Schichtvertretungen. Issue #10 bleibt offen; die Konflikt-/Ruhezeitprüfung ist keine arbeitsrechtliche Freigabe.
 
-1. Dokument-/Vertrags-PR #24 nach dem OWKS-PR #23 integrieren, Sicherheitsreview einschließlich Upload-/Berechtigungsgrenzen durchführen und danach Issue #8 fachlich abnehmen. Der aktuelle Stand bietet interne Fristerinnerungen, aber keinen Scheduler, Mail-/Push-Versand oder Virenscanner ([#8](https://github.com/Xonni-star/securityops-python/issues/8)).
-2. Verträge und Abrechnung auf freigegebenen, nicht doppelt verrechneten Leistungsnachweisen aufbauen ([#7](https://github.com/Xonni-star/securityops-python/issues/7)).
-3. Exporte erst nach fachlich verifizierter Spezifikation als DATEV-kompatibel bezeichnen; Steuer-/Rechtskonformität erfordert externe fachliche Prüfung.
+### P2 – Fachliche Ausbau- und Abnahmeaufgaben
 
-### P4 – Betriebsreife
+1. OWKS ist in `main` (PR #23, Migration `0014`); Issue #3 ist geschlossen. Fachlich weiterhin prüfen: statische Kennungen sind keine physischen Präsenznachweise. Neue Anhänge werden durch PR #33 fail-closed gescannt; vorhandene Dateien nicht rückwirkend.
+2. Dokumenten-/Vertragsfunktionen sind in `main` (PR #24, Migration `0015`). Issue #8 ist laut aktueller GitHub-Abfrage offen; Vertragsregeln, Dateizugriff und fachliche Akzeptanz sind vor Erledigung konkret abzugleichen. Neue Uploads werden fail-closed geprüft, der Bestand nicht rückwirkend.
+3. Issue #7: das mit PR #27 gemergte Rechnungswesen fachlich abnehmen: Preise/Steuerwerte, Rechnungssnapshots, Korrekturbelege, Zahlungen/Mahnstatus, PDF und Export `securityops-accounting-v1`. Migration `0017_billing` ist in `main`; Preise/Steuersätze bleiben konfigurierte Eingaben, keine steuerliche oder buchhalterische Abnahme ist nachgewiesen. Issue #7 bleibt offen.
 
-1. Dashboard ausschließlich aus echten Fachdaten speisen.
-2. E2E-, Berechtigungs-, PostgreSQL-, Sicherheits- und Wiederherstellungstests erweitern.
-3. Produktionsdeployment, Monitoring, Backup/Restore, Datenschutz- und Betriebsabnahme dokumentieren ([#9](https://github.com/Xonni-star/securityops-python/issues/9)).
+### P3 – Betriebsqualität und vollständiger Nachweis
 
-## Abhängigkeiten und Regeln
+1. E2E-, Berechtigungs-, Race-/PostgreSQL-, Upload-/Malware-, Last- und Wiederherstellungstests erweitern.
+2. Datenschutz-/Aufbewahrungsprozess, Auditintegrität, Incident-/Monitoringkonzept und reale Betriebsabnahme belegen.
+3. Die gemergte Leitstellenübersicht fachlich validieren: Umfang/Interpretation der Kennzahlen, Nutzerrollen und Objekt-/Fachbereichsgrenzen. `0023_control_room_permission` ergänzt nur das Recht, keine neue Fachdatentabelle. Die Oberfläche bleibt eine serverseitige Momentaufnahme; sie simuliert keine Warnungen und ist kein Echtzeit- oder Alarmierungsdienst.
 
-- Objekte bauen auf Kunden auf; Planung, OWKS und Dokumentzuordnungen bauen auf Objekten und Personal auf.
-- Zeit- und Abrechnungsdaten werden nicht still überschrieben. Korrekturen müssen begründet, freigegeben und historisiert werden.
-- Datenbankschemaänderungen erhalten jeweils eine Alembic-Migration.
-- Kein Modul gilt als abgeschlossen, bevor Backend, Migration, API, serverseitige Rechte, UI, Tests und Dokumentation gemeinsam geprüft wurden.
-- Alle Prioritäten sind technische Reihenfolge, keine Rechts- oder Steuerfreigabe. Arbeitszeit-, Datenschutz- und Abrechnungsregeln sind vor Produktiveinsatz fachlich zu bestätigen.
+## Bestätigte GitHub-Lage
+
+- In `main`: Identity inklusive MFA/Sitzungsverwaltung, Kunden, Objekte, Personal/Qualifikationen, Dienstplanung einschließlich Verfügbarkeiten/Vertretungen, Zeiterfassung, OWKS, Dokumente/Verträge, Rechnungswesen, Upload-Scan, Aufgaben, In-App-Aufgabenbenachrichtigungen, Schlüssel-, Vorfallmanagement, Leitstellenübersicht und separater Notification-/OWKS-Worker (Migrationen `0001`–`0024`); PRs #23, #24, #26, #27, #28, #29, #31, #33, #34, #35, #36, #37, #38 und #39 sind gemergt.
+- PR #33 ergänzt fail-closed ClamAV-Scan neuer relevanter Uploads; PR #34 ergänzt den generischen Aufgaben-Kern, der nicht automatisch mit Fachmodulen gekoppelt ist. PRs #35/#39 ergänzen transaktionale Task-Outbox-Ereignisse und deren In-App-Verarbeitung mit Retry-/Dead-Letter-Historie; es gibt keine externen Kanäle, Erinnerungen/Eskalationen oder Ereignisse aus anderen Fachmodulen.
+- PR #25 (Dokumentation) ist gemergt; PR #40 ist offen, alle acht Checks waren am 09.11.2026 um 08:17 UTC erfolgreich und die Änderungen sind nicht Bestandteil von `main`. PR #38/#39 sind gemergt.
+- Migration `0017_billing` folgt auf `0016_scheduling_availability`; `0018_identity_security` folgt auf `0017_billing`, `0019_tasks` auf `0018_identity_security`, `0020_notifications` auf `0019_tasks`, `0021_key_management` auf `0020_notifications`, `0022_incident_management` auf `0021_key_management`, `0023_control_room_permission` auf `0022_incident_management` und `0024_notification_outbox_worker` auf `0023_control_room_permission`. `0024_notification_outbox_worker` ist der `main`-Head. Issues #7–#10 sind offen, #2–#6 geschlossen.
+- Issues #2–#6 sind geschlossen; #7–#10 sind laut frischer GitHub-Abfrage offen. Issue #8 bleibt trotz PR #24 offen; Issue #9 trotz PR #28, Issue #10 trotz PR #26 und Issue #7 trotz PR #27. Offene Issues sind keine Aussage, dass die gemergte Funktion nicht vorhanden ist; keine Issue wurde durch diese Dokumentationsänderung geändert.
+
+## Abhängigkeiten und Abschlusskriterien
+
+- Objekte bauen auf Kunden auf; Personalakten verknüpfen Benutzerkonten; Dienstplanung benötigt Personal/Qualifikationen, Objekte, Zuweisungen und Abwesenheiten.
+- Zeiterfassung hängt an Personal, Objekten und optional veröffentlichten Schichten. OWKS benötigt Objekt-/Personalidentitäten sowie nachvollziehbare Zeit-/Kontrollereignisse. Dokumenten-/Vertragsfunktionen nutzen Kunden, Objekte und geschützte Dokumentauslieferung. Die Abrechnungsfunktion ist in `main`, ihre fachliche Vertrags-/Tarif-/Steuerlogik muss jedoch unabhängig bestätigt werden.
+- Jede DB-Erweiterung erhält eine Alembic-Migration und passende Schema-, API-, Recht-, UI- und Integrationstests.
+- „Implementiert“, „CI-grün“, „fachlich abgenommen“ und „produktiv freigegeben“ sind unterschiedliche Zustände.
+- Geld-, Arbeitszeit-, Datenschutz-, Aufbewahrungs-, Steuer- und Rechtsregeln müssen vor entsprechender Produktbehauptung fachlich bestätigt werden.

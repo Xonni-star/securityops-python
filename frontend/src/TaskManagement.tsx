@@ -103,6 +103,7 @@ export default function TaskManagement({ user }: { user: AuthUser }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [selectedObjectId, setSelectedObjectId] = useState("");
   const [selectedAssigneeId, setSelectedAssigneeId] = useState("");
@@ -183,6 +184,7 @@ export default function TaskManagement({ user }: { user: AuthUser }) {
     const dueValue = String(data.get("due_at") ?? "");
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       const task = await createTask({
         title: String(data.get("title") ?? "").trim(),
@@ -198,6 +200,7 @@ export default function TaskManagement({ user }: { user: AuthUser }) {
       setSelectedCustomerId("");
       setSelectedObjectId("");
       await Promise.all([loadTasks(), loadDetail(task.id)]);
+      setNotice("Aufgabe wurde angelegt.");
     } catch (reason) {
       setError(messageFrom(reason, "Aufgabe konnte nicht angelegt werden."));
     } finally {
@@ -228,6 +231,7 @@ export default function TaskManagement({ user }: { user: AuthUser }) {
     ) return;
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       await updateTask(detail.id, {
         title,
@@ -239,6 +243,9 @@ export default function TaskManagement({ user }: { user: AuthUser }) {
         ...(canAssign ? { assigned_to_id: assignedToId } : {}),
       });
       await Promise.all([loadTasks(), loadDetail(detail.id)]);
+      setNotice(selectedStatus === "completed"
+        ? "Aufgabe wurde mit Erledigungsnachweis abgeschlossen."
+        : "Aufgabe wurde gespeichert.");
     } catch (reason) {
       setError(messageFrom(reason, "Aufgabe konnte nicht geändert werden."));
     } finally {
@@ -272,6 +279,7 @@ export default function TaskManagement({ user }: { user: AuthUser }) {
         <span className="result-count">{total} Aufgaben</span>
       </div>
       {error && <p className="alert" role="alert">{error}</p>}
+      {notice && <p className="success-message" role="status">{notice}</p>}
 
       <section className="panel task-list-panel" aria-label="Aufgabenliste">
         <div className="task-filters">

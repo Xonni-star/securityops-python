@@ -15,6 +15,14 @@ import type {
   EmployeeAbsence,
   EmployeeAbsenceStatus,
   EmployeeAbsenceType,
+  EmployeePortalAbsence,
+  EmployeePortalAvailabilityRequest,
+  EmployeePortalNotification,
+  EmployeePortalProfile,
+  EmployeePortalQualification,
+  EmployeePortalShift,
+  EmployeePortalTask,
+  EmployeePortalTimeOverview,
   EmployeeAvailabilityWindow,
   EmployeeHistory,
   EmployeeObjectAssignment,
@@ -46,6 +54,7 @@ import type {
   ScheduleReplacementReason,
   ScheduleShift,
   ScheduleShiftHistory,
+  ScheduleReplacementCandidate,
   TimeEntry,
   TimeEntryCorrection,
   TimeEntrySummary,
@@ -92,6 +101,16 @@ import type {
   KeyMovementType,
   KeyEmployeeCandidate,
   KeyObjectCandidate,
+  InventoryActionType,
+  InventoryAsset,
+  InventoryAssetPage,
+  InventoryCategory,
+  InventoryCondition,
+  InventoryEmployeeCandidate,
+  InventoryEvent,
+  InventoryEventPage,
+  InventoryObjectCandidate,
+  InventoryStatus,
   IncidentDetail,
   IncidentItem,
   IncidentPage,
@@ -907,6 +926,97 @@ export const updateEmployeeAbsence = (
     body: JSON.stringify(data),
   });
 
+export const getEmployeePortalProfile = () =>
+  request<EmployeePortalProfile>("/employee-portal/me");
+
+export const getEmployeePortalShifts = () =>
+  request<EmployeePortalShift[]>("/employee-portal/me/shifts");
+
+export const getEmployeePortalShift = (shiftId: string) =>
+  request<EmployeePortalShift>(`/employee-portal/me/shifts/${shiftId}`);
+
+export const getEmployeePortalTasks = () =>
+  request<EmployeePortalTask[]>("/employee-portal/me/tasks");
+
+export const getEmployeePortalNotifications = () =>
+  request<EmployeePortalNotification[]>("/employee-portal/me/notifications");
+
+export const markEmployeePortalNotificationRead = (notificationId: string) =>
+  request<EmployeePortalNotification>(
+    `/employee-portal/me/notifications/${notificationId}/read`,
+    { method: "PATCH" },
+  );
+
+export const getEmployeePortalQualifications = () =>
+  request<EmployeePortalQualification[]>("/employee-portal/me/qualifications");
+
+export const getEmployeePortalTimeOverview = (filters: { limit?: number; offset?: number } = {}) => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined) params.set(key, String(value));
+  }
+  return request<EmployeePortalTimeOverview>(`/employee-portal/me/time-entries?${params.toString()}`);
+};
+
+export const getEmployeePortalAbsences = () =>
+  request<EmployeePortalAbsence[]>("/employee-portal/me/absences");
+
+export const createEmployeePortalAbsence = (data: {
+  absence_type: EmployeeAbsenceType;
+  starts_on: string;
+  ends_on: string;
+}) =>
+  request<EmployeePortalAbsence>("/employee-portal/me/absences", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const updateEmployeePortalAbsence = (
+  absenceId: string,
+  data: {
+    absence_type?: EmployeeAbsenceType;
+    starts_on?: string;
+    ends_on?: string;
+  },
+) =>
+  request<EmployeePortalAbsence>(`/employee-portal/me/absences/${absenceId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+export const getEmployeePortalAvailabilityRequests = () =>
+  request<EmployeePortalAvailabilityRequest[]>("/employee-portal/me/availability-requests");
+
+export const createEmployeePortalAvailabilityRequest = (data: {
+  kind: ScheduleAvailabilityRequestKind;
+  starts_at_local: string;
+  ends_at_local: string;
+  starts_at_fold?: 0 | 1;
+  ends_at_fold?: 0 | 1;
+}) =>
+  request<EmployeePortalAvailabilityRequest>("/employee-portal/me/availability-requests", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const updateEmployeePortalAvailabilityRequest = (
+  requestId: string,
+  data: {
+    kind?: ScheduleAvailabilityRequestKind;
+    starts_at_local?: string;
+    ends_at_local?: string;
+    starts_at_fold?: 0 | 1;
+    ends_at_fold?: 0 | 1;
+  },
+) =>
+  request<EmployeePortalAvailabilityRequest>(
+    `/employee-portal/me/availability-requests/${requestId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
+
 export const getEmployeeSensitiveDetails = (id: string) =>
   request<EmployeeSensitiveDetails>(`/employees/${id}/sensitive`);
 
@@ -1025,6 +1135,102 @@ export const createKeyMovement = (keyId: string, data: {
 
 export const getKeyMovements = (keyId: string, limit = 100, offset = 0) =>
   request<KeyMovementPage>(`/keys/${keyId}/movements?limit=${limit}&offset=${offset}`);
+
+export interface InventoryFilters {
+  q: string;
+  category: InventoryCategory | "";
+  condition: InventoryCondition | "";
+  status: InventoryStatus | "";
+  object_id: string;
+  employee_id: string;
+  include_archived: boolean;
+  limit: number;
+  offset: number;
+}
+
+export const getInventoryAssets = (filters: InventoryFilters) => {
+  const params = new URLSearchParams({
+    limit: String(filters.limit),
+    offset: String(filters.offset),
+  });
+  if (filters.q.trim()) params.set("q", filters.q.trim());
+  if (filters.category) params.set("category", filters.category);
+  if (filters.condition) params.set("condition", filters.condition);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.object_id) params.set("object_id", filters.object_id);
+  if (filters.employee_id) params.set("employee_id", filters.employee_id);
+  if (filters.include_archived) params.set("include_archived", "true");
+  return request<InventoryAssetPage>(`/inventory/assets?${params}`);
+};
+
+export const getInventoryObjects = () =>
+  request<InventoryObjectCandidate[]>("/inventory/objects");
+
+export const getInventoryEmployees = () =>
+  request<InventoryEmployeeCandidate[]>("/inventory/employees");
+
+export const getInventoryEligibleEmployees = (objectId?: string) => {
+  const params = new URLSearchParams();
+  if (objectId) params.set("object_id", objectId);
+  return request<InventoryEmployeeCandidate[]>(
+    `/inventory/eligible-employees${params.size ? `?${params}` : ""}`,
+  );
+};
+
+export const createInventoryAsset = (data: {
+  asset_number: string;
+  serial_number?: string;
+  name: string;
+  category: InventoryCategory;
+  condition: InventoryCondition;
+  location: string;
+  object_id?: string;
+}) =>
+  request<InventoryAsset>("/inventory/assets", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const updateInventoryAsset = (
+  assetId: string,
+  data: {
+    serial_number?: string | null;
+    name?: string;
+    category?: InventoryCategory;
+    condition?: InventoryCondition;
+    location?: string;
+  },
+) =>
+  request<InventoryAsset>(`/inventory/assets/${assetId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+export const archiveInventoryAsset = (assetId: string) =>
+  request<InventoryAsset>(`/inventory/assets/${assetId}/archive`, { method: "POST" });
+
+export const createInventoryEvent = (
+  assetId: string,
+  data: {
+    event_type: InventoryActionType;
+    employee_id?: string;
+    object_id?: string | null;
+    acknowledged?: boolean;
+    acknowledgement_note?: string;
+    condition?: InventoryCondition;
+    location?: string;
+    note?: string;
+  },
+) =>
+  request<InventoryEvent>(`/inventory/assets/${assetId}/events`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const getInventoryEvents = (assetId: string, limit = 100, offset = 0) =>
+  request<InventoryEventPage>(
+    `/inventory/assets/${assetId}/events?limit=${limit}&offset=${offset}`,
+  );
 
 export const getCustomerObjects = (customerId: string) =>
   getObjects({
@@ -1207,6 +1413,11 @@ export const cancelScheduleShift = (id: string) =>
 
 export const getScheduleShiftHistory = (id: string) =>
   request<ScheduleShiftHistory[]>(`/scheduling/shifts/${id}/history?limit=100`);
+
+export const getScheduleShiftReplacementCandidates = (id: string) =>
+  request<ScheduleReplacementCandidate[]>(
+    `/scheduling/shifts/${id}/replacement-candidates`,
+  );
 
 export const replaceScheduleShiftEmployee = (
   id: string,

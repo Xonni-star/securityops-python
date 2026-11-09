@@ -398,6 +398,18 @@ def test_availability_requests_block_shifts_and_surface_unresolved_conflicts(
 def test_shift_replacement_is_validated_and_audited(client: TestClient) -> None:
     employee, obj, csrf = setup_schedule(client)
     substitute = add_employee_to_object(client, obj, csrf, "vertretung")
+    unassigned_user_id = create_employee_user("dienstplan-ohne-objekt")
+    unassigned = client.post(
+        "/api/v1/employees",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "employee_number": "P-SCH-OHNE-OBJEKT",
+            "user_id": str(unassigned_user_id),
+            "full_name": "Testperson ohne Objekt",
+            "hired_on": str(date.today() - timedelta(days=100)),
+        },
+    )
+    assert unassigned.status_code == 201
     starts_at = datetime.combine(date.today() + timedelta(days=70), time(9))
     original = client.post(
         "/api/v1/scheduling/shifts",
@@ -415,6 +427,11 @@ def test_shift_replacement_is_validated_and_audited(client: TestClient) -> None:
         ),
     )
     assert original.status_code == conflicting_shift.status_code == 201
+    candidates = client.get(
+        f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement-candidates"
+    )
+    assert candidates.status_code == 200
+    assert [item["employee_id"] for item in candidates.json()] == []
     conflict = client.post(
         f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement",
         headers={"X-CSRF-Token": csrf},
@@ -428,6 +445,11 @@ def test_shift_replacement_is_validated_and_audited(client: TestClient) -> None:
         headers={"X-CSRF-Token": csrf},
     )
     assert cancelled.status_code == 200
+    candidates = client.get(
+        f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement-candidates"
+    )
+    assert candidates.status_code == 200
+    assert [item["employee_id"] for item in candidates.json()] == [substitute["id"]]
     replaced = client.post(
         f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement",
         headers={"X-CSRF-Token": csrf},
@@ -442,6 +464,13 @@ def test_shift_replacement_is_validated_and_audited(client: TestClient) -> None:
         "replacement_employee_id": substitute["id"],
         "reason": "short_notice",
     }
+    cancelled_candidates = client.get(
+        f"/api/v1/scheduling/shifts/{conflicting_shift.json()['id']}/replacement-candidates"
+    )
+    assert cancelled_candidates.status_code == 409
+    sign_in(client, "dienstplan-person", "dienstplan-test-passwort-2026")
+    denied = client.get(f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement-candidates")
+    assert denied.status_code == 403
 
 
 def test_qualification_absence_and_local_time_validation(client: TestClient) -> None:

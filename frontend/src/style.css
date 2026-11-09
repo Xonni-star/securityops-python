@@ -241,7 +241,8 @@ footer span { padding: 0 5px; }
 .key-status { display: inline-block; margin-left: 6px; border-radius: 999px; padding: 3px 8px; font-size: .72rem; font-weight: 600; vertical-align: middle; }
 .key-status-available { color: #17664d; background: #e8f5ed; }
 .key-status-issued { color: #245c81; background: #eaf3f8; }
-.key-status-lost, .key-status-defective { color: #a43b33; background: #fff0ef; }
+.key-status-lost, .key-status-defective, .key-status-damaged { color: #a43b33; background: #fff0ef; }
+.key-status-maintenance { color: #805d17; background: #fff7df; }
 .key-status-archived { color: #65717a; background: #eef1f3; }
 .key-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
 .key-history { margin-top: 14px; padding-top: 12px; border-top: 1px solid #e5eaed; }
@@ -498,7 +499,53 @@ footer span { padding: 0 5px; }
 .control-room-panel li strong { overflow-wrap: anywhere; font-size: .86rem; }
 .control-room-panel li small { color: #74818d; font-size: .77rem; line-height: 1.45; }
 .control-room-panel .empty { margin: 0; padding: 16px 8px; font-size: .83rem; }
+.control-room-actions { display: grid; gap: 14px; margin-top: 18px; padding: 18px; }
+.control-room-actions h3 { margin: 0; font-size: 1rem; }
+.control-room-action-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.control-room-action-tabs .active { border-color: #166b52; color: #166b52; }
+.control-room-action-panel { min-width: 0; }
+.control-room-employee-search, .control-room-employee-search-form { display: grid; gap: 12px; }
+.control-room-employee-search h3 { margin: 0; }
+.control-room-employee-search-form { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.control-room-employee-search-form label { display: grid; gap: 6px; color: #43515c; font-size: .82rem; font-weight: 600; }
+.control-room-employee-search-form input { min-height: 40px; border: 1px solid #dfe6ea; border-radius: 7px; padding: 8px 10px; }
+.control-room-employee-results { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.control-room-employee-results li { display: grid; gap: 4px; padding: 10px 11px; border-radius: 7px; background: #f7f9fa; }
+.control-room-employee-results small { color: #74818d; font-size: .77rem; line-height: 1.45; }
 @media (max-width: 760px) {
   .control-room-grid { grid-template-columns: 1fr; }
   .control-room-filters label { flex-basis: 145px; }
+}
+.employee-portal { display: grid; gap: 16px; padding-bottom: 12px; }
+.employee-portal-heading { margin: 0; }
+.employee-portal-heading .muted { margin: 7px 0 0; }
+.portal-tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #e1e7eb; }
+.portal-tabs .module-tab { padding: 9px 11px; font-size: .88rem; }
+.portal-panel { min-width: 0; }
+.portal-list { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.portal-list > li {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 13px; border: 1px solid #e8edef; border-radius: 8px; background: #fff;
+}
+.portal-list > li > div { min-width: 0; }
+.portal-list strong, .portal-list small { display: block; overflow-wrap: anywhere; }
+.portal-list small { margin-top: 5px; color: #74818d; font-size: .8rem; }
+.portal-detail { margin-top: 16px; padding: 15px; border-radius: 8px; background: #f7f9fa; }
+.portal-detail h3 { margin: 0 0 10px; font-size: 1rem; }
+.portal-detail p { margin: 7px 0; color: #43515c; font-size: .86rem; }
+.portal-request-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.portal-request-grid .panel-heading { margin-bottom: 16px; }
+.portal-request-grid form { display: grid; gap: 14px; }
+.portal-request-grid form > .muted { margin: 0; line-height: 1.45; }
+.portal-request-grid form button { justify-self: start; }
+.portal-request-grid .form-row { align-items: end; }
+.portal-request-history { line-height: 1.45; }
+@media (max-width: 850px) {
+  .portal-request-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .portal-tabs { gap: 0; }
+  .portal-tabs .module-tab { padding: 8px; font-size: .8rem; }
+  .portal-list > li { align-items: flex-start; }
+  .control-room-employee-search-form { grid-template-columns: 1fr; }
 }

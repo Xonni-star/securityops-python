@@ -19,7 +19,7 @@
 
 ## Ohne Container
 
-Backend: Python 3.12+, `cd backend`, `pip install '.[test]'`, zunächst `python -m scripts.provision_database_roles` mit dem Administratorzugang und den beiden Rollen-Secrets ausführen, anschließend `POSTGRES_USER=securityops_migrator` und `POSTGRES_PASSWORD` auf das Migrations-Secret setzen und einmalig `alembic upgrade head` ausführen. Für den API-Prozess anschließend `POSTGRES_USER=securityops_runtime` und `POSTGRES_PASSWORD` auf das Laufzeit-Secret setzen und `uvicorn app.main:app --reload` starten. Für lokale HTTP-Entwicklung `APP_ENV=development` und `SESSION_COOKIE_SECURE=false` ausdrücklich setzen. Frontend-Entwicklung: `cd frontend`, `npm ci`, `npm run dev`.
+Backend: Python 3.12+, `cd backend`, `pip install '.[test]'`, zunächst `python -m scripts.provision_database_roles` mit dem Administratorzugang und den beiden Rollen-Secrets ausführen. Anschließend `POSTGRES_USER=securityops_migrator` und `POSTGRES_PASSWORD` auf das Migrations-Secret setzen und einmalig `alembic upgrade head` ausführen. Für API und Worker danach `POSTGRES_USER=securityops_runtime` und `POSTGRES_PASSWORD` auf das Laufzeit-Secret setzen; API mit `uvicorn app.main:app --reload`, Hintergrundverarbeitung in einem separaten Prozess mit `python -m app.notification_worker run` starten. Für lokale HTTP-Entwicklung `APP_ENV=development` und `SESSION_COOKIE_SECURE=false` ausdrücklich setzen. Frontend-Entwicklung: `cd frontend`, `npm ci`, `npm run dev`.
 
 ## Status
 

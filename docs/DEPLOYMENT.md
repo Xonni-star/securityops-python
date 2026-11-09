@@ -11,14 +11,14 @@ docker compose up -d db redis clamav
 docker compose ps clamav
 docker compose --profile release run --rm provision-db
 docker compose --profile release run --rm --no-deps migrate
-docker compose up --build -d api frontend
+docker compose up --build -d api notification-worker frontend
 ```
 
 Der erste Befehl führt den idempotenten Rollen-Provisioner als Administrator aus; der zweite wendet Alembic als `securityops_migrator` an. API und Worker verwenden ausschließlich `securityops_runtime`. Vor dem Upgrade eines bestehenden Volumes `POSTGRES_ADMIN_USER`/`POSTGRES_ADMIN_PASSWORD` auf den bisherigen PostgreSQL-Administrator setzen, drei unterschiedliche Secrets bereitstellen und ein vollständiges Backup prüfen. Der Provisioner überträgt bestehendes Schema-/Objekteigentum an den Migrationsbenutzer, ohne Datensätze zu ändern oder zu löschen. Nicht mit Produktionsdaten experimentieren; den Upgradepfad zuerst mit einer getrennten Kopie und anschließendem Integritäts-/Restore-Test prüfen.
 
 Der ClamAV-Dienst benötigt beim ersten Start Zeit zum Laden seiner Signaturdatenbank. Sein Compose-Healthcheck verlangt sowohl eine `PONG`-Antwort als auch eine ClamAV-`VERSION`-Antwort mit nichtleerer Signaturdatenbank-Version; mit 30 Minuten Startzeitraum wird die API erst nach erreichbarer, initialisierter Engine gestartet. Der Dienst ist nur im internen Compose-Datennetz erreichbar und veröffentlicht keinen Host-Port. Das mehrplattformfähige ClamAV-Debian-Image ist auf Version und OCI-Manifest-Digest festgelegt; seine laufend aktualisierten Virendefinitionen können Erkennungsergebnisse trotz gleicher Container-Version zeitabhängig ändern. Digest-Aktualisierungen müssen geprüft und explizit übernommen werden. Details zu Grenzwerten, Fehlerverhalten und API-Ablehnungen stehen in [Upload-Prüfung](UPLOAD_SECURITY.md).
 
-Die Migration muss erfolgreich abgeschlossen sein, bevor API-Replikate aktualisiert oder skaliert werden. Bei einem Rollback darf ein destruktiver Downgrade nicht ungeprüft ausgeführt werden. Nach dem Start `GET /health/ready` prüfen; in Produktion umfasst die Readiness Datenbank und Redis. API-Prozesse führen keine Migration aus.
+Die Migration muss erfolgreich abgeschlossen sein, bevor API- oder Worker-Container aktualisiert oder skaliert werden. Bei einem Rollback darf ein destruktiver Downgrade nicht ungeprüft ausgeführt werden. Nach dem Start `GET /health/ready` prüfen; in Produktion umfasst die Readiness Datenbank und Redis. API-Prozesse führen keine Migration aus. Der separate `notification-worker` verarbeitet Task-Outbox-Ereignisse und führt den OWKS-Prüfzyklus aus; sein Containerzustand ersetzt keine Überwachung von Backlog, Dead-Letter-Ereignissen oder Betriebsalarmen.
 
 Beim Upgrade vom bisherigen root-basierten API-Image muss das private Dokumentenvolume einmalig auf den neuen Containerbenutzer übertragen werden. Zuerst ein Backup erstellen und die alte API stoppen, dann gezielt nur das Dokumentenvolume anpassen:
 
@@ -61,11 +61,12 @@ Uvicorn vertraut ausschließlich den in `FORWARDED_ALLOW_IPS` aufgelisteten Adre
 
 ## Secrets und Betrieb
 
-- `POSTGRES_ADMIN_PASSWORD`, `POSTGRES_MIGRATION_PASSWORD`, `POSTGRES_RUNTIME_PASSWORD`, TLS-Schlüssel und Backup-Identitäten aus einem Secret-Manager bereitstellen; nicht in `.env`, Git oder Images veröffentlichen. Das Administrator-Secret darf nicht an API oder Worker gelangen.
+- `POSTGRES_ADMIN_PASSWORD`, `POSTGRES_MIGRATION_PASSWORD`, `POSTGRES_RUNTIME_PASSWORD`, TLS-Schlüssel und Backup-Identitäten aus einem Secret-Manager bereitstellen; nicht in `.env`, Git oder Images veröffentlichen. Das Administrator-Secret darf nicht an API oder Worker gelangen. Wenn TOTP-MFA genutzt wird, zusätzlich `MFA_ENCRYPTION_KEY` als Fernet-Schlüssel sicher setzen und auf allen API-Instanzen identisch halten; Schlüsselrotation vorab planen.
 - Die Beispielkonfiguration trennt PostgreSQL-Administrator, Migrationsbenutzer und Laufzeitbenutzer. `securityops_runtime` hat keine Superuser-, Rollen-, Datenbank- oder Schema-Erstellungsrechte; der Migrationsbenutzer besitzt das Schema und kann DDL sowie Datenänderungen ausführen.
 - Redis ist nur im internen Compose-Netz erreichbar und speichert flüchtige Rate-Limit-Zähler. Für externe Redis-Installationen `rediss://` und die dafür erforderlichen Zugriffsdaten sicher bereitstellen.
 - Dokumente liegen im privaten Volume und niemals im statischen Webroot. Volume-Verschlüsselung, Zugriff, Aufbewahrung und Backup sind Betreiberaufgaben.
 - ClamAV läuft als interner Compose-Dienst `clamav` auf TCP 3310; dieser Port wird nicht nach außen veröffentlicht. `MALWARE_SCANNER_TIMEOUT_SECONDS` (Standard 30 Sekunden, maximal 300) und `MALWARE_SCAN_MAX_BYTES` (Standard/maximal 100 MiB) begrenzen die Backend-Prüfung; ClamAV erhält passende Stream-/Dateigrenzen. Ohne erreichbaren Scanner werden Uploads abgewiesen. Außerhalb dieses Compose-Stacks muss ein vertrauenswürdiger ClamAV-Dienst mit kompatiblen Grenzwerten konfiguriert werden.
+- Der Notification-/OWKS-Worker läuft als eigener Compose-Dienst gegen PostgreSQL. `NOTIFICATION_WORKER_POLL_SECONDS` (2), `NOTIFICATION_WORKER_BATCH_SIZE` (25, höchstens 100), `NOTIFICATION_WORKER_LEASE_SECONDS` (300) und `NOTIFICATION_WORKER_MAX_ATTEMPTS` (8) steuern Polling, Batch, Lease und Retry-Obergrenze. Worker-Logs/CLI enthalten keine Payloads oder Nachrichtentexte; Metriken und externer Alarmierungsdienst sind nicht enthalten.
 - Images, OS-Pakete und Abhängigkeiten regelmäßig aktualisieren; CI-Images bauen keine Images mit festgeschriebenem Digest. Für den produktiven Rollout geprüfte Images/Digests freigeben und einen Rollback-Ablauf erproben.
 - Monitoring, Protokollaufbewahrung ohne Tokens/Passwörter, Alarmierung, Datenbankrechte, Datenschutz und Incident-Verfahren vor öffentlichem Betrieb festlegen.
 

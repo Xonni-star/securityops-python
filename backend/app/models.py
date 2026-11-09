@@ -1218,6 +1218,175 @@ class KeyMovement(Base):
     actor: Mapped[User] = relationship()
 
 
+class InventoryAsset(Base):
+    __tablename__ = "inventory_assets"
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('access_media', 'radio', 'smartphone', 'tablet', 'computer', "
+            "'clothing', 'safety_equipment', 'vehicle', 'other')",
+            name="ck_inventory_assets_category",
+        ),
+        CheckConstraint(
+            "condition IN ('new', 'good', 'used', 'worn', 'defective')",
+            name="ck_inventory_assets_condition",
+        ),
+        CheckConstraint(
+            "status IN ('available', 'issued', 'maintenance', 'lost', 'damaged', 'archived')",
+            name="ck_inventory_assets_status",
+        ),
+        CheckConstraint("length(trim(asset_number)) > 0", name="ck_inventory_assets_number"),
+        CheckConstraint("length(trim(name)) > 0", name="ck_inventory_assets_name"),
+        CheckConstraint("length(trim(location)) > 0", name="ck_inventory_assets_location"),
+        CheckConstraint(
+            "serial_number IS NULL OR length(trim(serial_number)) > 0",
+            name="ck_inventory_assets_serial",
+        ),
+        CheckConstraint(
+            "(status = 'issued' AND current_employee_id IS NOT NULL) "
+            "OR (status != 'issued' AND current_employee_id IS NULL)",
+            name="ck_inventory_assets_holder_status",
+        ),
+        CheckConstraint(
+            "(status = 'archived' AND archived_at IS NOT NULL) "
+            "OR (status != 'archived' AND archived_at IS NULL)",
+            name="ck_inventory_assets_archived_at",
+        ),
+        Index("ix_inventory_assets_object_status", "object_id", "status", "archived_at"),
+        Index("ix_inventory_assets_holder_status", "current_employee_id", "status"),
+        Index("ix_inventory_assets_category_condition", "category", "condition"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    asset_number: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    serial_number: Mapped[str | None] = mapped_column(String(120), unique=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    condition: Mapped[str] = mapped_column(
+        String(20), default="good", server_default=text("'good'"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), default="available", server_default=text("'available'"), nullable=False
+    )
+    location: Mapped[str] = mapped_column(String(200), nullable=False)
+    object_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="RESTRICT"), nullable=True
+    )
+    current_employee_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=True
+    )
+    created_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    object: Mapped[SecurityObject | None] = relationship()
+    current_employee: Mapped[Employee | None] = relationship(foreign_keys=[current_employee_id])
+    events: Mapped[list["InventoryEvent"]] = relationship(
+        back_populates="asset", order_by="InventoryEvent.created_at"
+    )
+
+
+class InventoryEvent(Base):
+    __tablename__ = "inventory_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('created', 'updated', 'issued', 'returned', 'transferred', 'lost', "
+            "'damaged', 'maintenance', 'repair', 'archived')",
+            name="ck_inventory_events_type",
+        ),
+        CheckConstraint(
+            "status_after IN ('available', 'issued', 'maintenance', 'lost', 'damaged', 'archived')",
+            name="ck_inventory_events_status",
+        ),
+        CheckConstraint(
+            "condition_after IN ('new', 'good', 'used', 'worn', 'defective')",
+            name="ck_inventory_events_condition",
+        ),
+        CheckConstraint(
+            "event_type != 'issued' OR "
+            "(to_employee_id IS NOT NULL AND acknowledged_at IS NOT NULL)",
+            name="ck_inventory_events_issue_acknowledged",
+        ),
+        CheckConstraint(
+            "event_type != 'transferred' OR "
+            "(from_employee_id IS NOT NULL AND to_employee_id IS NOT NULL "
+            "AND acknowledged_at IS NOT NULL)",
+            name="ck_inventory_events_transfer_acknowledged",
+        ),
+        CheckConstraint(
+            "(event_type = 'created' AND status_after = 'available') "
+            "OR (event_type = 'updated' AND status_after IN "
+            "('available', 'issued', 'maintenance', 'lost', 'damaged', 'archived')) "
+            "OR (event_type = 'issued' AND status_after = 'issued') "
+            "OR (event_type = 'returned' AND status_after = 'available') "
+            "OR (event_type = 'transferred' AND status_after = 'issued') "
+            "OR (event_type = 'lost' AND status_after = 'lost') "
+            "OR (event_type = 'damaged' AND status_after = 'damaged') "
+            "OR (event_type = 'maintenance' AND status_after = 'maintenance') "
+            "OR (event_type = 'repair' AND status_after = 'available') "
+            "OR (event_type = 'archived' AND status_after = 'archived')",
+            name="ck_inventory_events_type_status",
+        ),
+        CheckConstraint("length(trim(location_after)) > 0", name="ck_inventory_events_location"),
+        Index("ix_inventory_events_asset_created", "asset_id", "created_at"),
+        Index("ix_inventory_events_object_created", "object_id", "created_at"),
+        Index(
+            "ix_inventory_events_employee_created",
+            "from_employee_id",
+            "to_employee_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    asset_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("inventory_assets.id", ondelete="RESTRICT"), nullable=False
+    )
+    object_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="RESTRICT"), nullable=True
+    )
+    from_object_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="RESTRICT"), nullable=True
+    )
+    to_object_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="RESTRICT"), nullable=True
+    )
+    from_employee_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=True
+    )
+    to_employee_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=True
+    )
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    status_after: Mapped[str] = mapped_column(String(20), nullable=False)
+    condition_after: Mapped[str] = mapped_column(String(20), nullable=False)
+    location_after: Mapped[str] = mapped_column(String(200), nullable=False)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledgement_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    asset: Mapped[InventoryAsset] = relationship(back_populates="events")
+    object: Mapped[SecurityObject | None] = relationship(foreign_keys=[object_id])
+    from_object: Mapped[SecurityObject | None] = relationship(foreign_keys=[from_object_id])
+    to_object: Mapped[SecurityObject | None] = relationship(foreign_keys=[to_object_id])
+    from_employee: Mapped[Employee | None] = relationship(foreign_keys=[from_employee_id])
+    to_employee: Mapped[Employee | None] = relationship(foreign_keys=[to_employee_id])
+    actor: Mapped[User] = relationship()
+
+
 class EmployeeAbsence(Base):
     __tablename__ = "employee_absences"
     __table_args__ = (

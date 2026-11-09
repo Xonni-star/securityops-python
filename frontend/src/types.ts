@@ -10,6 +10,36 @@ export type ObjectStatus = "active" | "inactive";
 export type ObjectSort = "name" | "code" | "created_at" | "status";
 export type PhysicalKeyStatus = "available" | "issued" | "lost" | "defective" | "archived";
 export type KeyMovementType = "issued" | "returned" | "lost" | "defective" | "inventory";
+export type InventoryCategory =
+  | "access_media"
+  | "radio"
+  | "smartphone"
+  | "tablet"
+  | "computer"
+  | "clothing"
+  | "safety_equipment"
+  | "vehicle"
+  | "other";
+export type InventoryCondition = "new" | "good" | "used" | "worn" | "defective";
+export type InventoryStatus =
+  | "available"
+  | "issued"
+  | "maintenance"
+  | "lost"
+  | "damaged"
+  | "archived";
+export type InventoryEventType =
+  | "created"
+  | "updated"
+  | "issued"
+  | "returned"
+  | "transferred"
+  | "lost"
+  | "damaged"
+  | "maintenance"
+  | "repair"
+  | "archived";
+export type InventoryActionType = Exclude<InventoryEventType, "created" | "updated" | "archived">;
 export type TaskPriority = "low" | "normal" | "high" | "urgent";
 export type TaskStatus = "open" | "in_progress" | "blocked" | "completed" | "cancelled";
 export type IncidentType =
@@ -426,6 +456,93 @@ export interface Employee {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface EmployeePortalProfile {
+  full_name: string;
+  job_title: string | null;
+}
+
+export interface EmployeePortalShift {
+  id: string;
+  object_code: string;
+  object_name: string;
+  starts_at: string;
+  ends_at: string;
+  break_minutes: number;
+}
+
+export interface EmployeePortalTask {
+  id: string;
+  title: string;
+  due_at: string | null;
+  priority: TaskPriority;
+  status: TaskStatus;
+}
+
+export interface EmployeePortalNotification {
+  id: string;
+  event_type: NotificationEventType;
+  title: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface EmployeePortalQualification {
+  id: string;
+  category: string;
+  name: string;
+  issuer: string | null;
+  valid_from: string | null;
+  expires_on: string | null;
+}
+
+export interface EmployeePortalTimeEntry {
+  id: string;
+  started_at: string;
+  ended_at: string | null;
+  status: TimeEntryStatus;
+  actual_work_seconds: number;
+}
+
+export interface EmployeePortalTimeOverview {
+  items: EmployeePortalTimeEntry[];
+  total: number;
+  total_work_seconds: number;
+  limit: number;
+  offset: number;
+}
+
+export type EmployeePortalAbsenceType = EmployeeAbsenceType;
+
+export interface EmployeePortalRequestHistory {
+  event: "requested" | "updated" | "approved" | "accepted" | "rejected";
+  occurred_at: string;
+}
+
+export interface EmployeePortalAbsence {
+  id: string;
+  absence_type: EmployeeAbsenceType;
+  starts_on: string;
+  ends_on: string;
+  status: EmployeeAbsenceStatus;
+  created_at: string;
+  updated_at: string;
+  history: EmployeePortalRequestHistory[];
+}
+
+export interface EmployeePortalAvailabilityRequest {
+  id: string;
+  kind: ScheduleAvailabilityRequestKind;
+  starts_at: string;
+  ends_at: string;
+  time_zone: string;
+  status: ScheduleAvailabilityRequestStatus;
+  created_at: string;
+  updated_at: string;
+  reviewed_at: string | null;
+  history: EmployeePortalRequestHistory[];
 }
 
 export interface EmployeePage {
@@ -944,6 +1061,77 @@ export interface KeyObjectCandidate {
   name: string;
 }
 
+export interface InventoryAsset {
+  id: string;
+  asset_number: string;
+  serial_number: string | null;
+  name: string;
+  category: InventoryCategory;
+  condition: InventoryCondition;
+  status: InventoryStatus;
+  location: string;
+  object_id: string | null;
+  object_code: string | null;
+  object_name: string | null;
+  current_employee_id: string | null;
+  current_employee_name: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InventoryAssetPage {
+  items: InventoryAsset[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface InventoryEvent {
+  id: string;
+  asset_id: string;
+  asset_number: string;
+  object_id: string | null;
+  object_name: string | null;
+  from_object_id: string | null;
+  from_object_name: string | null;
+  to_object_id: string | null;
+  to_object_name: string | null;
+  from_employee_id: string | null;
+  from_employee_name: string | null;
+  to_employee_id: string | null;
+  to_employee_name: string | null;
+  actor_id: string;
+  actor_name: string;
+  event_type: InventoryEventType;
+  status_after: InventoryStatus;
+  condition_after: InventoryCondition;
+  location_after: string;
+  acknowledged_at: string | null;
+  acknowledgement_note: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface InventoryEventPage {
+  items: InventoryEvent[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface InventoryEmployeeCandidate {
+  id: string;
+  employee_number: string;
+  full_name: string;
+}
+
+export interface InventoryObjectCandidate {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export interface ObjectHistory {
   id: string;
   actor_id: string | null;
@@ -1040,6 +1228,12 @@ export interface ScheduleShiftHistory {
   changed_fields: string[];
   details: Record<string, unknown>;
   created_at: string;
+}
+
+export interface ScheduleReplacementCandidate {
+  employee_id: string;
+  employee_number: string;
+  employee_name: string;
 }
 
 export interface TimeEntrySegment {

@@ -28,8 +28,10 @@ import IdentitySecurity from "./IdentitySecurity";
 import TaskManagement from "./TaskManagement";
 import NotificationManagement from "./NotificationManagement";
 import KeyManagement from "./KeyManagement";
+import InventoryManagement from "./InventoryManagement";
 import IncidentManagement from "./IncidentManagement";
 import ControlRoom from "./ControlRoom";
+import EmployeePortal from "./EmployeePortal";
 import CustomerPortal from "./CustomerPortal";
 import CustomerPortalManagement from "./CustomerPortalManagement";
 import type {
@@ -76,6 +78,7 @@ const actionNames: Record<string, string> = {
 
 const pageSize = 25;
 type ActiveModule =
+  | "employee_portal"
   | "customers"
   | "control_room"
   | "objects"
@@ -88,6 +91,7 @@ type ActiveModule =
   | "tasks"
   | "notifications"
   | "keys"
+  | "inventory"
   | "incidents"
   | "customer_portal"
   | "security";
@@ -163,6 +167,9 @@ export default function App() {
   const canArchiveCustomers = user?.permissions.includes("customers.archive") ?? false;
   const canReadObjects = user?.permissions.includes("objects.read") ?? false;
   const canReadEmployees = user?.permissions.includes("employees.read") ?? false;
+  const isEmployeePortal = Boolean(
+    user?.roles.includes("employee") && !canReadEmployees,
+  );
   const canReadScheduling = user?.permissions.includes("scheduling.read") ?? false;
   const canReadTimeTracking = user?.permissions.some((permission) =>
     ["time_tracking.read_own", "time_tracking.read_all"].includes(permission),
@@ -180,6 +187,9 @@ export default function App() {
     user?.permissions.includes("notifications.read_own") && canReadTasks,
   );
   const canReadKeys = user?.permissions.includes("keys.read") ?? false;
+  const canReadInventory = user?.permissions.includes("inventory.read") ?? false;
+  const canManageInventory = user?.permissions.includes("inventory.manage") ?? false;
+  const canMoveInventory = user?.permissions.includes("inventory.move") ?? false;
   const canManageCustomerPortal = user?.permissions.includes("customers.portal.manage") ?? false;
   const canManageCustomerPortalRequests =
     user?.permissions.includes("customer_portal.requests.manage") ?? false;
@@ -250,10 +260,14 @@ export default function App() {
 
   useEffect(() => {
     if (moduleSelectedManually.current) return;
-    if (user?.permissions.includes("control_room.read")) setActiveModule("control_room");
+    if (isEmployeePortal) setActiveModule("employee_portal");
+    else if (user?.permissions.includes("control_room.read")) setActiveModule("control_room");
     else if (user && !canReadCustomers && canReadObjects) setActiveModule("objects");
     else if (user && !canReadCustomers && !canReadObjects && canReadKeys) {
       setActiveModule("keys");
+    }
+    else if (user && !canReadCustomers && !canReadObjects && !canReadKeys && canReadInventory) {
+      setActiveModule("inventory");
     }
     else if (user && !canReadCustomers && !canReadObjects && canReadEmployees) {
       setActiveModule("employees");
@@ -296,7 +310,7 @@ export default function App() {
     ) {
       setActiveModule("notifications");
     }
-  }, [canAccessBilling, canAccessDocuments, canCreateTasks, canReadCustomers, canReadEmployees, canReadKeys, canReadNotifications, canReadObjects, canReadOWKS, canReadScheduling, canReadTasks, canReadTimeTracking, user]);
+  }, [canAccessBilling, canAccessDocuments, canCreateTasks, canReadCustomers, canReadEmployees, canReadInventory, canReadKeys, canReadNotifications, canReadObjects, canReadOWKS, canReadScheduling, canReadTasks, canReadTimeTracking, isEmployeePortal, user]);
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -589,12 +603,22 @@ export default function App() {
       </header>
 
       <section className="intro">
-        <p className="eyebrow">SECURITYOPS VERWALTUNG</p>
-        <h1>Guten Tag.</h1>
-        <p>Kunden, Objekte, Personal, Schlüssel, Aufgaben, Dienste und Arbeitszeiten zentral verwalten.</p>
+        <p className="eyebrow">{isEmployeePortal ? "MITARBEITERPORTAL" : "SECURITYOPS VERWALTUNG"}</p>
+        <h1>{isEmployeePortal ? `Guten Tag, ${user.full_name}.` : "Guten Tag."}</h1>
+        <p>{isEmployeePortal
+          ? "Eigene Dienste, Aufgaben, Qualifikationen, Arbeitszeiten und Anträge."
+          : "Kunden, Objekte, Personal, Schlüssel, Inventar, Aufgaben, Dienste und Arbeitszeiten zentral verwalten."}</p>
       </section>
 
       <nav className="module-tabs" aria-label="Verwaltungsmodule">
+        {isEmployeePortal ? <>
+          <button
+            className={activeModule === "employee_portal" ? "module-tab active" : "module-tab"}
+            onClick={() => selectModule("employee_portal")}>Mitarbeiterportal</button>
+          <button
+            className={activeModule === "security" ? "module-tab active" : "module-tab"}
+            onClick={() => selectModule("security")}>Sicherheit</button>
+        </> : <>
         {(canReadCustomers || canCreateCustomers) && <button
           className={activeModule === "customers" ? "module-tab active" : "module-tab"}
           onClick={() => selectModule("customers")}>Kunden</button>}
@@ -613,6 +637,9 @@ export default function App() {
         {canReadKeys && <button
           className={activeModule === "keys" ? "module-tab active" : "module-tab"}
           onClick={() => selectModule("keys")}>Schlüssel</button>}
+        {canReadInventory && <button
+          className={activeModule === "inventory" ? "module-tab active" : "module-tab"}
+          onClick={() => selectModule("inventory")}>Inventar</button>}
         {canReadEmployees && <button
           className={activeModule === "employees" ? "module-tab active" : "module-tab"}
           onClick={() => selectModule("employees")}>Personal</button>}
@@ -640,6 +667,7 @@ export default function App() {
         <button
           className={activeModule === "security" ? "module-tab active" : "module-tab"}
           onClick={() => selectModule("security")}>Sicherheit</button>
+        </>}
       </nav>
 
       {activeModule === "security"
@@ -648,6 +676,8 @@ export default function App() {
           onSignedOut={clearLocalSession}
           onPasswordChanged={clearLocalSession}
         />
+        : activeModule === "employee_portal" && isEmployeePortal
+        ? <EmployeePortal />
         : activeModule === "customer_portal" && canManageCustomerPortal
         ? <CustomerPortalManagement
           canManageRequests={canManageCustomerPortalRequests}
@@ -659,6 +689,12 @@ export default function App() {
         ? <ControlRoom />
         : activeModule === "keys" && canReadKeys
         ? <KeyManagement canManage={canManageKeys} canMove={canMoveKeys} />
+        : activeModule === "inventory" && canReadInventory
+        ? <InventoryManagement
+          canManage={canManageInventory}
+          canManageGlobal={user.permissions.includes("objects.manage_all")}
+          canMove={canMoveInventory}
+        />
         : activeModule === "notifications" && canReadNotifications
         ? <NotificationManagement />
         : activeModule === "documents" && canAccessDocuments
