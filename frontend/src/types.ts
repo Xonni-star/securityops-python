@@ -427,6 +427,93 @@ export interface Employee {
   updated_at: string;
 }
 
+export interface EmployeePortalProfile {
+  full_name: string;
+  job_title: string | null;
+}
+
+export interface EmployeePortalShift {
+  id: string;
+  object_code: string;
+  object_name: string;
+  starts_at: string;
+  ends_at: string;
+  break_minutes: number;
+}
+
+export interface EmployeePortalTask {
+  id: string;
+  title: string;
+  due_at: string | null;
+  priority: TaskPriority;
+  status: TaskStatus;
+}
+
+export interface EmployeePortalNotification {
+  id: string;
+  event_type: NotificationEventType;
+  title: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface EmployeePortalQualification {
+  id: string;
+  category: string;
+  name: string;
+  issuer: string | null;
+  valid_from: string | null;
+  expires_on: string | null;
+}
+
+export interface EmployeePortalTimeEntry {
+  id: string;
+  started_at: string;
+  ended_at: string | null;
+  status: TimeEntryStatus;
+  actual_work_seconds: number;
+}
+
+export interface EmployeePortalTimeOverview {
+  items: EmployeePortalTimeEntry[];
+  total: number;
+  total_work_seconds: number;
+  limit: number;
+  offset: number;
+}
+
+export type EmployeePortalAbsenceType = EmployeeAbsenceType;
+
+export interface EmployeePortalRequestHistory {
+  event: "requested" | "updated" | "approved" | "accepted" | "rejected";
+  occurred_at: string;
+}
+
+export interface EmployeePortalAbsence {
+  id: string;
+  absence_type: EmployeeAbsenceType;
+  starts_on: string;
+  ends_on: string;
+  status: EmployeeAbsenceStatus;
+  created_at: string;
+  updated_at: string;
+  history: EmployeePortalRequestHistory[];
+}
+
+export interface EmployeePortalAvailabilityRequest {
+  id: string;
+  kind: ScheduleAvailabilityRequestKind;
+  starts_at: string;
+  ends_at: string;
+  time_zone: string;
+  status: ScheduleAvailabilityRequestStatus;
+  created_at: string;
+  updated_at: string;
+  reviewed_at: string | null;
+  history: EmployeePortalRequestHistory[];
+}
+
 export interface EmployeePage {
   items: Employee[];
   total: number;
