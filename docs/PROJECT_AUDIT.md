@@ -7,12 +7,12 @@ Grundlage ist `main` nach dem Merge von PR #16 sowie der Feature-Branch `feature
 | Bereich/Funktion | Status | Tatsächlicher Stand |
 |---|---|---|
 | Backend-Struktur | TEILWEISE | Ein FastAPI-Monolith mit `api.py`, `identity_api.py`, `auth.py`, zentralen SQLAlchemy-Modellen und Konfiguration. Noch keine fachlichen Modulgrenzen für Objekte, Personal, Planung, OWKS, Dokumente oder Abrechnung. |
-| Frontend | TEILWEISE | React-Anmeldung, Kunden- und Objektverwaltung sowie Personaloberfläche mit Navigation, Listen, Suche, Filtern, Details und Formularen. Personal-Frontend-Produktionsbuild bestanden; keine E2E- oder Komponententests. |
+| Frontend | TEILWEISE | React-Oberfläche mit Produktionsbuild als statische Dateien, die Nginx ausliefert; Entwicklungsserver nur im lokalen Entwicklungsworkflow. CI prüft die Produktionscontainer und Sicherheitsheader. Keine E2E-Tests. |
 | PostgreSQL/ORM | TEILWEISE | SQLAlchemy-Modelle und neun Migrationen. Migrationen 0005–0007 ergänzen Objekte; 0008 Personal/Qualifikationen; 0009 Zuweisungsverlauf und versionierte Qualifikationsdateien. Lokale API-Tests laufen auf SQLite; PostgreSQL-CI muss die aktuelle Revision 0009 noch prüfen. |
 | Alembic | TEILWEISE | Explizite Migrationen vorhanden. Upgrade bis 0009 und Downgrade 0009→0008 lokal offline gerendert; ein echter PostgreSQL-Lauf für die aktuellen Änderungen steht aus. |
 | Anmeldung | TEILWEISE | Benutzername/Passwort, Argon2id, serverseitig widerrufbare opaque Sitzung, generische Fehlermeldung. MFA und Passwortzurücksetzung fehlen. |
 | Sitzungen/CSRF | TEILWEISE | HttpOnly-Sitzungscookie, CSRF-Cookie/Header-Abgleich, SameSite=Strict, Idle-/Absolute-Timeout, Logout und Widerruf beim Passwortwechsel. Keine Sitzungsübersicht oder gezielte Einzelwiderruf-UI. |
-| Rate-Limit | TEILWEISE | Login ist auf 5 Versuche pro Minute begrenzt. Speicherung ist im Prozessspeicher, nicht instanzübergreifend; Proxy-Client-IP-Konfiguration ist nicht eingerichtet. |
+| Rate-Limit | TEILWEISE | Produktion verwendet den gemeinsamen Redis-Speicher; die Readiness-Prüfung schlägt bei Redis-Ausfall fehl. Lokale direkte Starts ohne Redis bleiben prozesslokal. Trusted-Proxy-Adressen müssen für die konkrete Infrastruktur konfiguriert werden. |
 | RBAC | TEILWEISE | Backend prüft Modulrechte sowie Objektzuweisung oder globale Objektberechtigungen. Sensitive Objekt- und Personaldaten sowie Abwesenheiten haben eigene Rechte. Kein Rolleneditor. Administratorrollenvergabe bleibt auf `users.manage_admin` beschränkt. |
 | Benutzerverwaltung | TEILWEISE | Benutzer anlegen/listen/aktivieren/deaktivieren, Rollen zuweisen. Kein Rollen-/Rechteeditor, Einladungs- oder Passwortzurücksetzungsablauf. |
 | Audit | TEILWEISE | Anmeldung, fehlgeschlagene Anmeldung, Passwortwechsel, Benutzer- und Kundenänderungen werden geloggt. Keine Änderungen/Löschungen über die Anwendungs-API; kein Schutz vor direkten privilegierten Datenbankänderungen, keine Vollständigkeit über noch nicht implementierte Module. |
@@ -24,8 +24,8 @@ Grundlage ist `main` nach dem Merge von PR #16 sowie der Feature-Branch `feature
 | OWKS/Kontrollen | FEHLT | Keine Wachbucheinträge, Kontrollpunkte, QR-/NFC-Validierung oder Offline-Warteschlange. |
 | Dokumente/Verträge/Rechnungen | FEHLT | Kein Dateiablage-, Vertrags- oder Rechnungsmodell. |
 | Dashboard | TEILWEISE | Kundenanzahl, aktive Kunden und Interessenten werden aus der Datenbank gezählt; operative Kennzahlen fehlen. |
-| Docker/Deployment | TEILWEISE | Compose startet PostgreSQL, API und Vite-Entwicklungsserver. Es gibt keinen produktionsfähigen React-Static-Build, Reverse Proxy, TLS- oder Backup-Aufbau. Docker wurde in der Umgebung nicht ausgeführt. |
-| Tests | TEILWEISE | 21 Backendtests bestanden lokal auf SQLite; Ruff-Lint/Format sowie Frontend-TypeScript/Produktionsbuild bestanden. Frühere CI bestätigt PostgreSQL-Migrationen/-Tests und Docker-Builds für den vorherigen PR-Commit; neueste Negativtests benötigen einen erneuten CI-Lauf. Keine E2E-, Last-, Backup-/Restore- oder Frontend-Komponententests. |
+| Docker/Deployment | TEILWEISE | Produktions-Compose liefert ein statisches Nginx-Frontend aus; Migrationen laufen als expliziter Release-Job, Redis ist gemeinsamer Rate-Limit-Speicher. Dokumentierte TLS-Proxy-Voraussetzungen, Security-Header und verschlüsselte Backup-/Restore-Verfahren. Keine produktive Betreiberumgebung eingerichtet. |
+| Tests | TEILWEISE | CI prüft vollständige Alembic-Migrationen und Backend-/API-Tests auf PostgreSQL 17, Redis-Rate-Limits, Produktionscontainer, Docker-Builds und einen verschlüsselten Restore mit synthetischen Daten. Das belegt keine E2E-, Last- oder Betreiberprüfung. |
 
 ## Fehler und Risiken
 
@@ -39,15 +39,15 @@ Grundlage ist `main` nach dem Merge von PR #16 sowie der Feature-Branch `feature
 
 ### Offen
 
-- **Sicherheits-/Betriebsrisiko:** Der In-Memory-Rate-Limiter kann zwischen Instanzen nicht teilen und wird nach Prozessneustart zurückgesetzt. Mehrere Worker benötigen gemeinsamen Speicher und eine vertrauenswürdige Proxy-IP-Konfiguration.
-- **Sicherheits-/Betriebsrisiko:** Compose startet im Frontend `vite --host`; es ist ein Entwicklungsserver, kein gehärteter Produktions-Webserver. HTTPS/Reverse Proxy fehlt.
+- **Betriebsprüfung offen:** Der Produktions-Rate-Limiter nutzt gemeinsames Redis; der In-Memory-Speicher bleibt lokalen Entwicklungsstarts vorbehalten. Tatsächliche Proxy-Adressen und TLS-Topologie sind Betreiberkonfiguration.
+- **Betriebsprüfung offen:** Produktionsfrontend wird statisch über Nginx ausgeliefert. TLS-Zertifikate, DNS, Reverse-Proxy-Topologie und deren vertrauenswürdige Client-IP-Weitergabe müssen Betreiber einrichten und testen.
 - **Sicherheits-/Betriebsrisiko:** Der Audit-Datensatz ist nur über die App-API schreibgeschützt. Datenbankbesitzer oder Administratoren können die Tabelle ändern; Append-only-Berechtigungen/externes unveränderliches Archiv fehlen.
-- **Datenbank-/Betriebsrisiko:** Der API-Container führt `alembic upgrade head` bei jedem Start aus. Das ist bei mehreren parallel startenden API-Replikaten zu koordinieren; es gibt kein separates Deployment-Migrationsverfahren.
+- **Betriebsprüfung offen:** Migrationen laufen als expliziter Release-Job vor dem API-Rollout. Ein erfolgreicher CI-Migrationslauf ersetzt keine Prüfung des eigenen Upgrade-/Rollback-Verfahrens.
 - **Datenbanklücke:** Kundenstammdaten sind erweitert; die Kundennummer bleibt ein eindeutiger zufälliger UUID-basierter Identifikator statt einer fortlaufenden Nummer. Kunden- und Objekthistorien enthalten nur geänderte Feldnamen, keine Vorher-/Nachher-Werte.
 - **RBAC-Lücke:** Standardrollen und Rechte werden derzeit nur durch Migration initialisiert. Rollenverwaltung in der Oberfläche/API fehlt; Administratorzuweisungen werden durch die laufende Phase separat geschützt.
 - **Integrationslücke:** Lokale Tests verwenden SQLite. Gehostete CI deckt Migrationen und API-Tests gegen PostgreSQL ab; systematische Schema-Differenzprüfung und weitere Datenbanktests bleiben offen.
-- **Qualitätssicherung:** GitHub Actions prüft Backend, Migrationen gegen temporäres PostgreSQL, Frontend- und Docker-Build. SCA/SAST sind noch nicht eingerichtet.
-- **Dokumentationslücke:** Vor dieser Phase waren nur README und ein kurzer Projektstatus vorhanden; Betriebs-, Datenbank-, Sicherheits- und API-Dokumentation fehlten.
+- **Qualitätssicherung:** GitHub Actions prüft PostgreSQL-Integration und Docker-Builds; SCA und CodeQL laufen in einer separaten Security-Workflowdatei. Produktive Betriebsprüfung bleibt ausstehend.
+- Historische Auditbeobachtungen spiegeln teilweise einen früheren Repository-Stand wider. Für den aktuellen Deployment- und Backup-Stand gelten [Deployment](DEPLOYMENT.md), [Backup und Wiederherstellung](BACKUP_RESTORE.md) sowie [Security-Review](SECURITY_REVIEW.md).
 
 ## Datenbankbeobachtungen
 

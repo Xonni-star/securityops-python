@@ -6,12 +6,12 @@ Diese Prüfung fasst die bisherigen Reviews für `main` nach PR #16 und den aktu
 
 | Kennung | Schweregrad | Status | Befund |
 |---|---|---|---|
-| SEC-01 | Mittel | Offen | Login-Rate-Limit liegt pro Prozess im Arbeitsspeicher; Neustarts und mehrere Instanzen schwächen die Begrenzung. |
-| SEC-02 | Mittel | Offen | Compose startet Vite im Entwicklungsmodus; produktiver Webserver, TLS-Reverse-Proxy und Security-Header sind nicht Bestandteil des Deployments. |
+| SEC-01 | Mittel | Im Produktions-Compose umgesetzt; Betreiberkonfiguration erforderlich | SlowAPI verwendet in Produktion Redis als gemeinsamen Speicher; Redis-Ausfall macht die Readiness-Prüfung fehlschlagen. Direkte lokale Entwicklungsstarts dürfen weiterhin In-Memory-Speicher nutzen. |
+| SEC-02 | Mittel | Teilweise umgesetzt; TLS-Betrieb bleibt offen | Das Frontend wird als statischer Build über unprivilegiertes Nginx mit Security-Headern ausgeliefert. TLS-Reverse-Proxy, Zertifikate, DNS und reale Proxy-IPs müssen Betreiber konfigurieren und prüfen. |
 | SEC-03 | Mittel | Teilweise behoben (Issue #45) | Getrennte Datenbankrollen, Append-only-Trigger und eine SHA-256-Kette schützen vor Änderungen durch die Laufzeitrolle und machen Änderungen innerhalb der Datenbank prüfbar. Datenbank-Owner/Superuser können Schutzmechanismen umgehen; getrennte externe Sicherungen und Prüfpunktaufbewahrung bleiben Betreiberaufgaben. |
 | SEC-04 | Mittel | Offen | Anmeldung ohne MFA und Passwortzurücksetzungsprozess; keine aktive Sitzungsübersicht oder gezielte Einzelwiderruf-UI. |
-| SEC-05 | Niedrig | Offen | Es gibt noch keine automatisierte Abhängigkeits- oder statische Sicherheitsanalyse in CI; als nächste Härtungsmaßnahme in [#9](https://github.com/Xonni-star/securityops-python/issues/9) nachzuverfolgen. |
-| SEC-06 | Niedrig | Offen | API setzt keine expliziten allgemeinen Browser-Sicherheitsheader; dies muss derzeit ein vorgeschalteter Webserver übernehmen. |
+| SEC-05 | Niedrig | CI-Workflow vorhanden | `pip-audit`, `npm audit` und CodeQL für Python sowie JavaScript/TypeScript laufen in GitHub Actions; Befunde müssen geprüft, verantwortet und behoben oder mit Ablaufdatum begründet ausgenommen werden. |
+| SEC-06 | Niedrig | Im statischen Frontend-Webserver umgesetzt | Nginx setzt CSP, `nosniff`, Frame-Schutz, Referrer- und Permissions-Policy. HSTS wird nur am TLS-Proxy nach dessen Betreiberkonfiguration aktiviert. |
 | SEC-07 | Mittel | In `main` behoben | Die Anwendung verlangt `POSTGRES_PASSWORD`; Tests setzen ausschließlich einen Testwert. |
 | SEC-08 | Hoch | In `main` behoben | Administratorrollenvergabe/-änderung ist serverseitig zusätzlich an `users.manage_admin` gebunden und durch Regressionstest abgedeckt. |
 | SEC-09 | Hoch | In `main` behoben, PR #16 CI erfolgreich | Objektendpunkte erzwangen zuvor keine Zuweisung und erlaubten mit Modulrechten Zugriff auf fremde Objekte. Lesen, Ändern, Archivieren, Kontakte, Historie, Zuweisungen und sensible Details prüfen jetzt den Objekt-Scope serverseitig. |
@@ -39,11 +39,11 @@ Diese Prüfung fasst die bisherigen Reviews für `main` nach PR #16 und den aktu
 
 ## Offene Maßnahmen
 
-1. Gemeinsamen Rate-Limit-Speicher (z. B. Redis) und vertrauenswürdige Proxy-IP-Konfiguration einführen; Login- und weitere sensible Endpunkte prüfen.
-2. Produktionsfrontend als statische Assets ausliefern und TLS, HSTS, CSP sowie weitere passende Header am vertrauenswürdigen Reverse Proxy konfigurieren. Den Devserver nicht öffentlich bereitstellen.
+1. Für den produktiven Einsatz tatsächliche TLS-Proxy-Topologie und vertrauenswürdige Proxy-IP-Adressen konfigurieren und prüfen; niemals pauschal beliebige Forwarded-Header vertrauen.
+2. TLS-Zertifikate, DNS und HSTS-Voraussetzungen für die konkrete Domain festlegen; das Produktionsfrontend ist bereits statisch, und CSP sowie weitere Header werden durch Nginx gesetzt.
 3. Laufzeit-, Migrations- und Backup-Datenbankrollen nach minimalen Rechten trennen. Audit-Protokoll extern oder append-only sichern; direkte privilegierte Datenbankänderungen bleiben sonst außerhalb des App-Schutzes.
 4. MFA, sicheren Passwort-Reset und Sitzungsanzeige/-widerruf mit Abuse- und Berechtigungstests umsetzen.
-5. CI um verwaltete SCA-/SAST-Prüfungen ergänzen und deren Pflege/Alarmierungsweg festlegen.
+5. Den bestehenden SCA-/SAST-Workflow pflegen und für Befunde Verantwortliche, Fixes oder befristete Ausnahmen dokumentieren.
 6. Security-Header, TLS, Datenschutz-/Aufbewahrung und Incident-Abläufe für die konkrete Serverumgebung festlegen und prüfen.
 7. Mitarbeiter-Objektzuweisungen nutzen die vorhandene Objektzuweisungstabelle; Zuweisung und Ende werden in der Personalhistorie erfasst, Archivierung und Beendigung des Arbeitsverhältnisses beenden aktive Zuweisungen. Die aktuellen Änderungen benötigen einen erneuten PostgreSQL-CI-Lauf und Review.
 
@@ -51,6 +51,7 @@ Diese Prüfung fasst die bisherigen Reviews für `main` nach PR #16 und den aktu
 
 - Die oben genannten Belege beziehen sich auf die jeweiligen früheren PR-Stände, nicht auf den aktuellen OWKS-Head. Für aktuelle Ergebnisse und OWKS-spezifische offene Punkte siehe die Prüfung unten.
 - Frühere PostgreSQL-Migrationen/-Tests und Docker-Builds des Personal-Branches waren in CI erfolgreich, jedoch für einen älteren Commit. Ein externer Penetrationstest liegt nicht vor. Die CI für PR #16 war nach den Objektkorrekturen ebenfalls erfolgreich.
+- Die CI für Issue #9 führt PostgreSQL-17-Migrationen und Backend/API-Tests, einen Redis-Mehrinstanztest, Produktionscontainer-/Docker-Prüfungen sowie einen verschlüsselten synthetischen Backup-/Restore-Zyklus aus. CI-Ausführung ist kein Deployment und keine Wiederherstellungsabnahme mit produktiven Sicherungen.
 - Die Prüfung bewertet keinen konkreten Server, Reverse Proxy, Firewall, Secret Store, Backup-Speicher oder administrativen Datenbankzugang.
 - Die Anwendung ist derzeit ein Entwicklungsstand. Vor öffentlichem oder produktivem Betrieb sind die offenen Punkte sowie Datenschutz-, Arbeitszeit- und Abrechnungsanforderungen fachlich und sicherheitstechnisch zu prüfen.
 
