@@ -20,6 +20,14 @@ In einer Kundendetailansicht zeigt die Liste „Zugeordnete Objekte“ nur Objek
 
 Objektzugriff ist zusätzlich zum Modulrecht an eine Objektzuweisung gebunden, sofern das Konto kein globales Lese- oder Verwaltungsrecht besitzt. Objektzuweisungen werden durch berechtigte Benutzerkonten mit Mitarbeiter- oder Objektleitungsrolle vorgenommen. Sicherheits-, Zutritts- und Notfallinformationen erscheinen nicht in der Objektliste oder normalen Detailansicht und benötigen eigene Les-/Schreibberechtigungen.
 
+## Dienstanweisungen und Unterweisungen
+
+Verwaltungsrollen mit `policies.manage` legen allgemeine oder objektbezogene Dienst-/Arbeits-/Verfahrensanweisungen und Unterweisungen an. Objektleitungen verwalten nur Inhalte für Objekte, denen ihr Konto zugeordnet ist; globale Inhalte erfordern globale Objektverwaltung. Jede neue Fassung wird als unveränderliche Version mit UTC-Gültigkeitsbeginn und optionalem Gültigkeitsende angelegt. Gültigkeitszeiträume dürfen sich nicht überschneiden. Versionen, Zuweisungen und Quittungen bleiben in der Verlaufstabelle sichtbar; der Nachweis lässt sich als CSV exportieren.
+
+Zuweisungen benötigen ein aktives Mitarbeiterkonto. Beschäftigte sehen unter „Dienstanweisungen & Unterweisungen“ ausschließlich ihnen zugewiesene, aktuell gültige Inhalte. Objektbezogene Inhalte erscheinen nur bei aktiver Zuweisung zum betreffenden Objekt. „Als gelesen markieren“ und „Bestätigung abgeben“ sind getrennte Schritte und werden für den konkreten Version-/Zuweisungszyklus gespeichert; eine Bestätigung ohne vorherigen Lesenachweis wird abgewiesen. Frühere Nachweise werden nicht überschrieben.
+
+Für Unterweisungen kann ein Wiederholungsintervall in Tagen konfiguriert werden. Nach Bestätigung wird damit der nächste Zyklus terminiert. Eine optionale Erinnerungsfrist wird als Hinweis beim Abruf angezeigt; ebenso werden überfällige Bestätigungen sichtbar. Es gibt keinen E-Mail- oder Push-Versand und keine voreingestellte Rechts- oder Aufbewahrungsfrist. Fälligkeiten müssen bei der Zuweisung ausdrücklich eingetragen werden. Die Nachweise ersetzen keine fachliche oder rechtliche Prüfung.
+
 ## Dienstplanung
 
 Berechtigte Einsatzleitungen können Schichtentwürfe mit Mitarbeiter, Objekt, lokaler Start-/Endzeit, Pause und optionaler Dienstqualifikation anlegen, bearbeiten, veröffentlichen oder absagen. Für das Objekt und für den konkreten Dienst hinterlegte Qualifikationen werden serverseitig gegen die nicht archivierten Mitarbeiterqualifikationen und deren Gültigkeitszeitraum geprüft. Fehlende oder nicht für den gesamten Dienst gültige Qualifikationen verhindern Anlegen, Ändern, Veröffentlichen und Vertretung; ungeeignete Vertretungen erscheinen nicht als Kandidaten. Tages-, Wochen- und Monatsansichten lassen sich nach Zeitraum, Mitarbeiter und Objekt filtern; der Verlauf zeigt geänderte Felder. Schreibzugriffe und der sichtbare Objekt-/Personalbereich werden serverseitig kontrolliert.

@@ -89,6 +89,11 @@ from app.models import (
     OWKSRoutePoint,
     Permission,
     PhysicalKey,
+    PolicyAssignment,
+    PolicyItem,
+    PolicyReceipt,
+    PolicyVersion,
+    PolicyVersionClosure,
     Role,
     ScheduleAvailabilityRequest,
     ScheduleSettings,
@@ -174,6 +179,10 @@ def client() -> Generator[TestClient, None, None]:
                 "customer_portal_request_messages",
                 "customer_portal_request_attachments",
                 "customer_portal_request_history",
+                "policy_versions",
+                "policy_version_closures",
+                "policy_assignments",
+                "policy_receipts",
             ):
                 db.execute(text(f"ALTER TABLE {table} DISABLE TRIGGER {table}_append_only"))
         db.execute(delete(UserSession))
@@ -188,6 +197,11 @@ def client() -> Generator[TestClient, None, None]:
         db.execute(delete(NotificationOutboxAttempt))
         db.execute(delete(NotificationOutbox))
         db.execute(delete(NotificationWorkerHeartbeat))
+        db.execute(delete(PolicyReceipt))
+        db.execute(delete(PolicyAssignment))
+        db.execute(delete(PolicyVersionClosure))
+        db.execute(delete(PolicyVersion))
+        db.execute(delete(PolicyItem))
         db.execute(delete(Task))
         db.execute(delete(IncidentHistory))
         db.execute(delete(IncidentPerson))
@@ -282,6 +296,10 @@ def client() -> Generator[TestClient, None, None]:
                 "customer_portal_request_messages",
                 "customer_portal_request_attachments",
                 "customer_portal_request_history",
+                "policy_versions",
+                "policy_version_closures",
+                "policy_assignments",
+                "policy_receipts",
             ):
                 db.execute(text(f"ALTER TABLE {table} ENABLE TRIGGER {table}_append_only"))
         db.commit()
@@ -378,6 +396,8 @@ def client() -> Generator[TestClient, None, None]:
             "incidents.sensitive.read",
             "incidents.sensitive.manage",
             "control_room.read",
+            "policies.manage",
+            "policies.read_own",
         )
         permissions = {}
         for code in permission_codes:
@@ -469,6 +489,8 @@ def client() -> Generator[TestClient, None, None]:
                 "contracts.update",
                 "contracts.archive",
                 "contracts.manage_reminders",
+                "policies.manage",
+                "policies.read_own",
             ),
         )
         operations = get_or_create_role(
@@ -496,6 +518,7 @@ def client() -> Generator[TestClient, None, None]:
                 "notifications.read_own",
                 "incidents.read",
                 "incidents.create",
+                "policies.read_own",
             ),
         )
         get_or_create_role(
@@ -517,6 +540,7 @@ def client() -> Generator[TestClient, None, None]:
                 "incidents.update",
                 "incidents.sensitive.read",
                 "control_room.read",
+                "policies.manage",
             ),
         )
         get_or_create_role(

@@ -36,6 +36,7 @@ import EmployeePortal from "./EmployeePortal";
 import CustomerPortal from "./CustomerPortal";
 import CustomerPortalManagement from "./CustomerPortalManagement";
 import GlobalSearch from "./GlobalSearch";
+import PoliciesManagement from "./PoliciesManagement";
 import type {
   AuthUser,
   Customer,
@@ -99,6 +100,7 @@ type ActiveModule =
   | "inventory"
   | "incidents"
   | "customer_portal"
+  | "policies"
   | "security";
 
 function messageFrom(reason: unknown, fallback: string) {
@@ -194,6 +196,10 @@ export default function App() {
     user?.permissions.includes("notifications.read_own") && (canReadTasks || canReadOWKS),
   );
   const canManageAutomations = user?.permissions.includes("automations.manage") ?? false;
+  const canManagePolicies = user?.permissions.includes("policies.manage") ?? false;
+  const canReadOwnPolicies =
+    Boolean(user?.permissions.includes("policies.read_own") && user.roles.includes("employee"));
+  const canAccessPolicies = canManagePolicies || canReadOwnPolicies;
   const canReadKeys = user?.permissions.includes("keys.read") ?? false;
   const canReadInventory = user?.permissions.includes("inventory.read") ?? false;
   const canManageInventory = user?.permissions.includes("inventory.manage") ?? false;
@@ -344,7 +350,13 @@ export default function App() {
     ) {
       setActiveModule("automations");
     }
-  }, [canAccessBilling, canAccessDocuments, canCreateTasks, canManageAutomations, canReadCustomers, canReadEmployees, canReadInventory, canReadKeys, canReadNotifications, canReadObjects, canReadOWKS, canReadScheduling, canReadTasks, canReadTimeTracking, isEmployeePortal, user]);
+    else if (
+      user && canAccessPolicies && !canReadCustomers && !canReadObjects && !canReadEmployees
+      && !canReadScheduling && !canReadTimeTracking && !canAccessDocuments && !canAccessBilling
+      && !canReadOWKS && !canReadTasks && !canCreateTasks && !canReadNotifications
+      && !canManageAutomations
+    ) setActiveModule("policies");
+  }, [canAccessBilling, canAccessDocuments, canAccessPolicies, canCreateTasks, canManageAutomations, canReadCustomers, canReadEmployees, canReadInventory, canReadKeys, canReadNotifications, canReadObjects, canReadOWKS, canReadScheduling, canReadTasks, canReadTimeTracking, isEmployeePortal, user]);
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -685,6 +697,9 @@ export default function App() {
           <button
             className={activeModule === "employee_portal" ? "module-tab active" : "module-tab"}
             onClick={() => selectModule("employee_portal")}>Mitarbeiterportal</button>
+          {canAccessPolicies && <button
+            className={activeModule === "policies" ? "module-tab active" : "module-tab"}
+            onClick={() => selectModule("policies")}>Dienstanweisungen & Unterweisungen</button>}
           <button
             className={activeModule === "security" ? "module-tab active" : "module-tab"}
             onClick={() => selectModule("security")}>Sicherheit</button>
@@ -704,6 +719,9 @@ export default function App() {
         {canManageAutomations && <button
           className={activeModule === "automations" ? "module-tab active" : "module-tab"}
           onClick={() => selectModule("automations")}>Automatisierungen</button>}
+        {canAccessPolicies && <button
+          className={activeModule === "policies" ? "module-tab active" : "module-tab"}
+          onClick={() => selectModule("policies")}>Dienstanweisungen & Unterweisungen</button>}
         {canReadObjects && <button
           className={activeModule === "objects" ? "module-tab active" : "module-tab"}
           onClick={() => selectModule("objects")}>Objekte</button>}
@@ -758,6 +776,8 @@ export default function App() {
         />
         : activeModule === "employee_portal" && isEmployeePortal
         ? <EmployeePortal />
+        : activeModule === "policies" && canAccessPolicies
+        ? <PoliciesManagement canManage={canManagePolicies} canReadOwn={canReadOwnPolicies} />
         : activeModule === "customer_portal" && canManageCustomerPortal
         ? <CustomerPortalManagement
           canManageRequests={canManageCustomerPortalRequests}
