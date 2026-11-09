@@ -58,6 +58,8 @@ jobs:
           cache-dependency-path: backend/pyproject.toml
       - name: Backend und Testabhängigkeiten installieren
         run: python -m pip install -e ".[test,quality]"
+      - name: Migrationen mit synthetischen Bestandsdaten von 0024 bis zum Head prüfen
+        run: python -m scripts.verify_migration_upgrade
       - name: Python-Lint und Format prüfen
         run: |
           ruff check app tests migrations
