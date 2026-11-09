@@ -112,6 +112,8 @@ import type {
   IncidentSeverity,
   IncidentMeasure,
   ControlRoom,
+  CustomerPortalInvoice,
+  CustomerPortalMe,
 } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -155,6 +157,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const getSession = () => request<Session>("/auth/me");
+
+export const getCustomerPortalMe = () => request<CustomerPortalMe>("/customer-portal/me");
+
+export const getCustomerPortalInvoices = () =>
+  request<CustomerPortalInvoice[]>("/customer-portal/invoices");
+
+export async function downloadCustomerPortalInvoice(invoiceId: string): Promise<Blob> {
+  const response = await fetch(
+    `/api/v1/customer-portal/invoices/${encodeURIComponent(invoiceId)}/pdf`,
+    { credentials: "same-origin" },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(
+      typeof body?.detail === "string" ? body.detail : `Serverfehler (${response.status})`,
+    );
+  }
+  return response.blob();
+}
 
 export const getControlRoom = (filters: {
   object_id?: string;

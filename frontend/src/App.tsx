@@ -31,6 +31,7 @@ import KeyManagement from "./KeyManagement";
 import IncidentManagement from "./IncidentManagement";
 import ControlRoom from "./ControlRoom";
 import EmployeePortal from "./EmployeePortal";
+import CustomerPortal from "./CustomerPortal";
 import type {
   AuthUser,
   Customer,
@@ -567,6 +568,10 @@ export default function App() {
         </section>
       </main>
     );
+  }
+
+  if (user.roles.includes("customer_portal")) {
+    return <CustomerPortal user={user} onSignedOut={clearLocalSession} />;
   }
 
   return (

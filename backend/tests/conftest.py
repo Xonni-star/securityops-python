@@ -28,6 +28,8 @@ from app.models import (
     CustomerAddress,
     CustomerContact,
     CustomerHistory,
+    CustomerPortalLink,
+    CustomerPortalLinkHistory,
     Document,
     DocumentApproval,
     DocumentContractReminder,
@@ -140,6 +142,7 @@ def client() -> Generator[TestClient, None, None]:
                 "owks_attachments",
                 "key_movements",
                 "notification_outbox_attempts",
+                "customer_portal_link_history",
             ):
                 db.execute(text(f"ALTER TABLE {table} DISABLE TRIGGER {table}_append_only"))
         db.execute(delete(UserSession))
@@ -178,6 +181,8 @@ def client() -> Generator[TestClient, None, None]:
         db.execute(delete(BillingRate))
         db.execute(delete(ContractHistory))
         db.execute(delete(DocumentReadReceipt))
+        db.execute(delete(CustomerPortalLinkHistory))
+        db.execute(delete(CustomerPortalLink))
         db.execute(delete(DocumentApproval))
         db.execute(delete(DocumentVersion))
         db.execute(delete(Contract))
@@ -224,12 +229,15 @@ def client() -> Generator[TestClient, None, None]:
                 "owks_attachments",
                 "key_movements",
                 "notification_outbox_attempts",
+                "customer_portal_link_history",
             ):
                 db.execute(text(f"ALTER TABLE {table} ENABLE TRIGGER {table}_append_only"))
         db.commit()
 
         permission_codes = (
             "customers.read",
+            "customers.portal.manage",
+            "customer_portal.access",
             "customers.create",
             "customers.update",
             "customers.archive",
@@ -440,6 +448,12 @@ def client() -> Generator[TestClient, None, None]:
                 "incidents.sensitive.read",
                 "control_room.read",
             ),
+        )
+        get_or_create_role(
+            "customer_portal",
+            "Kundenportal",
+            "Ausschließlich eigene freigegebene Kundeninformationen",
+            ("customer_portal.access",),
         )
         get_or_create_role(
             "hr",

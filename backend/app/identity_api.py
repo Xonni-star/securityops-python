@@ -14,6 +14,7 @@ from app.auth import (
     clear_session_cookies,
     get_auth_principal,
     hash_token,
+    is_customer_portal_restricted,
     issue_session_tokens,
     require_permission,
     set_session_cookies,
@@ -55,17 +56,23 @@ dummy_password_hash = password_hasher.hash("SecurityOps-invalid-account-password
 router = APIRouter()
 
 
-def user_read(user: User) -> UserRead:
+def user_read(user: User, *, customer_portal_restricted: bool = False) -> UserRead:
+    portal_only = customer_portal_restricted or any(
+        role.code == "customer_portal" for role in user.roles
+    )
+    permissions = (
+        {"customer_portal.access"}
+        if portal_only
+        else {permission.code for role in user.roles for permission in role.permissions}
+    )
     return UserRead(
         id=user.id,
         username=user.username,
         email=user.email,
         full_name=user.full_name,
         is_active=user.is_active,
-        roles=sorted(role.code for role in user.roles),
-        permissions=sorted(
-            {permission.code for role in user.roles for permission in role.permissions}
-        ),
+        roles=["customer_portal"] if portal_only else sorted(role.code for role in user.roles),
+        permissions=sorted(permissions),
     )
 
 
@@ -178,7 +185,10 @@ def login(
     db.commit()
     set_session_cookies(response, session_token, csrf_token)
     return SessionRead(
-        user=user_read(user),
+        user=user_read(
+            user,
+            customer_portal_restricted=is_customer_portal_restricted(db, user),
+        ),
         password_change_required=user.force_password_change,
     )
 
@@ -188,7 +198,10 @@ def get_me(
     principal: Annotated[AuthPrincipal, Depends(get_auth_principal)],
 ) -> SessionRead:
     return SessionRead(
-        user=user_read(principal.user),
+        user=user_read(
+            principal.user,
+            customer_portal_restricted=principal.customer_portal_restricted,
+        ),
         password_change_required=principal.user.force_password_change,
     )
 
