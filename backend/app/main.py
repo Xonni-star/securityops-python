@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.control_room_api import router as control_room_router
 from app.customer_portal_api import router as customer_portal_router
 from app.database import engine
+from app.document_storage import validate_production_document_encryption
 from app.documents_contracts_api import router as documents_contracts_router
 from app.employee_portal_api import router as employee_portal_router
 from app.identity_api import router as identity_router
@@ -36,6 +37,7 @@ from app.time_tracking_api import router as time_tracking_router
 from app.time_tracking_surcharges import router as time_tracking_surcharges_router
 
 settings = get_settings()
+validate_production_document_encryption(settings)
 logger = logging.getLogger(__name__)
 rate_limit_store = (
     Redis.from_url(settings.rate_limit_storage_uri)

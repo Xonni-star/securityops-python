@@ -13,7 +13,7 @@ export BACKUP_AGE_RECIPIENT='age1...' # Ausgabe des vorherigen Befehls
 bash scripts/backup.sh "/sicherer-zielpfad/securityops-$(date +%F)"
 ```
 
-Das neue Backup-Verzeichnis enthält `database.dump.age` und `documents.tar.age`. Die private Identität getrennt, zugriffsbeschränkt und wiederherstellbar aufbewahren. Backup-Dateien enthalten vertrauliche Kunden-, Personal- und Betriebsdaten: nach erfolgreichem Backup das Verzeichnis auf ein getrenntes, zugriffsbeschränktes Ziel übertragen und Aufbewahrung sowie Löschung festlegen. Das Skript überschreibt kein bestehendes Zielverzeichnis. Ein verschlüsseltes lokales Backup allein ist keine ausreichende Auslagerung.
+Das neue Backup-Verzeichnis enthält `database.dump.age` und `documents.tar.age`. Die private age-Identität und `DOCUMENT_ENCRYPTION_KEYS` getrennt, zugriffsbeschränkt und wiederherstellbar aufbewahren; zum Entschlüsseln der Anwendungsdateien wird der passende Dokumentenschlüsselring zusätzlich zur age-Identität benötigt. Alte Dokumentenschlüssel erst entfernen, wenn sie in keiner aufbewahrten Sicherung mehr benötigt werden. Backup-Dateien enthalten vertrauliche Kunden-, Personal- und Betriebsdaten: nach erfolgreichem Backup das Verzeichnis auf ein getrenntes, zugriffsbeschränktes Ziel übertragen und Aufbewahrung sowie Löschung festlegen. Das Skript überschreibt kein bestehendes Zielverzeichnis. Ein verschlüsseltes lokales Backup allein ist keine ausreichende Auslagerung.
 
 Für Audit-Schutz den Sicherungsprozess regelmäßig und unabhängig vom Datenbankhost ausführen. Nach einem erfolgreichen Backup die Integrität mit dem Migrations-/Prüfbenutzer prüfen:
 
@@ -25,7 +25,7 @@ Anzahl und ausgegebenen SHA-256-Kettenendwert zusammen mit Sicherungszeit und Ba
 
 ## Wiederherstellungstest
 
-Restore ausschließlich in einem eigens dafür bereitgestellten, isolierten Compose-Testprojekt mit separaten PostgreSQL- und Dokumentenvolumes ausführen. Niemals das Produktions-Compose-Projekt oder die Produktionsdatenbank als Ziel verwenden. Vorher `COMPOSE_PROJECT_NAME=securityops-restore-test` und `POSTGRES_DB=securityops_backup_test` setzen. Das Restore-Skript verweigert Projekt-Namen ohne `restore-test` und Datenbanknamen ohne `_test`-Endung. Das Skript erstellt ausschließlich die feste Testdatenbank `securityops_restore_test` und stellt Dokumente in ein separates `restore_test_documents`-Volume wieder her; es überschreibt und löscht keine vorhandenen Inhalte. Eine bereits vorhandene Testdatenbank führt zum Abbruch.
+Restore ausschließlich in einem eigens dafür bereitgestellten, isolierten Compose-Testprojekt mit separaten PostgreSQL- und Dokumentenvolumes ausführen. Niemals das Produktions-Compose-Projekt oder die Produktionsdatenbank als Ziel verwenden. Vorher `COMPOSE_PROJECT_NAME=securityops-restore-test` und `POSTGRES_DB=securityops_backup_test` setzen. Das Restore-Skript verweigert Projekt-Namen ohne `restore-test` und Datenbanknamen ohne `_test`-Endung. Das Skript erstellt ausschließlich die feste Testdatenbank `securityops_restore_test` und stellt Dokumente in ein separates `restore_test_documents`-Volume wieder her; es überschreibt und löscht keine vorhandenen Inhalte. Eine bereits vorhandene Testdatenbank führt zum Abbruch. Für einen Anwendungsabruf im Test zusätzlich den passenden `DOCUMENT_ENCRYPTION_KEYS`-Schlüsselring und `DOCUMENT_ENCRYPTION_ACTIVE_VERSION` sicher an den Testprozess übergeben; sie werden nicht im age-Backup enthalten.
 
 ```sh
 export COMPOSE_PROJECT_NAME=securityops-restore-test

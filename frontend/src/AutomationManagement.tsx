@@ -28,6 +28,9 @@ const taskStatuses: { value: AutomationTaskStatus; label: string }[] = [
 const triggerNames: Record<AutomationTrigger, string> = {
   "task.assigned": "Aufgabe zugewiesen",
   "task.status_changed": "Aufgabenstatus geändert",
+  "owks.missed_control": "Kontrollpunkt nicht kontrolliert",
+  "owks.deviation_reported": "OWKS-Auffälligkeit gemeldet",
+  "owks.offline_event_synced": "Offline-Ereignis synchronisiert",
 };
 const eventNames: Record<string, string> = {
   ...triggerNames,
@@ -105,7 +108,9 @@ export default function AutomationManagement() {
         name: name.trim(),
         description: description.trim() || undefined,
         trigger_type: triggerType,
-        conditions: conditionStatus ? { status: conditionStatus } : {},
+        conditions: triggerType.startsWith("task.") && conditionStatus
+          ? { status: conditionStatus }
+          : {},
       };
       if (editingRuleId) {
         await updateAutomationRule(editingRuleId, data);
@@ -214,8 +219,10 @@ export default function AutomationManagement() {
           </div>
         </div>
         <p className="muted">
-          Verfügbar sind nur Ereignisse zu Aufgaben und eine In-App-Benachrichtigung an deren
-          bereits festgelegte Empfänger. Neue Regeln starten deaktiviert.
+          Verfügbar sind registrierte Aufgabenereignisse sowie versäumte Kontrollen,
+          gemeldete OWKS-Auffälligkeiten und erfolgreich synchronisierte Offline-Ereignisse.
+          Benachrichtigungen gehen nur an aktive Benutzer mit Objektzuweisung. Neue Regeln
+          starten deaktiviert.
         </p>
         <form className="form-panel automation-form" onSubmit={(event) => void saveRule(event)}>
           <label>Regelname<input value={name} onChange={(event) => setName(event.target.value)}
@@ -224,17 +231,24 @@ export default function AutomationManagement() {
             onChange={(event) => setDescription(event.target.value)} maxLength={500} /></label>
           <div className="form-row">
             <label>Auslöser<select value={triggerType}
-              onChange={(event) => setTriggerType(event.target.value as AutomationTrigger)}>
+              onChange={(event) => {
+                const trigger = event.target.value as AutomationTrigger;
+                setTriggerType(trigger);
+                if (trigger.startsWith("owks.")) setConditionStatus("");
+              }}>
               <option value="task.assigned">Aufgabe zugewiesen</option>
               <option value="task.status_changed">Aufgabenstatus geändert</option>
+              <option value="owks.missed_control">Kontrollpunkt nicht kontrolliert</option>
+              <option value="owks.deviation_reported">OWKS-Auffälligkeit gemeldet</option>
+              <option value="owks.offline_event_synced">Offline-Ereignis synchronisiert</option>
             </select></label>
-            <label>Bedingung: Aufgabenstatus<select value={conditionStatus}
+            {triggerType.startsWith("task.") && <label>Bedingung: Aufgabenstatus<select value={conditionStatus}
               onChange={(event) => setConditionStatus(event.target.value as AutomationTaskStatus | "")}>
               <option value="">Beliebiger Status</option>
               {taskStatuses.map((item) => <option key={item.value} value={item.value}>
                 {item.label}
               </option>)}
-            </select></label>
+            </select></label>}
           </div>
           <div className="form-actions">
             <button className="primary-button" disabled={busy || !name.trim()}>
@@ -258,10 +272,12 @@ export default function AutomationManagement() {
               <div>
                 <strong>{rule.name}</strong>
                 <p>{rule.description || "Keine Beschreibung"}</p>
-                <span>{triggerNames[rule.trigger_type]} · Status: {
-                  rule.conditions.status
-                    ? taskStatuses.find((item) => item.value === rule.conditions.status)?.label
-                    : "beliebig"
+                <span>{triggerNames[rule.trigger_type]} · {
+                  rule.trigger_type.startsWith("owks.")
+                    ? "keine Bedingung"
+                    : `Status: ${rule.conditions.status
+                      ? taskStatuses.find((item) => item.value === rule.conditions.status)?.label
+                      : "beliebig"}`
                 } · Aktion: In-App-Benachrichtigung</span>
               </div>
               <div className="automation-actions">
@@ -310,7 +326,7 @@ export default function AutomationManagement() {
       <section className="panel" aria-labelledby="automation-deadletters-heading">
         <div className="panel-heading">
           <div><p className="eyebrow">FEHLERABLAGE</p><h3 id="automation-deadletters-heading">
-            Fehlgeschlagene Aufgabenereignisse</h3></div>
+            Fehlgeschlagene Outbox-Ereignisse</h3></div>
           <span className="result-count">{deadLetters.length} Ereignisse</span>
         </div>
         {deadLetters.length === 0 ? <p className="empty">Keine Ereignisse in der Fehlerablage.</p>
@@ -329,11 +345,11 @@ export default function AutomationManagement() {
       <section className="panel automation-limits" aria-labelledby="automation-limits-heading">
         <h3 id="automation-limits-heading">Nicht verfügbare Auslöser</h3>
         <p>
-          Qualifikationsablauf, unbesetzte Dienste, fehlende Kontrollen, Vorfälle,
-          Schlüssel/Inventar, Dokumente/Verträge, Rechnungen, allgemeine Aufgabenfristen und
-          Worker-Ausfall veröffentlichen derzeit keine geeigneten registrierten Outbox-Ereignisse.
-          Sie können deshalb nicht ausgewählt werden. Die Regeln ändern keine Aufgaben-,
-          Personal-, OWKS-, Vertrags- oder Rechnungszustände.
+          Kontrollgang gestartet/beendet oder unvollständig, Qualifikationsablauf,
+          unbesetzte Dienste, Vorfälle, Schlüssel/Inventar, Dokumente/Verträge, Rechnungen,
+          allgemeine Aufgabenfristen und Worker-Ausfall sind nicht registriert und daher nicht
+          auswählbar. Regeln veröffentlichen keine personenbezogenen OWKS-Beschreibungen und
+          ändern keine Aufgaben-, Personal-, OWKS-, Vertrags- oder Rechnungszustände.
         </p>
       </section>
     </section>

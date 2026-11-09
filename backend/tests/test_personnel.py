@@ -5,6 +5,7 @@ from conftest import ADMIN_PASSWORD, TestingSessionLocal
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.identity_api import password_hasher
 from app.malware_scanner import MalwareScannerError
 from app.models import (
@@ -562,6 +563,13 @@ def test_qualification_documents_are_versioned_and_permission_protected(
     )
     assert first.status_code == 201
     assert first.json()["version"] == 1
+    with TestingSessionLocal() as db:
+        stored = db.get(EmployeeQualificationDocument, UUID(first.json()["id"]))
+        assert stored is not None
+        assert stored.storage_key is not None and stored.content is None
+        encoded_file = (get_settings().document_storage_path / stored.storage_key).read_bytes()
+        assert encoded_file.startswith(b"SECOPS-DOC\x00")
+        assert first_content not in encoded_file
     second = client.post(
         route,
         headers=admin_headers,

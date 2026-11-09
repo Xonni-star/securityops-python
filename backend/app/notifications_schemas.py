@@ -9,7 +9,8 @@ NotificationEventType = Literal["task.assigned", "task.status_changed", "automat
 
 class NotificationRead(BaseModel):
     id: UUID
-    task_id: UUID
+    task_id: UUID | None
+    object_id: UUID | None
     event_type: NotificationEventType
     title: str
     body: str

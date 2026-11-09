@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from uuid import uuid4
+from importlib import import_module
+from uuid import UUID, uuid4
 
 import pytest
 from conftest import ADMIN_PASSWORD, TestingSessionLocal, test_engine
@@ -13,6 +14,8 @@ from app.models import (
     AutomationRun,
     Notification,
     NotificationOutbox,
+    ObjectAssignment,
+    SecurityObject,
     Task,
     User,
 )
@@ -97,6 +100,45 @@ def create_rule(
         return rule.id
 
 
+def create_owks_object(client: TestClient, headers: dict[str, str], code: str) -> str:
+    customer = client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json={"company_name": f"Testkunde {code} Automatisierung GmbH"},
+    )
+    assert customer.status_code == 201
+    response = client.post(
+        "/api/v1/objects",
+        headers=headers,
+        json={"customer_id": customer.json()["id"], "name": f"Objekt {code}", "code": code},
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def create_deviation_event(
+    client: TestClient,
+    headers: dict[str, str],
+    object_id: str,
+    *,
+    client_event_id: str | None = None,
+) -> dict[str, object]:
+    response = client.post(
+        "/api/v1/owks/events",
+        headers=headers,
+        json={
+            "object_id": object_id,
+            "event_type": "deviation",
+            "title": "Vertraulicher Ereignistitel",
+            "description": "VERTRAULICHER HERGANG",
+            "severity": "warning",
+            "client_event_id": client_event_id or str(uuid4()),
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
 def test_admin_only_typed_rule_crud_and_soft_delete(client: TestClient) -> None:
     client.cookies.clear()
     assert client.get("/api/v1/automations/rules").status_code == 401
@@ -171,6 +213,40 @@ def test_admin_only_typed_rule_crud_and_soft_delete(client: TestClient) -> None:
         "automation.rule_updated",
         "automation.rule_deleted",
     } <= audit_actions
+
+
+def test_owks_trigger_registration_rejects_task_conditions(client: TestClient) -> None:
+    headers = sign_in(client)
+    invalid = client.post(
+        "/api/v1/automations/rules",
+        headers=headers,
+        json={
+            "name": "OWKS mit Aufgabenbedingung",
+            "trigger_type": "owks.missed_control",
+            "conditions": {"status": "blocked"},
+        },
+    )
+    assert invalid.status_code == 422
+
+    created = client.post(
+        "/api/v1/automations/rules",
+        headers=headers,
+        json={
+            "name": "Versäumte Kontrolle melden",
+            "trigger_type": "owks.missed_control",
+            "conditions": {},
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["trigger_type"] == "owks.missed_control"
+
+    changed = client.patch(
+        f"/api/v1/automations/rules/{created.json()['id']}",
+        headers=headers,
+        json={"trigger_type": "owks.deviation_reported"},
+    )
+    assert changed.status_code == 200
+    assert changed.json()["trigger_type"] == "owks.deviation_reported"
 
 
 def test_task_event_conditions_and_rule_execution_are_idempotent(client: TestClient) -> None:
@@ -378,3 +454,217 @@ def test_parallel_workers_create_one_automation_run(client: TestClient) -> None:
     assert sum(result.claimed for result in results) == 1
     assert len(runs) == 1
     assert len(actions) == 1
+
+
+def test_owks_automation_event_is_minimal_scoped_and_idempotent(client: TestClient) -> None:
+    admin_headers = sign_in(client)
+    object_id = create_owks_object(client, admin_headers, "AUTO-OWKS-001")
+    with TestingSessionLocal() as db:
+        admin = db.scalar(select(User).where(User.username == "admin"))
+        manager = db.scalar(select(User).where(User.username == "geschaeftsfuehrung"))
+        obj = db.get(SecurityObject, UUID(object_id))
+        assert admin is not None and manager is not None and obj is not None
+        db.add(ObjectAssignment(object_id=obj.id, user_id=admin.id))
+        db.commit()
+        admin_id = admin.id
+        manager_id = manager.id
+
+    created_rule = client.post(
+        "/api/v1/automations/rules",
+        headers=admin_headers,
+        json={
+            "name": "OWKS-Ereignis sicher melden",
+            "trigger_type": "owks.deviation_reported",
+            "conditions": {},
+        },
+    )
+    assert created_rule.status_code == 201, created_rule.text
+    rule_id = created_rule.json()["id"]
+    assert (
+        client.patch(
+            f"/api/v1/automations/rules/{rule_id}",
+            headers=admin_headers,
+            json={"is_active": True},
+        ).status_code
+        == 200
+    )
+
+    client_event_id = str(uuid4())
+    event = create_deviation_event(
+        client,
+        admin_headers,
+        object_id,
+        client_event_id=client_event_id,
+    )
+    with TestingSessionLocal() as db:
+        source = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.dedupe_key == f"owks:owks.deviation_reported:{event['id']}"
+            )
+        )
+        assert source is not None
+        assert source.payload == {
+            "schema_version": 1,
+            "owks_event_id": event["id"],
+            "object_id": object_id,
+            "recipient_ids": [str(admin_id)],
+        }
+
+    duplicate = create_deviation_event(
+        client,
+        admin_headers,
+        object_id,
+        client_event_id=client_event_id,
+    )
+    assert duplicate["id"] == event["id"]
+
+    worker = NotificationOutboxWorker(TestingSessionLocal)
+    assert worker.run_once().delivered == 1
+    assert worker.run_once().delivered == 1
+    with TestingSessionLocal() as db:
+        source = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.dedupe_key == f"owks:owks.deviation_reported:{event['id']}"
+            )
+        )
+        assert source is not None
+        source.status = "pending"
+        db.commit()
+    assert worker.run_once().delivered == 1
+
+    with TestingSessionLocal() as db:
+        notifications = db.scalars(
+            select(Notification).where(Notification.object_id == UUID(object_id))
+        ).all()
+        run = db.scalar(
+            select(AutomationRun).where(
+                AutomationRun.rule_id == UUID(rule_id),
+                AutomationRun.source_event_id == source.id,
+            )
+        )
+        source_events = db.scalars(
+            select(NotificationOutbox).where(
+                NotificationOutbox.dedupe_key == f"owks:owks.deviation_reported:{event['id']}"
+            )
+        ).all()
+    assert len(source_events) == 1
+    assert len(notifications) == 1
+    assert notifications[0].recipient_id == admin_id
+    assert notifications[0].task_id is None
+    assert "VERTRAULICHER HERGANG" not in notifications[0].body
+    assert "Vertraulicher Ereignistitel" not in notifications[0].body
+    assert run is not None and run.status == "succeeded"
+
+    outsider_headers = sign_in(
+        client,
+        "geschaeftsfuehrung",
+        "management-test-passwort-2026",
+    )
+    outsider_inbox = client.get("/api/v1/notifications", headers=outsider_headers)
+    assert outsider_inbox.status_code == 200
+    assert outsider_inbox.json()["items"] == []
+    own_inbox = client.get("/api/v1/notifications", headers=admin_headers)
+    assert own_inbox.status_code == 200
+    assert own_inbox.json()["items"][0]["object_id"] == object_id
+    assert own_inbox.json()["items"][0]["task_id"] is None
+    assert manager_id != admin_id
+
+
+def test_owks_outbox_rejects_invalid_payload_and_unassigned_recipients(
+    client: TestClient,
+) -> None:
+    headers = sign_in(client)
+    object_id = create_owks_object(client, headers, "AUTO-OWKS-002")
+    event = create_deviation_event(client, headers, object_id)
+    with TestingSessionLocal() as db:
+        source = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.aggregate_id == UUID(event["id"]),
+                NotificationOutbox.event_type == "owks.deviation_reported",
+            )
+        )
+        manager = db.scalar(select(User).where(User.username == "geschaeftsfuehrung"))
+        assert source is not None and manager is not None
+        source.payload = {
+            **source.payload,
+            "schema_version": 2,
+            "unexpected": "must be rejected",
+            "recipient_ids": [str(manager.id)],
+        }
+        source_id = source.id
+        db.commit()
+
+    result = NotificationOutboxWorker(TestingSessionLocal).run_once()
+    assert result.dead_lettered == 1
+    with TestingSessionLocal() as db:
+        source = db.get(NotificationOutbox, source_id)
+        assert source is not None
+        assert source.status == "dead_letter"
+        assert source.last_error == "invalid_payload"
+        assert db.scalar(select(Notification).where(Notification.outbox_id == source_id)) is None
+
+
+def test_owks_empty_and_revoked_recipients_fail_closed(client: TestClient) -> None:
+    headers = sign_in(client)
+    empty_object_id = create_owks_object(client, headers, "AUTO-OWKS-003")
+    empty_event = create_deviation_event(client, headers, empty_object_id)
+    empty_rule_id = create_rule(trigger_type="owks.deviation_reported")
+    worker = NotificationOutboxWorker(TestingSessionLocal)
+    worker.run_once()
+    with TestingSessionLocal() as db:
+        empty_source = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.aggregate_id == UUID(empty_event["id"]),
+                NotificationOutbox.event_type == "owks.deviation_reported",
+            )
+        )
+        assert empty_source is not None
+        empty_run = db.scalar(
+            select(AutomationRun).where(
+                AutomationRun.rule_id == empty_rule_id,
+                AutomationRun.source_event_id == empty_source.id,
+            )
+        )
+    assert empty_source.status == "completed"
+    assert empty_run is not None and empty_run.status == "skipped_no_recipients"
+    assert empty_run.action_event_id is None
+
+    assigned_object_id = create_owks_object(client, headers, "AUTO-OWKS-004")
+    with TestingSessionLocal() as db:
+        admin = db.scalar(select(User).where(User.username == "admin"))
+        obj = db.get(SecurityObject, UUID(assigned_object_id))
+        assert admin is not None and obj is not None
+        assignment = ObjectAssignment(object_id=obj.id, user_id=admin.id)
+        db.add(assignment)
+        db.commit()
+        assignment_id = assignment.id
+    revoked_event = create_deviation_event(client, headers, assigned_object_id)
+    with TestingSessionLocal() as db:
+        source = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.aggregate_id == UUID(revoked_event["id"]),
+                NotificationOutbox.event_type == "owks.deviation_reported",
+            )
+        )
+        assert source is not None
+        revoked_source_id = source.id
+        db.delete(db.get(ObjectAssignment, assignment_id))
+        db.commit()
+
+    revoked_result = worker.run_once()
+    assert revoked_result.dead_lettered == 1
+    with TestingSessionLocal() as db:
+        source = db.get(NotificationOutbox, revoked_source_id)
+        assert source is not None
+        assert source.status == "dead_letter"
+        assert source.last_error == "unauthorized_recipient"
+        assert (
+            db.scalar(select(Notification).where(Notification.outbox_id == revoked_source_id))
+            is None
+        )
+
+
+def test_owks_automation_migration_follows_encrypted_document_storage() -> None:
+    migration = import_module("migrations.versions.0034_owks_automation_events")
+    assert migration.revision == "0034_owks_automation_events"
+    assert migration.down_revision == "0033_encrypted_document_storage"

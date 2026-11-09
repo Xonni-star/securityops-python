@@ -191,7 +191,7 @@ export default function App() {
   ) ?? false;
   const canCreateTasks = user?.permissions.includes("tasks.create") ?? false;
   const canReadNotifications = Boolean(
-    user?.permissions.includes("notifications.read_own") && canReadTasks,
+    user?.permissions.includes("notifications.read_own") && (canReadTasks || canReadOWKS),
   );
   const canManageAutomations = user?.permissions.includes("automations.manage") ?? false;
   const canReadKeys = user?.permissions.includes("keys.read") ?? false;

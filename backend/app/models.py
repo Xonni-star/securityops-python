@@ -361,7 +361,9 @@ class AutomationRule(Base):
     __tablename__ = "automation_rules"
     __table_args__ = (
         CheckConstraint(
-            "trigger_type IN ('task.assigned', 'task.status_changed')",
+            "trigger_type IN ('task.assigned', 'task.status_changed', "
+            "'owks.missed_control', 'owks.deviation_reported', "
+            "'owks.offline_event_synced')",
             name="ck_automation_rules_trigger_type",
         ),
         CheckConstraint(
@@ -450,6 +452,11 @@ class AutomationRun(Base):
 class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
+        CheckConstraint(
+            "(task_id IS NOT NULL AND object_id IS NULL) "
+            "OR (task_id IS NULL AND object_id IS NOT NULL)",
+            name="ck_notifications_target",
+        ),
         UniqueConstraint("outbox_id", "recipient_id", name="uq_notifications_event_recipient"),
         Index("ix_notifications_recipient_created", "recipient_id", "created_at"),
     )
@@ -463,8 +470,11 @@ class Notification(Base):
     recipient_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    task_id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("tasks.id", ondelete="RESTRICT"), nullable=False
+    task_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tasks.id", ondelete="RESTRICT"), nullable=True
+    )
+    object_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="RESTRICT"), nullable=True
     )
     event_type: Mapped[str] = mapped_column(String(80), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -474,7 +484,8 @@ class Notification(Base):
     )
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     recipient: Mapped[User] = relationship()
-    task: Mapped[Task] = relationship()
+    task: Mapped[Task | None] = relationship()
+    object: Mapped["SecurityObject | None"] = relationship()
     outbox_event: Mapped[NotificationOutbox] = relationship()
 
 
@@ -1212,6 +1223,12 @@ class EmployeeQualificationDocument(Base):
             "length(trim(file_name)) > 0",
             name="ck_employee_qualification_documents_name",
         ),
+        CheckConstraint(
+            "(storage_key IS NULL AND content IS NOT NULL) OR "
+            "(storage_key IS NOT NULL AND content IS NULL)",
+            name="ck_employee_qualification_documents_storage",
+        ),
+        UniqueConstraint("storage_key", name="uq_employee_qualification_documents_storage_key"),
         Index(
             "ix_employee_qualification_documents_qualification_created",
             "qualification_id",
@@ -1230,7 +1247,8 @@ class EmployeeQualificationDocument(Base):
     media_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    storage_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     uploaded_by_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -2764,6 +2782,12 @@ class OWKSAttachment(Base):
         CheckConstraint(
             "size_bytes > 0 AND size_bytes <= 10485760", name="ck_owks_attachments_size"
         ),
+        CheckConstraint(
+            "(storage_key IS NULL AND content IS NOT NULL) OR "
+            "(storage_key IS NOT NULL AND content IS NULL)",
+            name="ck_owks_attachments_storage",
+        ),
+        UniqueConstraint("storage_key", name="uq_owks_attachments_storage_key"),
         Index("ix_owks_attachments_event_created", "event_id", "created_at"),
     )
 
@@ -2775,7 +2799,8 @@ class OWKSAttachment(Base):
     media_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    storage_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     uploaded_by_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )

@@ -22,6 +22,8 @@ AUDIT_REVISION = "0029_audit_integrity"
 INVENTORY_REVISION = "0030_inventory_management"
 AUTOMATION_REVISION = "0031_safe_automations"
 EMPLOYEE_PORTAL_REVISION = "0032_employee_portal"
+DOCUMENT_STORAGE_REVISION = "0033_encrypted_document_storage"
+OWKS_AUTOMATION_REVISION = "0034_owks_automation_events"
 
 
 def admin_connection_options() -> dict[str, str | int]:
@@ -73,7 +75,23 @@ def verify_revision_chain() -> None:
         or employee_portal_revision.down_revision != AUTOMATION_REVISION
     ):
         raise RuntimeError(f"{EMPLOYEE_PORTAL_REVISION} folgt nicht auf {AUTOMATION_REVISION}.")
-    if script.get_heads() != [EMPLOYEE_PORTAL_REVISION]:
+    document_storage_revision = script.get_revision(DOCUMENT_STORAGE_REVISION)
+    if (
+        document_storage_revision is None
+        or document_storage_revision.down_revision != EMPLOYEE_PORTAL_REVISION
+    ):
+        raise RuntimeError(
+            f"{DOCUMENT_STORAGE_REVISION} folgt nicht auf {EMPLOYEE_PORTAL_REVISION}."
+        )
+    owks_automation_revision = script.get_revision(OWKS_AUTOMATION_REVISION)
+    if (
+        owks_automation_revision is None
+        or owks_automation_revision.down_revision != DOCUMENT_STORAGE_REVISION
+    ):
+        raise RuntimeError(
+            f"{OWKS_AUTOMATION_REVISION} folgt nicht auf {DOCUMENT_STORAGE_REVISION}."
+        )
+    if script.get_heads() != [OWKS_AUTOMATION_REVISION]:
         raise RuntimeError(f"Unerwartete Alembic-Heads: {script.get_heads()}")
 
 
@@ -182,9 +200,9 @@ def main() -> None:
         with engine.connect() as connection:
             if (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                != EMPLOYEE_PORTAL_REVISION
+                != OWKS_AUTOMATION_REVISION
             ):
-                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0032 geendet.")
+                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0034 geendet.")
             if (
                 connection.execute(
                     text("SELECT company_name FROM customers WHERE id = :id"),
@@ -228,6 +246,22 @@ def main() -> None:
                     {"table_name": table_name},
                 ).scalar_one():
                     raise RuntimeError(f"Portal-Tabelle {table_name} fehlt nach dem Upgrade.")
+            for table_name in (
+                "employee_qualification_documents",
+                "owks_attachments",
+            ):
+                if (
+                    connection.execute(
+                        text(
+                            "SELECT count(*) FROM information_schema.columns "
+                            "WHERE table_schema = 'public' AND table_name = :table_name "
+                            "AND column_name = 'storage_key' AND is_nullable = 'YES'"
+                        ),
+                        {"table_name": table_name},
+                    ).scalar_one()
+                    != 1
+                ):
+                    raise RuntimeError(f"Verschlüsselte Dateireferenz fehlt in {table_name}.")
             for table_name in ("inventory_assets", "inventory_events"):
                 if not connection.execute(
                     text("SELECT to_regclass(:table_name) IS NOT NULL"),
@@ -346,6 +380,10 @@ def main() -> None:
             "password": os.environ["POSTGRES_RUNTIME_PASSWORD"],
         }
         with psycopg.connect(**runtime_options) as connection:
+            if connection.execute(
+                "SELECT has_table_privilege('securityops_runtime', 'owks_attachments', 'UPDATE')"
+            ).fetchone()[0]:
+                raise RuntimeError("Die Laufzeitrolle darf OWKS-Anhänge nicht aktualisieren.")
             runtime_audit_id = uuid4()
             connection.execute(
                 """
