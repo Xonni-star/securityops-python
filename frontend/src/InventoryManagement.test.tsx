@@ -125,6 +125,26 @@ describe("Inventarverwaltung", () => {
     expect(screen.getByText(/Test Administration/)).toBeTruthy();
   });
 
+  it("filtert und hebt den über die globale Suche geöffneten Treffer hervor", async () => {
+    const { container } = render(
+      <InventoryManagement
+        canManage={false}
+        canManageGlobal={false}
+        canMove={false}
+        initialAssetId={asset.id}
+        initialQuery={asset.asset_number}
+      />,
+    );
+
+    await screen.findByText("I-001");
+    await waitFor(() => {
+      expect(api.getInventoryAssets).toHaveBeenCalledWith(
+        expect.objectContaining({ q: asset.asset_number }),
+      );
+    });
+    expect(container.querySelector(".key-card.search-result-row")).toBeTruthy();
+  });
+
   it("erfordert eine Quittierung für die Ausgabe und sendet sie an die API", async () => {
     render(<InventoryManagement canManage={false} canManageGlobal={false} canMove />);
     fireEvent.click(await screen.findByRole("button", { name: "Ausgeben" }));

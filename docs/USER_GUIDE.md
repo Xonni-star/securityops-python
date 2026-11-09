@@ -8,6 +8,10 @@ Nach Migrationen legt `python -m app.bootstrap_admin` ein Administratorkonto aus
 
 Im aktuellen Webfrontend mit Benutzername und Passwort anmelden. Berechtigungen werden vom Backend geprüft. Benutzer mit passenden Kundenrechten können Kunden anlegen, suchen und Kundenstatus, Vertragsstatus, Website, Anschriften, Rechtsform, Notizen und Ansprechpartner pflegen. Websites werden als HTTP-/HTTPS-Adresse validiert. Der Vertragsstatus beschreibt den Stand der Vertragsbeziehung; Vertragsdokumente oder Vertragsverwaltung sind noch nicht verfügbar. Das Dashboard zeigt nur implementierte Kundenkennzahlen. „Abmelden“ widerruft die aktuelle Sitzung.
 
+## Globale Suche
+
+Die globale Suche wird nur angezeigt, wenn mindestens ein Suchleserecht vorhanden ist. Die verfügbaren Suchbereiche richten sich nach den Leserechten; die Suche umfasst Kunden, Objekte, Personalnummern, Dokumente, Verträge, Dienste, Aufgaben, Vorfälle/Beschwerden, Schlüsselnummern und feste Wachbuchkategorien. Treffer verwenden die Berechtigungs- und Objekt-/Kundenbereiche der jeweiligen Fachmodule. Berichte, Freitextnotizen, sensible Personaldaten, Dateiinhalte und Rechnungsbeträge werden nicht durchsucht oder ausgegeben. Treffer öffnen das jeweilige Fachmodul über dessen geschützte Datenpfade. Rechnungen bleiben wegen fehlender erzwungener Kunden-/Objektabgrenzung ausgeschlossen. Grenzen und API-Parameter stehen in [`GLOBAL_SEARCH.md`](GLOBAL_SEARCH.md).
+
 ## Objektverwaltung
 
 Benutzer mit Objektleserecht können die Objektliste suchen, nach Kunde und Status filtern, sortieren und Details zu erreichbaren Objekten öffnen. Objekte können mit einem vorhandenen Kunden angelegt, bearbeitet, archiviert und reaktiviert werden. Anschriften und mehrere Ansprechpartner lassen sich in der Detailansicht pflegen; Änderungen an einem Ansprechpartner löschen keine weiteren Kontakte. Die Historie zeigt Ereignisse und geänderte Feldnamen.

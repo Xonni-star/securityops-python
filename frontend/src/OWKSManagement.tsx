@@ -7,6 +7,7 @@ import {
   createIncident,
   getOWKSControlPoints,
   getOWKSAttachments,
+  getOWKSEvent,
   getOWKSEvents,
   getOWKSObjects,
   getOWKSRoutes,
@@ -69,12 +70,19 @@ function incidentMessageFrom(reason: unknown) {
   return message;
 }
 
-export default function OWKSManagement({ user }: { user: AuthUser }) {
+export default function OWKSManagement({
+  user,
+  initialEventId = null,
+}: {
+  user: AuthUser;
+  initialEventId?: string | null;
+}) {
   const [objects, setObjects] = useState<OWKSObject[]>([]);
   const [selectedObjectId, setSelectedObjectId] = useState("");
   const [events, setEvents] = useState<OWKSEvent[]>([]);
   const [incidentChoices, setIncidentChoices] = useState<IncidentChoices | null>(null);
   const [incidentEvent, setIncidentEvent] = useState<OWKSEvent | null>(null);
+  const [focusedEvent, setFocusedEvent] = useState<OWKSEvent | null>(null);
   const [attachments, setAttachments] = useState<Record<string, OWKSAttachment[]>>({});
   const [attachmentsOpen, setAttachmentsOpen] = useState<string[]>([]);
   const [points, setPoints] = useState<OWKSControlPoint[]>([]);
@@ -141,6 +149,26 @@ export default function OWKSManagement({ user }: { user: AuthUser }) {
       setError(messageFrom(reason));
     }
   }, []);
+
+  useEffect(() => {
+    if (!initialEventId) return;
+    getOWKSEvent(initialEventId)
+      .then((event) => {
+        setFocusedEvent(event);
+        setSelectedObjectId(event.object_id);
+      })
+      .catch((reason: unknown) => setError(messageFrom(reason)));
+  }, [initialEventId]);
+
+  useEffect(() => {
+    if (
+      focusedEvent
+      && focusedEvent.object_id === selectedObjectId
+      && !events.some((event) => event.id === focusedEvent.id)
+    ) {
+      setEvents((current) => [...current, focusedEvent]);
+    }
+  }, [events, focusedEvent, selectedObjectId]);
 
   useEffect(() => {
     if (selectedObjectId) void loadObjectData(selectedObjectId);
@@ -594,7 +622,10 @@ export default function OWKSManagement({ user }: { user: AuthUser }) {
         <section className="panel owks-panel">
           <div className="panel-heading"><div><p className="eyebrow">APPEND-ONLY-PROTOKOLL</p><h2>Wachbuchereignisse</h2></div><span className="result-count">{events.length} Einträge</span></div>
           {!events.length && <p className="empty">Für dieses Objekt liegen noch keine Wachbuchereignisse vor.</p>}
-          <div className="owks-event-list">{events.map((item) => <article className={`owks-event owks-severity-${item.severity}`} key={item.id}>
+          <div className="owks-event-list">{events.map((item) => <article
+            className={`owks-event owks-severity-${item.severity}${item.id === focusedEvent?.id ? " search-result-row" : ""}`}
+            key={item.id}
+          >
             <div className="owks-event-heading"><strong>{item.title}</strong><time>{new Date(item.occurred_at).toLocaleString("de-DE")}</time></div>
             <p>{item.description || "Keine zusätzliche Beschreibung."}</p>
             <div className="owks-event-meta">

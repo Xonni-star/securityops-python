@@ -47,15 +47,19 @@ function formatDate(value: string) {
 export default function KeyManagement({
   canManage,
   canMove,
+  initialQuery = "",
+  initialKeyId = null,
 }: {
   canManage: boolean;
   canMove: boolean;
+  initialQuery?: string;
+  initialKeyId?: string | null;
 }) {
   const [items, setItems] = useState<PhysicalKey[]>([]);
   const [objects, setObjects] = useState<KeyObjectCandidate[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [status, setStatus] = useState<PhysicalKeyStatus | "">("");
   const [objectId, setObjectId] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -99,6 +103,10 @@ export default function KeyManagement({
   useEffect(() => {
     void loadKeys();
   }, [loadKeys]);
+
+  useEffect(() => {
+    setQuery(initialQuery);
+  }, [initialQuery]);
 
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -293,7 +301,10 @@ export default function KeyManagement({
           ? <p className="empty">Keine Schlüssel für diese Auswahl vorhanden.</p>
           : <div className="key-list">
             {items.map((key) => (
-              <article className="key-card" key={key.id}>
+              <article
+                className={`key-card${key.id === initialKeyId ? " search-result-row" : ""}`}
+                key={key.id}
+              >
                 <div className="key-card-heading">
                   <div>
                     <h3>{key.key_number} <span className={`key-status key-status-${key.status}`}>{statusNames[key.status]}</span></h3>

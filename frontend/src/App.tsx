@@ -34,6 +34,7 @@ import ControlRoom from "./ControlRoom";
 import EmployeePortal from "./EmployeePortal";
 import CustomerPortal from "./CustomerPortal";
 import CustomerPortalManagement from "./CustomerPortalManagement";
+import GlobalSearch from "./GlobalSearch";
 import type {
   AuthUser,
   Customer,
@@ -44,6 +45,8 @@ import type {
   CustomerSort,
   CustomerStatus,
   Dashboard,
+  GlobalSearchEntityType,
+  GlobalSearchResult,
   SecurityObject,
 } from "./types";
 
@@ -158,6 +161,8 @@ export default function App() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [history, setHistory] = useState<CustomerHistory[]>([]);
   const [customerObjects, setCustomerObjects] = useState<SecurityObject[]>([]);
+  const [initialObjectId, setInitialObjectId] = useState<string | null>(null);
+  const [searchResult, setSearchResult] = useState<GlobalSearchResult | null>(null);
   const [activeModule, setActiveModule] = useState<ActiveModule>("customers");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -200,6 +205,24 @@ export default function App() {
   const canAccessIncidents = user?.permissions.some((permission) =>
     ["incidents.read", "incidents.read_all", "incidents.manage_all", "incidents.create"].includes(permission),
   ) ?? false;
+  const permissions = user?.permissions ?? [];
+  const searchableTypes: GlobalSearchEntityType[] = [
+    ...(canReadCustomers ? ["customer" as const] : []),
+    ...(canReadObjects ? ["object" as const] : []),
+    ...(canReadEmployees ? ["employee" as const] : []),
+    ...(permissions.includes("documents.read") ? ["document" as const] : []),
+    ...(permissions.includes("contracts.read") ? ["contract" as const] : []),
+    ...(canReadScheduling ? ["shift" as const] : []),
+    ...(permissions.some((permission) =>
+      ["tasks.read_own", "tasks.read_all", "tasks.manage_all"].includes(permission),
+    ) ? ["task" as const] : []),
+    ...(permissions.some((permission) =>
+      ["incidents.read", "incidents.read_all", "incidents.manage_all"].includes(permission),
+    ) ? ["incident" as const] : []),
+    ...(canReadKeys ? ["key" as const] : []),
+    ...(canReadInventory ? ["inventory_asset" as const] : []),
+    ...(canReadOWKS ? ["owks_event" as const] : []),
+  ];
 
   useEffect(() => {
     getSession()
@@ -367,12 +390,48 @@ export default function App() {
     setHistory([]);
     setCustomerObjects([]);
     setDashboard(null);
+    setInitialObjectId(null);
     setActiveModule("customers");
   }
 
-  function selectModule(module: ActiveModule) {
+  function selectModule(module: ActiveModule, fromSearch = false) {
     moduleSelectedManually.current = true;
+    if (!fromSearch) setSearchResult(null);
     setActiveModule(module);
+  }
+
+  const clearInitialObjectId = useCallback(() => setInitialObjectId(null), []);
+
+  async function openSearchResult(result: GlobalSearchResult) {
+    setError("");
+    if (result.type === "customer" && canReadCustomers) {
+      selectModule("customers");
+      try {
+        await refreshSelected(result.id);
+      } catch (reason) {
+        setError(messageFrom(reason, "Kundendetails konnten nicht geladen werden."));
+      }
+    } else if (result.type === "object" && canReadObjects) {
+      setInitialObjectId(result.id);
+      selectModule("objects");
+    } else {
+      const moduleByType: Partial<Record<GlobalSearchResult["type"], ActiveModule>> = {
+        employee: "employees",
+        document: "documents",
+        contract: "documents",
+        shift: "scheduling",
+        task: "tasks",
+        incident: "incidents",
+        key: "keys",
+        inventory_asset: "inventory",
+        owks_event: "owks",
+      };
+      const targetModule = moduleByType[result.type];
+      if (targetModule) {
+        setSearchResult(result);
+        selectModule(targetModule, true);
+      }
+    }
   }
 
   async function signOut() {
@@ -670,6 +729,13 @@ export default function App() {
         </>}
       </nav>
 
+      {searchableTypes.length > 0 && (
+        <GlobalSearch
+          availableTypes={searchableTypes}
+          onOpenResult={(result) => void openSearchResult(result)}
+        />
+      )}
+
       {activeModule === "security"
         ? <IdentitySecurity
           user={user}
@@ -684,34 +750,69 @@ export default function App() {
           canManageDocuments={canManageCustomerPortalDocuments}
         />
         : activeModule === "tasks" && (canReadTasks || canCreateTasks)
-        ? <TaskManagement user={user} />
+        ? <TaskManagement
+          user={user}
+          initialTaskId={searchResult?.type === "task" ? searchResult.id : null}
+        />
         : activeModule === "control_room" && user.permissions.includes("control_room.read")
         ? <ControlRoom />
         : activeModule === "keys" && canReadKeys
-        ? <KeyManagement canManage={canManageKeys} canMove={canMoveKeys} />
+        ? <KeyManagement
+          canManage={canManageKeys}
+          canMove={canMoveKeys}
+          initialQuery={searchResult?.type === "key" ? searchResult.reference : ""}
+          initialKeyId={searchResult?.type === "key" ? searchResult.id : null}
+        />
         : activeModule === "inventory" && canReadInventory
         ? <InventoryManagement
           canManage={canManageInventory}
           canManageGlobal={user.permissions.includes("objects.manage_all")}
           canMove={canMoveInventory}
+          initialAssetId={searchResult?.type === "inventory_asset" ? searchResult.id : null}
+          initialQuery={searchResult?.type === "inventory_asset" ? searchResult.reference : ""}
         />
         : activeModule === "notifications" && canReadNotifications
         ? <NotificationManagement />
         : activeModule === "documents" && canAccessDocuments
-        ? <DocumentContractManagement user={user} />
+        ? <DocumentContractManagement
+          user={user}
+          initialSearchResult={searchResult?.type === "document" || searchResult?.type === "contract"
+            ? searchResult
+            : null}
+        />
         : activeModule === "billing" && canAccessBilling
         ? <BillingManagement user={user} />
         : activeModule === "owks" && canReadOWKS
-        ? <OWKSManagement user={user} />
+        ? <OWKSManagement
+          user={user}
+          initialEventId={searchResult?.type === "owks_event" ? searchResult.id : null}
+        />
         : activeModule === "incidents" && canAccessIncidents
-        ? <IncidentManagement user={user} />
+        ? <IncidentManagement
+          user={user}
+          initialIncidentId={searchResult?.type === "incident" ? searchResult.id : null}
+        />
         : activeModule === "time_tracking" && canReadTimeTracking
         ? <TimeTracking user={user} />
         : activeModule === "scheduling" && canReadScheduling
-        ? <SchedulingManagement user={user} />
+        ? <SchedulingManagement
+          user={user}
+          initialShiftDate={searchResult?.type === "shift" ? searchResult.reference.slice(0, 10) : undefined}
+          initialShiftId={searchResult?.type === "shift" ? searchResult.id : null}
+        />
         : activeModule === "employees" && canReadEmployees
-        ? <PersonnelManagement user={user} />
-        : activeModule === "objects" && canReadObjects ? <ObjectManagement user={user} /> : <>
+        ? <PersonnelManagement
+          user={user}
+          initialSearch={searchResult?.type === "employee" ? searchResult.reference : ""}
+          initialEmployeeId={searchResult?.type === "employee" ? searchResult.id : null}
+        />
+        : activeModule === "objects" && canReadObjects ? (
+          <ObjectManagement
+            user={user}
+            initialObjectId={initialObjectId}
+            onInitialObjectOpened={clearInitialObjectId}
+          />
+        ) : <>
       {dashboard && <section className="stats" aria-label="Kundenübersicht">
         <article className="stat-card"><span>Kunden gesamt</span><strong>{dashboard.customers_total}</strong></article>
         <article className="stat-card"><span>Aktive Kunden</span><strong>{dashboard.customers_active}</strong></article>

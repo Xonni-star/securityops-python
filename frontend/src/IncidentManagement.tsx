@@ -120,7 +120,13 @@ function historyDescription(entry: IncidentDetail["history"][number]) {
   return actionName;
 }
 
-export default function IncidentManagement({ user }: { user: AuthUser }) {
+export default function IncidentManagement({
+  user,
+  initialIncidentId = null,
+}: {
+  user: AuthUser;
+  initialIncidentId?: string | null;
+}) {
   const canCreate = user.permissions.includes("incidents.create");
   const canWrite = user.permissions.some((permission) =>
     ["incidents.update", "incidents.manage_all"].includes(permission),
@@ -179,6 +185,10 @@ export default function IncidentManagement({ user }: { user: AuthUser }) {
   useEffect(() => {
     void loadIncidents();
   }, [loadIncidents]);
+
+  useEffect(() => {
+    if (initialIncidentId) void loadDetail(initialIncidentId);
+  }, [initialIncidentId, loadDetail]);
 
   useEffect(() => {
     getIncidentChoices()

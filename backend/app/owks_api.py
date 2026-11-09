@@ -735,6 +735,19 @@ def list_events(
     return [event_read(db, event) for event in events]
 
 
+@router.get("/events/{event_id}", response_model=OWKSEventRead)
+def get_event(
+    event_id: UUID,
+    db: Session = Depends(get_db),
+    principal=Depends(require_permission("owks.read")),
+) -> OWKSEventRead:
+    event = db.get(OWKSEvent, event_id)
+    if event is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Wachbuchereignis nicht gefunden")
+    get_object_or_404(db, event.object_id, principal)
+    return event_read(db, event)
+
+
 @router.post("/routes/{route_id}/monitor", response_model=list[OWKSEventRead])
 def monitor_route(
     route_id: UUID,

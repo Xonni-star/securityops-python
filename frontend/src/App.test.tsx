@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import * as api from "./api";
-import type { ControlRoom, Customer } from "./types";
+import type { ControlRoom, Customer, SecurityObject } from "./types";
 
 vi.mock("./api", () => ({
   archiveCustomer: vi.fn(),
@@ -26,6 +26,7 @@ vi.mock("./api", () => ({
   getCustomerPortalRequests: vi.fn(),
   downloadCustomerPortalInvoice: vi.fn(),
   getControlRoom: vi.fn(),
+  getGlobalSearch: vi.fn(),
   getEmployees: vi.fn(),
   getEmployeeAvailability: vi.fn(),
   getEmployeePortalAbsences: vi.fn(),
@@ -45,6 +46,8 @@ vi.mock("./api", () => ({
   getUserSessions: vi.fn(),
   getUserSessionsForAdmin: vi.fn(),
   getMFAStatus: vi.fn(),
+  getObject: vi.fn(),
+  getObjectHistory: vi.fn(),
   getUsers: vi.fn(),
   getScheduleSettings: vi.fn(),
   getScheduleAvailabilityRequests: vi.fn(),
@@ -99,6 +102,25 @@ const customer: Customer = {
   archived_at: null,
   business_address: null,
   billing_address: null,
+  contacts: [],
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+};
+
+const securityObject: SecurityObject = {
+  id: "object-1",
+  customer_id: "customer-1",
+  customer_name: "Beispiel GmbH",
+  code: "OBJ-DIRECT-1",
+  name: "Direkt erreichbares Objekt",
+  object_type: null,
+  description: null,
+  status: "active",
+  operating_hours: null,
+  service_times: null,
+  staffing_requirements: null,
+  archived_at: null,
+  address: null,
   contacts: [],
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
@@ -176,6 +198,15 @@ describe("Kundenformulare", () => {
       updated_at: "2026-11-09T08:00:00Z",
       reviewed_at: null,
       history: [{ event: "requested", occurred_at: "2026-11-09T08:00:00Z" }],
+    });
+    vi.mocked(api.getObject).mockResolvedValue(securityObject);
+    vi.mocked(api.getObjectHistory).mockResolvedValue([]);
+    vi.mocked(api.getObjects).mockResolvedValue({ items: [], total: 0, limit: 25, offset: 0 });
+    vi.mocked(api.getGlobalSearch).mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 10,
+      offset: 0,
     });
   });
 
@@ -279,6 +310,129 @@ describe("Kundenformulare", () => {
     expect(api.getCustomers).not.toHaveBeenCalled();
   });
 
+  it("öffnet einen Kundentreffer der globalen Suche direkt in der Detailansicht", async () => {
+    vi.mocked(api.getGlobalSearch).mockResolvedValue({
+      items: [{
+        id: customer.id,
+        type: "customer",
+        title: customer.company_name,
+        reference: customer.customer_number,
+      }],
+      total: 1,
+      limit: 10,
+      offset: 0,
+    });
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Globale Suche" });
+    fireEvent.change(screen.getByLabelText("Freigegebene Bereiche durchsuchen"), {
+      target: { value: "Beispiel" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Öffnen" }));
+
+    expect(await screen.findByRole("heading", { name: "Beispiel GmbH" })).toBeTruthy();
+    expect(api.getCustomer).toHaveBeenCalledWith(customer.id);
+  });
+
+  it("öffnet einen Objekttreffer innerhalb des erreichbaren Objektbereichs", async () => {
+    vi.mocked(api.getSession).mockResolvedValue({
+      user: {
+        id: "object-reader",
+        username: "objektleser",
+        email: "objektleser@example.de",
+        full_name: "Objektleser",
+        is_active: true,
+        roles: ["object_manager"],
+        permissions: ["objects.read"],
+      },
+    });
+    vi.mocked(api.getGlobalSearch).mockResolvedValue({
+      items: [{
+        id: securityObject.id,
+        type: "object",
+        title: securityObject.name,
+        reference: securityObject.code,
+      }],
+      total: 1,
+      limit: 10,
+      offset: 0,
+    });
+    render(<App />);
+    await screen.findByRole("heading", { name: "Globale Suche" });
+
+    fireEvent.change(screen.getByLabelText("Freigegebene Bereiche durchsuchen"), {
+      target: { value: "Direkt" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Öffnen" }));
+    expect(await screen.findByRole("heading", { name: securityObject.name })).toBeTruthy();
+    expect(api.getObject).toHaveBeenCalledWith(securityObject.id);
+  });
+
+  it("öffnet einen Inventartreffer gefiltert im Inventarmodul", async () => {
+    const inventoryAsset = {
+      id: "inventory-asset-1",
+      asset_number: "INV-001",
+      serial_number: "SER-001",
+      name: "Funkgerät",
+      category: "radio" as const,
+      condition: "good" as const,
+      status: "available" as const,
+      location: "Materialraum",
+      object_id: "object-1",
+      object_code: "OBJ-001",
+      object_name: "Verwaltungsgebäude",
+      current_employee_id: null,
+      current_employee_name: null,
+      archived_at: null,
+      created_at: "2026-11-01T10:00:00Z",
+      updated_at: "2026-11-01T10:00:00Z",
+    };
+    vi.mocked(api.getSession).mockResolvedValue({
+      user: {
+        id: "inventory-user",
+        username: "inventar",
+        email: "inventar@example.de",
+        full_name: "Inventarzugriff",
+        is_active: true,
+        roles: [],
+        permissions: ["inventory.read"],
+      },
+    });
+    vi.mocked(api.getGlobalSearch).mockResolvedValue({
+      items: [{
+        id: inventoryAsset.id,
+        type: "inventory_asset",
+        title: inventoryAsset.name,
+        reference: inventoryAsset.asset_number,
+      }],
+      total: 1,
+      limit: 10,
+      offset: 0,
+    });
+    vi.mocked(api.getInventoryAssets).mockResolvedValue({
+      items: [inventoryAsset],
+      total: 1,
+      limit: 25,
+      offset: 0,
+    });
+    vi.mocked(api.getInventoryObjects).mockResolvedValue([]);
+    vi.mocked(api.getInventoryEmployees).mockResolvedValue([]);
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Globale Suche" });
+    fireEvent.change(screen.getByLabelText("Freigegebene Bereiche durchsuchen"), {
+      target: { value: "INV-001" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Öffnen" }));
+
+    expect(await screen.findByRole("heading", { name: "Inventarverwaltung" })).toBeTruthy();
+    await waitFor(() => {
+      expect(api.getInventoryAssets).toHaveBeenCalledWith(
+        expect.objectContaining({ q: inventoryAsset.asset_number }),
+      );
+    });
+  });
+
   it("bietet berechtigten Nutzern das zentrale Aufgabenmodul in der Navigation an", async () => {
     vi.mocked(api.getSession).mockResolvedValue({
       user: {
@@ -356,6 +510,7 @@ describe("Kundenformulare", () => {
     render(<App />);
 
     await screen.findByRole("heading", { name: "Kunde hinzufügen" });
+    await screen.findByText("Keine passenden Kunden vorhanden.");
     fireEvent.change(screen.getByPlaceholderText("Muster GmbH"), {
       target: { value: "Beispiel GmbH" },
     });

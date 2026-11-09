@@ -135,6 +135,8 @@ import type {
   CustomerPortalRequest,
   CustomerPortalRequestMessage,
   CustomerPortalRequestAttachment,
+  GlobalSearchEntityType,
+  GlobalSearchPage,
 } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -358,6 +360,19 @@ export const getControlRoom = (filters: {
     if (value) params.set(key, value);
   }
   return request<ControlRoom>(`/control-room?${params.toString()}`);
+};
+
+export const getGlobalSearch = (filters: {
+  q: string;
+  type?: GlobalSearchEntityType | "";
+  limit?: number;
+  offset?: number;
+}) => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  return request<GlobalSearchPage>(`/search?${params.toString()}`);
 };
 
 export const getNotifications = (filters: {
@@ -1756,6 +1771,9 @@ export const getOWKSObjects = () => request<OWKSObject[]>("/owks/objects");
 
 export const getOWKSEvents = (objectId: string) =>
   request<OWKSEvent[]>(`/owks/objects/${objectId}/events`);
+
+export const getOWKSEvent = (eventId: string) =>
+  request<OWKSEvent>(`/owks/events/${eventId}`);
 
 export const getOWKSControlPoints = (objectId: string) =>
   request<OWKSControlPoint[]>(`/owks/objects/${objectId}/control-points`);

@@ -33,6 +33,7 @@ import type {
   ContractType,
   Customer,
   Employee,
+  GlobalSearchResult,
   ManagedContract,
   ManagedDocument,
   ManagedReminder,
@@ -89,7 +90,13 @@ function dateTimeLabel(value: string) {
   return new Date(value).toLocaleString("de-DE");
 }
 
-export default function DocumentContractManagement({ user }: { user: AuthUser }) {
+export default function DocumentContractManagement({
+  user,
+  initialSearchResult = null,
+}: {
+  user: AuthUser;
+  initialSearchResult?: Pick<GlobalSearchResult, "id" | "type"> | null;
+}) {
   const canReadDocuments = user.permissions.includes("documents.read");
   const canCreateDocuments = user.permissions.includes("documents.create");
   const canUpdateDocuments = user.permissions.includes("documents.update");
@@ -233,23 +240,33 @@ export default function DocumentContractManagement({ user }: { user: AuthUser })
     return () => { active = false; };
   }, [canReadCustomers, canReadDocuments, canReadEmployees, canReadObjects]);
 
-  async function openDocument(documentId: string) {
+  const openDocument = useCallback(async (documentId: string) => {
     setError("");
     try {
       setSelectedDocument(await getDocument(documentId));
     } catch (reason) {
       setError(messageFrom(reason, "Dokumentdetails konnten nicht geladen werden."));
     }
-  }
+  }, []);
 
-  async function openContract(contractId: string) {
+  const openContract = useCallback(async (contractId: string) => {
     setError("");
     try {
       setSelectedContract(await getContract(contractId));
     } catch (reason) {
       setError(messageFrom(reason, "Vertragsdetails konnten nicht geladen werden."));
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (initialSearchResult?.type === "document") {
+      setTab("documents");
+      void openDocument(initialSearchResult.id);
+    } else if (initialSearchResult?.type === "contract") {
+      setTab("contracts");
+      void openContract(initialSearchResult.id);
+    }
+  }, [initialSearchResult, openContract, openDocument]);
 
   async function submitDocument(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

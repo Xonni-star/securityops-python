@@ -74,17 +74,22 @@ export default function InventoryManagement({
   canManage,
   canManageGlobal,
   canMove,
+  initialAssetId = null,
+  initialQuery = "",
 }: {
   canManage: boolean;
   canManageGlobal: boolean;
   canMove: boolean;
+  initialAssetId?: string | null;
+  initialQuery?: string;
 }) {
   const [items, setItems] = useState<InventoryAsset[]>([]);
   const [objects, setObjects] = useState<InventoryObjectCandidate[]>([]);
   const [inventoryEmployees, setInventoryEmployees] = useState<InventoryEmployeeCandidate[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
+  const [focusedAssetId, setFocusedAssetId] = useState(initialAssetId ?? "");
   const [category, setCategory] = useState<InventoryCategory | "">("");
   const [condition, setCondition] = useState<InventoryCondition | "">("");
   const [assetStatus, setAssetStatus] = useState<InventoryStatus | "">("");
@@ -150,6 +155,13 @@ export default function InventoryManagement({
   useEffect(() => {
     void loadInventory();
   }, [loadInventory]);
+
+  useEffect(() => {
+    if (!initialAssetId) return;
+    setQuery(initialQuery);
+    setOffset(0);
+    setFocusedAssetId(initialAssetId);
+  }, [initialAssetId, initialQuery]);
 
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -297,6 +309,7 @@ export default function InventoryManagement({
               onChange={(event) => {
                 setQuery(event.target.value);
                 setOffset(0);
+                setFocusedAssetId("");
               }}
               maxLength={200}
               placeholder="Inventarnummer, Seriennummer oder Bezeichnung"
@@ -418,7 +431,10 @@ export default function InventoryManagement({
           ? <p className="empty">Keine Inventargegenstände für diese Auswahl vorhanden.</p>
           : <div className="key-list">
             {items.map((asset) => (
-              <article className="key-card" key={asset.id}>
+              <article
+                className={`key-card${asset.id === focusedAssetId ? " search-result-row" : ""}`}
+                key={asset.id}
+              >
                 <div className="key-card-heading">
                   <div>
                     <h3>{asset.asset_number}

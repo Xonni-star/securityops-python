@@ -81,7 +81,13 @@ function localDateTime(value: string | null) {
   return local.toISOString().slice(0, 16);
 }
 
-export default function TaskManagement({ user }: { user: AuthUser }) {
+export default function TaskManagement({
+  user,
+  initialTaskId = null,
+}: {
+  user: AuthUser;
+  initialTaskId?: string | null;
+}) {
   const canCreate = user.permissions.includes("tasks.create");
   const canAssign = user.permissions.includes("tasks.assign");
   const canEdit = user.permissions.some((permission) =>
@@ -149,6 +155,10 @@ export default function TaskManagement({ user }: { user: AuthUser }) {
       setError(messageFrom(reason, "Aufgabe konnte nicht geladen werden."));
     }
   }, []);
+
+  useEffect(() => {
+    if (initialTaskId) void loadDetail(initialTaskId);
+  }, [initialTaskId, loadDetail]);
 
   useEffect(() => {
     void loadTasks();

@@ -8,6 +8,30 @@ export type CustomerSort =
   | "contract_status";
 export type ObjectStatus = "active" | "inactive";
 export type ObjectSort = "name" | "code" | "created_at" | "status";
+export type GlobalSearchEntityType =
+  | "customer"
+  | "object"
+  | "employee"
+  | "document"
+  | "contract"
+  | "shift"
+  | "task"
+  | "incident"
+  | "key"
+  | "inventory_asset"
+  | "owks_event";
+export interface GlobalSearchResult {
+  id: string;
+  type: GlobalSearchEntityType;
+  title: string;
+  reference: string;
+}
+export interface GlobalSearchPage {
+  items: GlobalSearchResult[];
+  total: number;
+  limit: number;
+  offset: number;
+}
 export type PhysicalKeyStatus = "available" | "issued" | "lost" | "defective" | "archived";
 export type KeyMovementType = "issued" | "returned" | "lost" | "defective" | "inventory";
 export type InventoryCategory =
