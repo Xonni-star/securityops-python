@@ -71,11 +71,7 @@ def enqueue_owks_automation_event(
     *,
     trigger_type: str | None = None,
 ) -> None:
-    if (
-        trigger_type is None
-        and event.event_type == "deviation"
-        and event.sync_status != "synced"
-    ):
+    if trigger_type is None and event.event_type == "deviation" and event.sync_status != "synced":
         return
     trigger_type = trigger_type or OWKS_EVENT_TRIGGER_TYPES.get(event.event_type)
     if trigger_type is None:

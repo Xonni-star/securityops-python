@@ -23,7 +23,7 @@ INVENTORY_REVISION = "0030_inventory_management"
 AUTOMATION_REVISION = "0031_safe_automations"
 EMPLOYEE_PORTAL_REVISION = "0032_employee_portal"
 DOCUMENT_STORAGE_REVISION = "0033_encrypted_document_storage"
-OWKS_AUTOMATION_REVISION = "0032_owks_automation_events"
+OWKS_AUTOMATION_REVISION = "0034_owks_automation_events"
 
 
 def admin_connection_options() -> dict[str, str | int]:
@@ -202,7 +202,7 @@ def main() -> None:
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
                 != OWKS_AUTOMATION_REVISION
             ):
-                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0032 geendet.")
+                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0034 geendet.")
             if (
                 connection.execute(
                     text("SELECT company_name FROM customers WHERE id = :id"),

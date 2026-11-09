@@ -6,7 +6,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0032_owks_automation_events"
+revision: str = "0034_owks_automation_events"
 down_revision: str | None = "0033_encrypted_document_storage"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -18,9 +18,7 @@ TRIGGERS = (
 
 
 def upgrade() -> None:
-    op.drop_constraint(
-        "ck_automation_rules_trigger_type", "automation_rules", type_="check"
-    )
+    op.drop_constraint("ck_automation_rules_trigger_type", "automation_rules", type_="check")
     op.create_check_constraint(
         "ck_automation_rules_trigger_type",
         "automation_rules",
@@ -69,9 +67,7 @@ def downgrade() -> None:
         existing_type=postgresql.UUID(as_uuid=True),
         nullable=False,
     )
-    op.drop_constraint(
-        "ck_automation_rules_trigger_type", "automation_rules", type_="check"
-    )
+    op.drop_constraint("ck_automation_rules_trigger_type", "automation_rules", type_="check")
     op.create_check_constraint(
         "ck_automation_rules_trigger_type",
         "automation_rules",

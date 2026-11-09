@@ -24,4 +24,4 @@ PR #39 ist mit Merge-Commit `a8cc63b3eeef9cbcdc033e4156ca046c14e8c99a` in `main`
 
 ## Migration und Rückbau
 
-`0020_notifications` folgt linear auf `0019_tasks`. `0032_owks_automation_events` folgt linear auf `0031_safe_automations` und ergänzt Objektbezüge für Benachrichtigungen sowie die registrierten OWKS-Regeltrigger. Ein Downgrade wird abgelehnt, solange OWKS-Benachrichtigungen oder Benachrichtigungen ohne Aufgabenbezug vorhanden sind. Diese Daten müssen vor einem Rückbau ausdrücklich gesichert beziehungsweise fachlich behandelt werden.
+`0020_notifications` folgt linear auf `0019_tasks`. `0034_owks_automation_events` folgt linear auf den verschlüsselten Dokumentenspeicher (`0033_encrypted_document_storage`), der seinerseits auf `0032_employee_portal` folgt. Sie ergänzt Objektbezüge für Benachrichtigungen sowie die registrierten OWKS-Regeltrigger. Ein Downgrade wird abgelehnt, solange OWKS-Benachrichtigungen oder Benachrichtigungen ohne Aufgabenbezug vorhanden sind. Diese Daten müssen vor einem Rückbau ausdrücklich gesichert beziehungsweise fachlich behandelt werden.

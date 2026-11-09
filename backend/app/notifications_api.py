@@ -69,11 +69,11 @@ def list_notifications(
     base_query = visible_notification_query(principal)
     unread_count = (
         db.scalar(
-                select(func.count()).select_from(
-                    visible_notification_query(principal)
-                    .where(Notification.read_at.is_(None))
-                    .subquery()
-                )
+            select(func.count()).select_from(
+                visible_notification_query(principal)
+                .where(Notification.read_at.is_(None))
+                .subquery()
+            )
         )
         or 0
     )

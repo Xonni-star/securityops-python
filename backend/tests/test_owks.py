@@ -742,12 +742,15 @@ def test_owks_event_and_outbox_share_the_transaction(client: TestClient) -> None
 
     with TestingSessionLocal() as db:
         assert db.get(OWKSEvent, event_id) is None
-        assert db.scalar(
-            select(NotificationOutbox).where(
-                NotificationOutbox.aggregate_id == event_id,
-                NotificationOutbox.event_type == "owks.deviation_reported",
+        assert (
+            db.scalar(
+                select(NotificationOutbox).where(
+                    NotificationOutbox.aggregate_id == event_id,
+                    NotificationOutbox.event_type == "owks.deviation_reported",
+                )
             )
-        ) is None
+            is None
+        )
 
 
 @pytest.mark.skipif(

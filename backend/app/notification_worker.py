@@ -225,10 +225,7 @@ class NotificationOutboxWorker:
         if event.event_type in OWKS_AUTOMATION_EVENT_TYPES:
             if not isinstance(payload, OWKSAutomationEventPayload):
                 raise InvalidOutboxEvent("invalid_payload")
-            if (
-                event.aggregate_type != "owks_event"
-                or payload.owks_event_id != event.aggregate_id
-            ):
+            if event.aggregate_type != "owks_event" or payload.owks_event_id != event.aggregate_id:
                 raise InvalidOutboxEvent("invalid_payload")
             recipient_ids = set(payload.recipient_ids)
             if not recipient_ids.issubset(self._object_recipient_ids(db, payload.object_id)):
@@ -378,10 +375,7 @@ class NotificationOutboxWorker:
                 if (
                     set(conditions) - {"status"}
                     or event_status not in TASK_STATUSES
-                    or (
-                        condition_status is not None
-                        and condition_status not in TASK_STATUSES
-                    )
+                    or (condition_status is not None and condition_status not in TASK_STATUSES)
                 ):
                     raise InvalidOutboxEvent("invalid_automation_rule")
                 matches = condition_status in {None, event_status}

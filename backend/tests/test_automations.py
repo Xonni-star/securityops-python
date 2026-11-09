@@ -100,9 +100,7 @@ def create_rule(
         return rule.id
 
 
-def create_owks_object(
-    client: TestClient, headers: dict[str, str], code: str
-) -> str:
+def create_owks_object(client: TestClient, headers: dict[str, str], code: str) -> str:
     customer = client.post(
         "/api/v1/customers",
         headers=headers,
@@ -482,11 +480,14 @@ def test_owks_automation_event_is_minimal_scoped_and_idempotent(client: TestClie
     )
     assert created_rule.status_code == 201, created_rule.text
     rule_id = created_rule.json()["id"]
-    assert client.patch(
-        f"/api/v1/automations/rules/{rule_id}",
-        headers=admin_headers,
-        json={"is_active": True},
-    ).status_code == 200
+    assert (
+        client.patch(
+            f"/api/v1/automations/rules/{rule_id}",
+            headers=admin_headers,
+            json={"is_active": True},
+        ).status_code
+        == 200
+    )
 
     client_event_id = str(uuid4())
     event = create_deviation_event(
@@ -543,8 +544,7 @@ def test_owks_automation_event_is_minimal_scoped_and_idempotent(client: TestClie
         )
         source_events = db.scalars(
             select(NotificationOutbox).where(
-                NotificationOutbox.dedupe_key
-                == f"owks:owks.deviation_reported:{event['id']}"
+                NotificationOutbox.dedupe_key == f"owks:owks.deviation_reported:{event['id']}"
             )
         ).all()
     assert len(source_events) == 1
@@ -601,9 +601,7 @@ def test_owks_outbox_rejects_invalid_payload_and_unassigned_recipients(
         assert source is not None
         assert source.status == "dead_letter"
         assert source.last_error == "invalid_payload"
-        assert db.scalar(
-            select(Notification).where(Notification.outbox_id == source_id)
-        ) is None
+        assert db.scalar(select(Notification).where(Notification.outbox_id == source_id)) is None
 
 
 def test_owks_empty_and_revoked_recipients_fail_closed(client: TestClient) -> None:
@@ -660,12 +658,13 @@ def test_owks_empty_and_revoked_recipients_fail_closed(client: TestClient) -> No
         assert source is not None
         assert source.status == "dead_letter"
         assert source.last_error == "unauthorized_recipient"
-        assert db.scalar(
-            select(Notification).where(Notification.outbox_id == revoked_source_id)
-        ) is None
+        assert (
+            db.scalar(select(Notification).where(Notification.outbox_id == revoked_source_id))
+            is None
+        )
 
 
-def test_owks_automation_migration_follows_safe_automations() -> None:
-    migration = import_module("migrations.versions.0032_owks_automation_events")
-    assert migration.revision == "0032_owks_automation_events"
-    assert migration.down_revision == "0031_safe_automations"
+def test_owks_automation_migration_follows_encrypted_document_storage() -> None:
+    migration = import_module("migrations.versions.0034_owks_automation_events")
+    assert migration.revision == "0034_owks_automation_events"
+    assert migration.down_revision == "0033_encrypted_document_storage"
