@@ -42,8 +42,10 @@ PostgreSQL ist für den Betrieb vorgesehen. Verbindungsdaten werden über `POSTG
 
 ## Zusätzliche Tabellen im offenen PR-Stack (nicht in `main`)
 
-- `customer_portal_links`: aktive, manuelle Verknüpfungen zwischen genau einem Login und genau einem Kundenkontakt; eindeutige Constraints je Benutzer und Kontakt.
-- `customer_portal_link_history`: append-only Ereignisse für Verknüpfung und Lösung mit Akteur und Zeitpunkt; ein Datenbanktrigger verhindert UPDATE/DELETE.
+- `customer_portal_links`: manuelle Verknüpfungen zwischen genau einem Login und genau einem Kundenkontakt; eindeutige Constraints je Benutzer und Kontakt sowie Aktivierungsstatus.
+- `customer_portal_link_history`: append-only Ereignisse für Verknüpfung, Aktivierung, Deaktivierung und Lösung mit Akteur und Zeitpunkt; ein Datenbanktrigger verhindert UPDATE/DELETE.
+- `customer_portal_document_grants` und `customer_portal_document_grant_history`: ausdrückliche Kundenfreigaben einzelner aktueller Dokumentversionen mit Kundenbezug, Freigabe-/Widerrufsakteur und -zeit; Historie ist append-only.
+- `customer_portal_requests`, `customer_portal_request_messages`, `customer_portal_request_attachments` und `customer_portal_request_history`: kundenbezogene Rückfragen/Beschwerden zu eigenen Objekten, Kundennachrichten, private Datei-Metadaten und append-only Verlauf.
 
 ## Integrität und offene Erweiterungen
 
@@ -59,6 +61,6 @@ Der Downgrade von 0015 prüft vor dem Abbau alle Dokument-/Vertragstabellen auf 
 
 Migration 0016 ergänzt regelmäßige Mitarbeiterverfügbarkeiten, einmalige Dienstwunsch-/Sperrzeiträume, das Recht `scheduling.availability.request` für eigene Meldungen sowie Vorher-/Nachher-Angaben für Vertretungen in der Schichthistorie. Der Downgrade wird abgelehnt, sobald Verfügbarkeitsdaten, Anträge oder Vertretungsdetails gespeichert sind.
 
-Im offenen PR-Stack, nicht im gemergten `main`, verhindert Migration `0025_unique_incident_owks_event` doppelte Vorfallverknüpfungen zu OWKS-Ereignissen. Migration `0026_customer_portal_access` folgt darauf, ergänzt die beiden oben aufgeführten Verknüpfungstabellen sowie `customer_portal.access` und `customers.portal.manage` und weist das Verwaltungsrecht der Administrator-Rolle zu.
+Im offenen PR-Stack, nicht im gemergten `main`, verhindert Migration `0025_unique_incident_owks_event` doppelte Vorfallverknüpfungen zu OWKS-Ereignissen. Migration `0026_customer_portal_access` folgt darauf, ergänzt Verknüpfung und append-only Historie sowie `customer_portal.access` und `customers.portal.manage` und weist das Verwaltungsrecht der Administrator-Rolle zu. `0027_customer_document_grants` ergänzt das Aktivierungskennzeichen für Portalzugänge, Aktivierungsereignisse und explizite Dokumentfreigaben samt append-only Freigabehistorie; das Verwaltungsrecht `customer_portal.documents.manage` erhält nur die Administrator-Rolle. `0028_customer_portal_requests` ergänzt Kundenanfragen zu Kundenobjekten, append-only Nachrichten/Verlauf, private Anhang-Metadaten und das nur Administratoren zugewiesene `customer_portal.requests.manage`. Der Datenzugriff bleibt an den aktuell verknüpften Kundenkontakt gebunden.
 
 Jede Schemaänderung benötigt eine neue Alembic-Migration. Datenlöschungen müssen mit Aufbewahrungsregeln abgestimmt werden; produktive Downgrades mit Datenverlust dürfen nicht automatisch ausgeführt werden. Eine automatische Zuschlagsabrechnung in Geld ist mangels bestätigter Lohnbasis, Festzuschlagseinheit und Rundung nicht implementiert.

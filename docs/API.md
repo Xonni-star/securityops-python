@@ -31,6 +31,17 @@ Die aktuelle API ist unter `/api/v1` versioniert. OpenAPI/Swagger ist während d
 | POST | `/api/v1/customers/{customer_id}/contacts` | `customers.update` + CSRF |
 | PATCH | `/api/v1/customers/{customer_id}/contacts/{contact_id}` | `customers.update` + CSRF |
 | DELETE | `/api/v1/customers/{customer_id}/contacts/{contact_id}` | `customers.update` + CSRF |
+| GET/POST/PATCH/DELETE | `/api/v1/customer-portal/links` und `/links/{contact_id}` | `customers.portal.manage`; manuelle eindeutige Kontaktverknüpfung, Aktivierung/Deaktivierung und Lösen + CSRF bei Änderungen |
+| GET | `/api/v1/customer-portal/management-options`, `/link-history`, `/access-history` | `customers.portal.manage`; passende Konten/Kontakte sowie Zugangshistorie/Portalabrufe nur mit Metadaten |
+| GET | `/api/v1/customer-portal/me`, `/invoices`, `/documents` | `customer_portal.access`; ausschließlich Daten des serverseitig verknüpften aktiven Kontakts |
+| GET | `/api/v1/customer-portal/invoices/{invoice_id}/pdf`, `/documents/{grant_id}/download` | `customer_portal.access`; eigene freigegebene Rechnungs-/Dokumentdatei |
+| GET | `/api/v1/customer-portal/document-candidates`, `/document-grants` | `customer_portal.documents.manage`; aktuelle geeignete Dokumente und Freigabehistorie |
+| POST/DELETE | `/api/v1/customer-portal/document-grants` und `/document-grants/{grant_id}` | `customer_portal.documents.manage` + CSRF; Freigabe beziehungsweise Widerruf mit Akteurhistorie |
+| GET/POST | `/api/v1/customer-portal/requests` | `customer_portal.access`; eigene Rückfragen/Beschwerden anlegen und einsehen |
+| GET/POST | `/api/v1/customer-portal/requests/{request_id}/messages` | `customer_portal.access`; nur eigener Vorgang, Kundennachrichten append-only |
+| POST/GET | `/api/v1/customer-portal/requests/{request_id}/attachments` und `/attachments/{attachment_id}/download` | `customer_portal.access`; eigener Vorgang, PDF/PNG/JPEG bis 10 MiB und fail-closed Malwareprüfung |
+| GET | `/api/v1/customer-portal/admin/requests` und `/admin/requests/{request_id}` | `customer_portal.requests.manage`; Kundenanfragenverwaltung |
+| POST/PATCH/GET | `/api/v1/customer-portal/admin/requests/{request_id}/messages`, `/status` und `/attachments/{attachment_id}/download` | `customer_portal.requests.manage`; kundensichtbare Antwort, Statusänderung und sicherer Anhangabruf |
 | GET | `/api/v1/objects` | `objects.read`; `q`, `customer_id`, `status`, `include_archived`, `sort_by`, `sort_order`, `limit`, `offset` |
 | POST | `/api/v1/objects` | `objects.manage` und `objects.manage_all` + CSRF |
 | GET | `/api/v1/objects/{object_id}` | `objects.read` und globales Leserecht oder Objektzuweisung |
