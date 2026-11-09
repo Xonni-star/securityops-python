@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from uuid import uuid4
@@ -68,7 +69,7 @@ def run_migration(revision: str, database_name: str) -> None:
         "POSTGRES_PASSWORD": os.environ["POSTGRES_MIGRATION_PASSWORD"],
     }
     subprocess.run(
-        ["python", "-m", "alembic", "upgrade", revision],
+        [sys.executable, "-m", "alembic", "upgrade", revision],
         check=True,
         env=environment,
     )
