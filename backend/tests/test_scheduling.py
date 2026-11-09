@@ -728,7 +728,7 @@ def test_object_qualification_requirement_migration_is_registered() -> None:
     migration = importlib.import_module(
         "migrations.versions.0037_object_qualification_requirements"
     )
-    assert migration.revision == "0037_object_qualification_requirements"
+    assert migration.revision == "0037_object_qual_requirements"
     assert migration.down_revision == "0036_billing_approval_automation"
 
 
