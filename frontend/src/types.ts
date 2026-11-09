@@ -32,6 +32,71 @@ export interface GlobalSearchPage {
   limit: number;
   offset: number;
 }
+export interface PolicyVersion {
+  id: string;
+  version_number: number;
+  content: string;
+  valid_from: string;
+  valid_until: string | null;
+  created_by_id: string | null;
+  created_at: string;
+}
+export interface PolicyItem {
+  id: string;
+  kind: "instruction" | "training";
+  title: string;
+  object_id: string | null;
+  object_name: string | null;
+  repeat_interval_days: number | null;
+  reminder_days: number | null;
+  versions: PolicyVersion[];
+}
+export interface PolicyAssignment {
+  id: string;
+  policy_id: string;
+  kind: "instruction" | "training";
+  title: string;
+  object_id: string | null;
+  object_name: string | null;
+  version_id: string;
+  version_number: number;
+  content: string;
+  valid_from: string;
+  valid_until: string | null;
+  cycle_number: number;
+  due_at: string | null;
+  read_at: string | null;
+  confirmed_at: string | null;
+  overdue: boolean;
+  reminder_due: boolean;
+}
+export interface PolicyEmployeeOption {
+  id: string;
+  full_name: string;
+  employee_number: string;
+}
+export interface PolicyObjectOption {
+  id: string;
+  name: string;
+  code: string;
+}
+export interface PolicyHistory {
+  policy: PolicyItem;
+  assignments: Array<{
+    employee_id: string;
+    employee_number: string;
+    employee_name: string;
+    version_id: string;
+    version_number: number;
+    cycle_number: number;
+    due_at: string | null;
+    assigned_at: string;
+    read_at: string | null;
+    confirmed_at: string | null;
+    overdue: boolean;
+    reminder_due: boolean;
+  }>;
+}
 export type PhysicalKeyStatus = "available" | "issued" | "lost" | "defective" | "archived";
 export type KeyMovementType = "issued" | "returned" | "lost" | "defective" | "inventory";
 export type InventoryCategory =
@@ -728,7 +793,8 @@ export type AutomationTrigger =
   | "task.status_changed"
   | "owks.missed_control"
   | "owks.deviation_reported"
-  | "owks.offline_event_synced";
+  | "owks.offline_event_synced"
+  | "billing.invoice_approved";
 export type AutomationTaskStatus = TaskStatus;
 
 export interface AutomationRule {
@@ -1029,6 +1095,7 @@ export interface NotificationItem {
   id: string;
   task_id: string | null;
   object_id: string | null;
+  invoice_id: string | null;
   event_type: NotificationEventType;
   title: string;
   body: string;
@@ -1135,6 +1202,7 @@ export interface SecurityObject {
   archived_at: string | null;
   address: ObjectAddress | null;
   contacts: ObjectContact[];
+  qualification_requirements?: string[];
   created_at: string;
   updated_at: string;
 }
