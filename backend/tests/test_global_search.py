@@ -181,6 +181,7 @@ def test_search_paginates_and_validates_query_and_bounds(client: TestClient) -> 
     assert len(first_page.json()["items"]) == len(second_page.json()["items"]) == 1
     assert first_page.json()["items"][0]["id"] != second_page.json()["items"][0]["id"]
     assert client.get("/api/v1/search", params={"q": " "}).status_code == 422
+    assert client.get("/api/v1/search", params={"q": "ok", "type": "invoice"}).status_code == 422
     assert client.get("/api/v1/search", params={"q": "ok", "limit": 51}).status_code == 422
     assert client.get("/api/v1/search", params={"q": "ok", "offset": 5001}).status_code == 422
 
