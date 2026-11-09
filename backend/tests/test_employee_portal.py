@@ -983,7 +983,9 @@ def test_employee_portal_documents_are_explicitly_granted_scoped_and_revocable(
     client.cookies.clear()
     with TestingSessionLocal() as db:
         db.execute(update(Employee).where(Employee.id == other_employee_id).values(user_id=None))
-        db.execute(update(Employee).where(Employee.id == employee_id).values(user_id=_other_user_id))
+        db.execute(
+            update(Employee).where(Employee.id == employee_id).values(user_id=_other_user_id)
+        )
         db.commit()
     sign_in(client, "portal-dokument-zwei")
     assert client.get("/api/v1/employee-portal/me/documents").json() == []
