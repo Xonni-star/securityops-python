@@ -152,6 +152,7 @@ export default function SchedulingManagement({
   const [availabilityRequests, setAvailabilityRequests] = useState<ScheduleAvailabilityRequest[]>([]);
   const [replacementFor, setReplacementFor] = useState<ScheduleShift | null>(null);
   const [replacementCandidates, setReplacementCandidates] = useState<ScheduleReplacementCandidate[]>([]);
+  const [selectedReplacementCandidateId, setSelectedReplacementCandidateId] = useState("");
   const [replacementCandidatesError, setReplacementCandidatesError] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -411,6 +412,7 @@ export default function SchedulingManagement({
   async function openReplacement(shift: ScheduleShift) {
     setReplacementFor(shift);
     setReplacementCandidates([]);
+    setSelectedReplacementCandidateId("");
     setReplacementCandidatesError("");
     setBusy(true);
     setError("");
@@ -428,6 +430,15 @@ export default function SchedulingManagement({
   const focusRangeLabel = range.fromDate === range.toDate
     ? range.fromDate
     : `${range.fromDate} bis ${range.toDate}`;
+  const eligibleReplacementCandidates = replacementCandidates.filter(
+    (candidate) => candidate.is_eligible,
+  );
+  const selectedReplacementCandidate = eligibleReplacementCandidates.find(
+    (candidate) => candidate.employee_id === selectedReplacementCandidateId,
+  );
+  const excludedReplacementCandidates = replacementCandidates.filter(
+    (candidate) => !candidate.is_eligible,
+  );
 
   return (
     <section className="scheduling-module">
@@ -537,20 +548,40 @@ export default function SchedulingManagement({
             <button type="button" className="secondary-button" onClick={() => setReplacementFor(null)}>Abbrechen</button>
           </div>
           {replacementCandidatesError && <p className="alert" role="alert">{replacementCandidatesError}</p>}
-          {busy ? <p className="muted" role="status">Passende Vertretungen werden ermittelt …</p>
+          {busy ? <p className="muted" role="status">Vertretungen werden geprüft …</p>
             : replacementCandidatesError ? null
-            : replacementCandidates.length === 0
-              ? <p className="empty">Für diesen Dienst wurde keine konfliktfreie Vertretung gefunden.</p>
+            : eligibleReplacementCandidates.length === 0
+              ? <p className="empty">Für diesen Dienst wurde keine geeignete Vertretung gefunden.</p>
               : <label>Vertretende Person
-                <select name="employee_id" required defaultValue="">
+                <select
+                  name="employee_id"
+                  required
+                  value={selectedReplacementCandidateId}
+                  onChange={(event) => setSelectedReplacementCandidateId(event.target.value)}
+                >
                   <option value="" disabled>Bitte auswählen</option>
-                  {replacementCandidates.map((candidate) =>
+                  {eligibleReplacementCandidates.map((candidate) =>
                     <option key={candidate.employee_id} value={candidate.employee_id}>
                       {candidate.employee_name} ({candidate.employee_number})
                     </option>,
                   )}
                 </select>
               </label>}
+          {selectedReplacementCandidate && <section aria-label="Eignungsgründe">
+            <strong>Geeignet, weil:</strong>
+            <ul>{selectedReplacementCandidate.eligibility_reasons.map((reason) =>
+              <li key={reason}>{reason}</li>,
+            )}</ul>
+          </section>}
+          {excludedReplacementCandidates.length > 0 && <details>
+            <summary>Ausgeschlossene Personen ({excludedReplacementCandidates.length})</summary>
+            <ul>{excludedReplacementCandidates.map((candidate) =>
+              <li key={candidate.employee_id}>
+                <strong>{candidate.employee_name} ({candidate.employee_number})</strong>
+                <ul>{candidate.exclusion_reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+              </li>,
+            )}</ul>
+          </details>}
           <label>Grundkategorie der Vertretung
             <select name="reason" required defaultValue="short_notice">
               <option value="short_notice">Kurzfristiger Personalausfall</option>
@@ -561,7 +592,10 @@ export default function SchedulingManagement({
             </select>
           </label>
           <p className="muted">Keine Gesundheits- oder anderen sensiblen Personendaten eintragen.</p>
-          <button type="submit" disabled={busy || replacementCandidates.length === 0}>
+          <button
+            type="submit"
+            disabled={busy || !selectedReplacementCandidate}
+          >
             Vertretung erneut prüfen und speichern
           </button>
         </form>}

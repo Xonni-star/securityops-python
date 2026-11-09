@@ -12,7 +12,11 @@ from sqlalchemy.exc import IntegrityError
 
 from app.identity_api import password_hasher
 from app.models import (
+    Employee,
+    EmployeeAbsence,
+    EmployeeAvailabilityWindow,
     EmployeeQualification,
+    Permission,
     Role,
     ScheduleShift,
     User,
@@ -431,7 +435,12 @@ def test_shift_replacement_is_validated_and_audited(client: TestClient) -> None:
         f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement-candidates"
     )
     assert candidates.status_code == 200
-    assert [item["employee_id"] for item in candidates.json()] == []
+    unavailable_candidate = next(
+        item for item in candidates.json() if item["employee_id"] == substitute["id"]
+    )
+    assert unavailable_candidate["is_eligible"] is False
+    assert unavailable_candidate["eligibility_reasons"] == []
+    assert any("bereits für einen Dienst eingeplant" in reason for reason in unavailable_candidate["exclusion_reasons"])
     conflict = client.post(
         f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement",
         headers={"X-CSRF-Token": csrf},
@@ -449,7 +458,40 @@ def test_shift_replacement_is_validated_and_audited(client: TestClient) -> None:
         f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement-candidates"
     )
     assert candidates.status_code == 200
-    assert [item["employee_id"] for item in candidates.json()] == [substitute["id"]]
+    eligible_candidate = next(
+        item for item in candidates.json() if item["employee_id"] == substitute["id"]
+    )
+    assert eligible_candidate["is_eligible"] is True
+    assert eligible_candidate["exclusion_reasons"] == []
+    assert any("Objekt aktuell zugewiesen" in reason for reason in eligible_candidate["eligibility_reasons"])
+    assert any("Dienstüberschneidung" in reason for reason in eligible_candidate["eligibility_reasons"])
+
+    stale_conflict = client.post(
+        "/api/v1/scheduling/shifts",
+        headers={"X-CSRF-Token": csrf},
+        json=shift_payload(
+            substitute,
+            obj,
+            starts_at + timedelta(hours=2),
+            starts_at + timedelta(hours=4),
+        ),
+    )
+    assert stale_conflict.status_code == 201
+    stale_replacement = client.post(
+        f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement",
+        headers={"X-CSRF-Token": csrf},
+        json={"employee_id": substitute["id"], "reason": "short_notice"},
+    )
+    assert stale_replacement.status_code == 409
+    assert any(
+        item["code"] == "time_overlap"
+        for item in stale_replacement.json()["detail"]["conflicts"]
+    )
+    assert client.post(
+        f"/api/v1/scheduling/shifts/{stale_conflict.json()['id']}/cancel",
+        headers={"X-CSRF-Token": csrf},
+    ).status_code == 200
+
     replaced = client.post(
         f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement",
         headers={"X-CSRF-Token": csrf},
@@ -471,6 +513,111 @@ def test_shift_replacement_is_validated_and_audited(client: TestClient) -> None:
     sign_in(client, "dienstplan-person", "dienstplan-test-passwort-2026")
     denied = client.get(f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement-candidates")
     assert denied.status_code == 403
+
+
+def test_replacement_candidates_explain_absence_availability_and_inactive_employee(
+    client: TestClient,
+) -> None:
+    employee, obj, csrf = setup_schedule(client)
+    substitute = add_employee_to_object(client, obj, csrf, "regeln")
+    inactive = add_employee_to_object(client, obj, csrf, "inaktiv")
+    unavailable = add_employee_to_object(client, obj, csrf, "verfuegbarkeit")
+    starts_at = datetime.combine(date.today() + timedelta(days=75), time(9))
+    original = client.post(
+        "/api/v1/scheduling/shifts",
+        headers={"X-CSRF-Token": csrf},
+        json=shift_payload(employee, obj, starts_at, starts_at + timedelta(hours=8)),
+    )
+    assert original.status_code == 201, original.text
+
+    with TestingSessionLocal() as db:
+        db.add(
+            EmployeeAbsence(
+                employee_id=UUID(substitute["id"]),
+                absence_type="vacation",
+                starts_on=starts_at.date(),
+                ends_on=starts_at.date(),
+                status="approved",
+            )
+        )
+        inactive_record = db.get(Employee, UUID(inactive["id"]))
+        assert inactive_record is not None
+        inactive_record.employment_status = "inactive"
+        db.add(
+            EmployeeAvailabilityWindow(
+                employee_id=UUID(unavailable["id"]),
+                weekday=starts_at.weekday(),
+                starts_at=time(20),
+                ends_at=time(21),
+            )
+        )
+        db.commit()
+
+    candidates = client.get(
+        f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement-candidates"
+    )
+    assert candidates.status_code == 200
+    by_id = {item["employee_id"]: item for item in candidates.json()}
+    absence_candidate = by_id[substitute["id"]]
+    assert absence_candidate["is_eligible"] is False
+    assert any("Abwesenheit" in reason for reason in absence_candidate["exclusion_reasons"])
+    inactive_candidate = by_id[inactive["id"]]
+    assert inactive_candidate["is_eligible"] is False
+    assert any("nicht aktiv beschäftigt" in reason for reason in inactive_candidate["exclusion_reasons"])
+    unavailable_candidate = by_id[unavailable["id"]]
+    assert unavailable_candidate["is_eligible"] is False
+    assert any("außerhalb der regelmäßigen Verfügbarkeit" in reason for reason in unavailable_candidate["exclusion_reasons"])
+
+    rejected = client.post(
+        f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement",
+        headers={"X-CSRF-Token": csrf},
+        json={"employee_id": substitute["id"], "reason": "short_notice"},
+    )
+    assert rejected.status_code == 409
+    assert any(
+        item["code"] == "employee_absence"
+        for item in rejected.json()["detail"]["conflicts"]
+    )
+
+
+def test_replacement_candidates_respect_object_scope(client: TestClient) -> None:
+    employee, obj, csrf = setup_schedule(client)
+    starts_at = datetime.combine(date.today() + timedelta(days=80), time(9))
+    shift = client.post(
+        "/api/v1/scheduling/shifts",
+        headers={"X-CSRF-Token": csrf},
+        json=shift_payload(employee, obj, starts_at, starts_at + timedelta(hours=8)),
+    )
+    assert shift.status_code == 201, shift.text
+
+    with TestingSessionLocal() as db:
+        role = Role(
+            code="scoped-scheduling-manager",
+            name="Einsatzleitung im Objektbereich",
+            description="Testrolle für den Objektbereich",
+            permissions=list(
+                db.scalars(
+                    select(Permission).where(
+                        Permission.code.in_(("scheduling.manage", "employees.read"))
+                    )
+                ).all()
+            ),
+        )
+        user = User(
+            username="scoped-scheduling-manager",
+            email="scoped-scheduling-manager@example.com",
+            full_name="Test Einsatzleitung",
+            password_hash=password_hasher.hash(ADMIN_PASSWORD),
+            roles=[role],
+        )
+        db.add_all([role, user])
+        db.commit()
+
+    sign_in(client, "scoped-scheduling-manager", ADMIN_PASSWORD)
+    response = client.get(
+        f"/api/v1/scheduling/shifts/{shift.json()['id']}/replacement-candidates"
+    )
+    assert response.status_code == 404
 
 
 def test_qualification_absence_and_local_time_validation(client: TestClient) -> None:
@@ -649,7 +796,7 @@ def test_object_qualification_requirements_cover_all_shift_assignment_paths(
                     category="Brandschutzhelfer",
                     name="Brandschutzhelfer",
                     valid_from=work_date - timedelta(days=10),
-                    expires_on=work_date,
+                    expires_on=work_date - timedelta(days=1),
                 ),
                 EmployeeQualification(
                     employee_id=UUID(substitute["id"]),
@@ -670,7 +817,16 @@ def test_object_qualification_requirements_cover_all_shift_assignment_paths(
         db.commit()
 
     candidates_url = f"/api/v1/scheduling/shifts/{draft.json()['id']}/replacement-candidates"
-    assert client.get(candidates_url).json() == []
+    candidates_response = client.get(candidates_url)
+    assert candidates_response.status_code == 200
+    qualification_candidate = next(
+        item for item in candidates_response.json() if item["employee_id"] == substitute["id"]
+    )
+    assert qualification_candidate["is_eligible"] is False
+    assert any(
+        "Der gültige Qualifikationsnachweis" in reason
+        for reason in qualification_candidate["exclusion_reasons"]
+    )
     rejected_replacement = client.post(
         f"/api/v1/scheduling/shifts/{draft.json()['id']}/replacement",
         headers={"X-CSRF-Token": csrf},
@@ -697,6 +853,11 @@ def test_object_qualification_requirements_cover_all_shift_assignment_paths(
     candidates = client.get(candidates_url)
     assert candidates.status_code == 200
     assert [item["employee_id"] for item in candidates.json()] == [substitute["id"]]
+    assert candidates.json()[0]["is_eligible"] is True
+    assert any(
+        "Brandschutzhelfer" in reason
+        for reason in candidates.json()[0]["eligibility_reasons"]
+    )
     replacement = client.post(
         f"/api/v1/scheduling/shifts/{draft.json()['id']}/replacement",
         headers={"X-CSRF-Token": csrf},
