@@ -5,7 +5,7 @@ Die verbindliche Priorisierung, Abhängigkeiten und der aktuelle `main`-/PR-Stat
 ## Reihenfolge nach fachlichen Abhängigkeiten
 
 1. Sicherheits- und Betriebsgrundlagen: Authentifizierung/RBAC prüfen und ausbauen, Backup/Restore, TLS/Reverse Proxy, Monitoring, Auditgrenzen und Datenschutz.
-2. Fachliche Abnahme der in `main` implementierten Module und Nachverfolgung offener Akzeptanzthemen. Bei der Live-Prüfung am 09.11.2026 waren #7, #9, #51 und #56 offen; #8 und #10 waren geschlossen (aktueller Status: [`PROJECT_STATUS.md`](PROJECT_STATUS.md)).
+2. Fachliche Abnahme der in `main` implementierten Module und Nachverfolgung offener Akzeptanzthemen. Bei der Live-Prüfung am 09.11.2026 um 16:43 CET waren #7, #9, #51, #56 und #63 offen; #8 und #10 waren geschlossen (aktueller Status: [`PROJECT_STATUS.md`](PROJECT_STATUS.md)). Issue #63 erfordert eine Repository-Maintainer-Aktion zur Aktivierung der Dependabot alerts.
 3. OWKS (gemergter PR #23, Issue #3 geschlossen) auf Objekten, Personal und Zuweisungen fachlich weiter prüfen; statische QR/NFC-Kennungen sind kein physischer Präsenznachweis.
 4. Dokumenten-/Vertragsverwaltung (gemergter PR #24) sowie geschützte Dateiablage/Vertragsregeln anhand fachlicher Akzeptanz prüfen.
 5. Rechnungswesen (Issue #7, PR #27 gemergt) auf fachlich freigegebenen Verträgen und Leistungsnachweisen fachlich abnehmen; Steuer-/Buchhaltungsrichtigkeit ist nicht belegt.

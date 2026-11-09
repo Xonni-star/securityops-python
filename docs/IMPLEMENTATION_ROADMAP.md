@@ -1,6 +1,6 @@
 # Priorisierte Implementierungs-Roadmap
 
-Diese Roadmap wurde am 09.11.2026 um 16:30 CET anhand des aktuellen `main`-Quellcodes, des Alembic-Migrationsgraphen und einer Live-Abfrage der Issues und Pull Requests geprüft. Sie enthält absichtlich keinen aktuellen Commit-SHA. **Alembic-Head:** `0035_worker_monitoring` · **Alembic-Migrationen:** 35. Zum Prüfzeitpunkt gab es keine offenen Pull Requests; offen waren die Issues #7, #9, #51 und #56. Die aktuelle Momentaufnahme steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md). CI prüft die lokalen Projektfakten automatisiert, aber nicht den GitHub-Live-Status. Prioritäten unterscheiden Implementierung, CI, fachliche Entscheidungen/Abnahme und produktiven Nachweis.
+Diese Roadmap wurde am 09.11.2026 um 16:43 CET anhand des aktuellen `main`-Quellcodes, des Alembic-Migrationsgraphen und einer Live-Abfrage der Issues und Pull Requests geprüft. Sie enthält absichtlich keinen aktuellen Commit-SHA. **Alembic-Head:** `0035_worker_monitoring` · **Alembic-Migrationen:** 35. Zum Prüfzeitpunkt waren PRs #62, #64, #65 und #66 offen; offen waren die Issues #7, #9, #51, #56 und #63. Issue #63 verlangt eine Repository-Maintainer-Aktion zur Aktivierung der Dependabot alerts; Details stehen in [`PROJECT_STATUS.md`](PROJECT_STATUS.md). CI prüft lokale Projektfakten automatisiert, aber nicht den GitHub-Live-Status. Prioritäten unterscheiden Implementierung, CI, fachliche Entscheidungen/Abnahme und produktiven Nachweis.
 
 ## P0 – Betreiberabnahme und produktiven Betrieb belegen
 
@@ -27,8 +27,8 @@ Diese Roadmap wurde am 09.11.2026 um 16:30 CET anhand des aktuellen `main`-Quell
 
 ## GitHub-Lage am Prüftag
 
-- PRs #40, #42, #43, #44, #46, #47, #49, #50, #54, #55, #57, #58 und #59 sind gemergt. Bei der Live-Abfrage am 09.11.2026 um 16:30 CET gab es keine offenen PRs; der Migrationsgraph auf `main` hatte 35 Revisionen und den einzelnen Head `0035_worker_monitoring`.
-- Issues #7, #9, #51 und #56 sind offen; #10 und #52 sind geschlossen. Für die integrierten PR-Änderungen waren die angezeigten CI-Prüfungen erfolgreich. Diese Nachweise belegen weder fachliche Abnahme noch Betreiber-Schlüsselkonfiguration, produktive Dateimigration/Rotation, externe Alarmierung oder Betreiber-Restore.
+- PRs #40, #42, #43, #44, #46, #47, #49, #50, #54, #55, #57, #58 und #59 sind gemergt. Bei der Live-Abfrage am 09.11.2026 um 16:43 CET waren PRs #62, #64, #65 und #66 offen; der Migrationsgraph auf `main` hatte 35 Revisionen und den einzelnen Head `0035_worker_monitoring`.
+- Issues #7, #9, #51, #56 und #63 sind offen; #8, #10 und #52 sind geschlossen. Issue #63 benötigt eine Maintainer-Aktion zur Aktivierung von Dependabot alerts; CI-SCA ersetzt diese Einstellung nicht. Die angezeigten CI-Prüfungen belegen weder fachliche Abnahme noch Betreiber-Schlüsselkonfiguration, produktive Dateimigration/Rotation, externe Alarmierung oder Betreiber-Restore.
 - CI, fachliche Abnahme und produktive Prüfung sind unterschiedliche Nachweise. Insbesondere belegen Merge und CI weder Betreiber-Restore noch Produktionsfreigabe oder Rechts-/Steuerkonformität.
 - Der Branch-Schutz von `main` wurde nicht eingerichtet oder bestätigt: das verwendete GitHub-Konto hat keine Admin-Berechtigung und die Branch-Protection-Abfrage lieferte HTTP 404. Ein Maintainer muss PR-Pflicht, erforderliche CI-/Security-Checks, Verbote direkter/Force-Pushes und Branch-Löschung sowie eng begrenzte Bypass-Rechte gemäß [`PROJECT_STATUS.md`](PROJECT_STATUS.md) konfigurieren.
 
