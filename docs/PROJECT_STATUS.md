@@ -1,12 +1,12 @@
 # SecurityOps – Projektstatus
 
-**Geprüft:** 09.11.2026, 16:05 Uhr +01:00 · **`main`:** `0b32db6809d763dc58d003ce0657d1af03666a52` (Merge von PR #58 am 09.11.2026) · **Alembic-Head:** `0035_worker_monitoring`
+**Geprüft:** 09.11.2026, 16:30 Uhr CET · Checkout und `origin/main` stimmten bei der Live-Prüfung überein · **Alembic-Head:** `0035_worker_monitoring` · **Alembic-Migrationen:** 35 · **Offene Pull Requests (Live-Abfrage):** keine.
 
-Diese Momentaufnahme wurde mit dem aktuellen `main`-Quellcode und der Live-Abfrage von GitHub abgeglichen. Implementierung, erfolgreiche CI, fachliche Abnahme und produktiver Betrieb sind getrennte Nachweise. Ein Merge oder grüner CI-Lauf belegt für sich weder fachliche, rechtliche oder steuerliche Abnahme noch einen produktiven Rollout.
+Diese Momentaufnahme wurde mit dem `main`-Quellcode und einer Live-Abfrage von GitHub abgeglichen. Die Momentaufnahme enthält absichtlich keinen Commit-SHA, der nach dem nächsten Merge veraltet wäre. Implementierung, erfolgreiche CI, fachliche Abnahme und produktiver Betrieb sind getrennte Nachweise. Ein Merge oder grüner CI-Lauf belegt für sich weder fachliche, rechtliche oder steuerliche Abnahme noch einen produktiven Rollout. Der CI-Validator prüft lokale Projektfakten; er fragt GitHub nicht ab. GitHub-Statusangaben müssen bei einer Aktualisierung erneut live geprüft werden.
 
 ## Tatsächlich in `main`
 
-`backend/app/main.py` registriert Fach- und Portalrouter für Personal, Mitarbeiterportal, Dienstplanung, Zeiterfassung/Zuschläge, Aufgaben, Automatisierungen, Benachrichtigungen, Worker-Monitoring, Schlüssel, Inventar, Dokumente/Verträge, Rechnungswesen, Identität, Vorfälle, OWKS, Leitstelle, Kundenportal und globale Suche. Die lineare Alembic-Kette reicht von `0001_customers` bis `0035_worker_monitoring`; der geprüfte Head ist `0035_worker_monitoring`. Für diese Aktualisierung wurden keine aggregierten Tabellen-/API-Zahlen neu aufgenommen.
+`backend/app/main.py` registriert Fach- und Portalrouter für Personal, Mitarbeiterportal, Dienstplanung, Zeiterfassung/Zuschläge, Aufgaben, Automatisierungen, Benachrichtigungen, Worker-Monitoring, Schlüssel, Inventar, Dokumente/Verträge, Rechnungswesen, Identität, Vorfälle, OWKS, Leitstelle, Kundenportal und globale Suche. Das vollständige Routerinventar aus der Registrierung in `backend/app/main.py` lautet: **Registrierte API-Router:** `api, automations_api, billing_api, control_room_api, customer_portal_api, documents_contracts_api, employee_portal_api, identity_api, incidents_api, inventory_api, key_management_api, notification_monitoring, notifications_api, owks_api, personnel_api, scheduling_api, search_api, tasks_api, time_tracking_api, time_tracking_surcharges`. Die lineare Alembic-Kette hat 35 Revisionen, von `0001_customers` bis zum einzigen Head `0035_worker_monitoring`. Für diese Aktualisierung wurden keine aggregierten Tabellen-/API-Zahlen neu aufgenommen.
 
 - **Identität und Berechtigungen:** Anmeldung, Rollen/Rechte, serverseitig widerrufbare Sitzungen, optionales TOTP-MFA, Recovery-Codes, administrative Passwortzurücksetzung und Audit-Lesezugriff. Ein nutzerinitiierter E-Mail-Passwortreset und Mailzustellung sind nicht implementiert.
 - **Kunden, Objekte und Personal:** Kunden- und Objektverwaltung, objektbezogene Zugriffsgrenzen, Personalakten, Qualifikationen, Abwesenheiten und nachvollziehbare Zuweisungsverläufe. Personal-Objektzuweisungen berücksichtigen serverseitig den Objektzugriff.
@@ -52,7 +52,7 @@ Die bei diesen Merge-PRs angezeigten CI-Prüfungen waren erfolgreich (Backend/Po
 
 ### Offene Pull Requests
 
-Zum Zeitpunkt der Prüfung ist PR #53 der einzige offene Pull Request; die früher offenen PRs #54, #55, #57, #58 und #59 sind alle gemergt. Die CI-Prüfungen der Merge-PRs waren auf den jeweiligen geprüften Heads erfolgreich. Das belegt keine fachliche oder produktive Abnahme.
+Bei der Live-Abfrage am 09.11.2026 um 16:30 CET gab es keine offenen Pull Requests. Frühere PRs #54, #55, #57, #58 und #59 sind gemergt. Die letzten auf `main` gefundenen CI- und Security-Analysis-Läufe waren erfolgreich (Run-Start 15:12 UTC); das belegt keine fachliche oder produktive Abnahme.
 
 ### Issues
 
@@ -71,7 +71,26 @@ Die Issues #2–#6 und #8 sind ebenfalls geschlossen. Geschlossene Issues und ge
 
 ## CI, Abnahme und produktiver Nachweis
 
-Der Code enthält Backend- und Frontendtests sowie CI für Lint/Format, PostgreSQL-Migrationen und -Integration, Frontend-Build/-Tests, Container, Sicherheitsanalyse und einen isolierten Backup-/Restorelauf. Für die Merge-PRs #54, #55, #57, #58 und #59 waren die angezeigten CI-Prüfungen auf den jeweiligen geprüften Heads erfolgreich. Das belegt die CI der Änderungen, nicht deren fachliche Abnahme, Betreiber-Schlüsselkonfiguration, produktive Rekey-Ausführung oder einen Produktivbetrieb. Diese Projektstatusdatei nennt bewusst keine aggregierten Testzahlen.
+Der Code enthält Backend- und Frontendtests sowie CI für Lint/Format, PostgreSQL-Migrationen und -Integration, Frontend-Build/-Tests, Container, Sicherheitsanalyse und einen isolierten Backup-/Restorelauf. Die letzten auf `main` gefundenen CI- und Security-Analysis-Läufe waren beim Live-Abgleich erfolgreich; Laufstatus ist zeitgebunden und kein Nachweis fachlicher Abnahme, Betreiber-Schlüsselkonfiguration, produktiver Rekey-Ausführung oder eines Produktivbetriebs. Diese Projektstatusdatei nennt bewusst keine aggregierten Testzahlen.
+
+**Technische Voraussetzungen laut Projekt/CI:** Backend Python `>=3.12` (CI: 3.12); PostgreSQL 17 (CI); Frontend Node.js 22 (CI).
+
+**Verfügbare CI-Prüfbefehle:** Backend `python -m pytest -q`, `ruff check app tests migrations scripts` und `ruff format --check app tests migrations scripts`; Frontend `npm run build` und `npm test`. Der Dokumentationsvalidator läuft im Backend-Job mit `python -m scripts.validate_project_status`.
+
+### Branch-Schutz für `main`
+
+Der Branch-Schutz wurde in dieser Arbeit nicht eingerichtet. Das GitHub-Konto meldete `permissions.admin=false`; die Abfrage der Branch-Protection-API lieferte HTTP 404. Damit ist der tatsächliche Regelstatus über dieses Konto nicht bestätigt. Ein Maintainer muss die Regeln in GitHub unter **Settings → Rules → Rulesets** oder **Settings → Branches** für `main` manuell einrichten und danach überprüfen:
+
+1. Änderungen an `main` nur über Pull Requests zulassen.
+2. Als erforderliche Checks alle im Pull Request erscheinenden Jobs der Workflows **CI** (Backend/Migrationen/PostgreSQL, Backup/Restore, Frontend, Container-Build) und **Security analysis** (Abhängigkeitsprüfung sowie beide CodeQL-Sprachen) auswählen.
+3. Direkte Pushes und Force-Pushes auf `main` sowie das Löschen des Branches verhindern.
+4. Bypass-Rechte auf ausdrücklich benannte Maintainer begrenzen; keine allgemeine Bypass-Ausnahme für Administratoren oder andere Rollen belassen.
+
+Der Validator prüft die genannten lokalen Projektfakten und Dokumentationsangaben, aber weder GitHub-PR-/Issue-Status noch Branch-Schutz. Dafür ist eine erneute Live-Prüfung durch einen berechtigten Maintainer erforderlich.
+
+### Lizenz
+
+Für das Repository ist keine Lizenz ausgewählt oder hinterlegt (GitHub-Metadatum `license: null`, keine `LICENSE`-Datei). Eine Auswahl wird hier nicht vorgenommen; sie erfordert eine Entscheidung des Rechteinhabers. Die neutralen Optionen und ihre groben Auswirkungen sind in [Lizenzstatus und offene Entscheidung](LICENSING.md) zusammengefasst.
 
 | Nachweisart | Status |
 |---|---|
@@ -84,4 +103,4 @@ Der Code enthält Backend- und Frontendtests sowie CI für Lint/Format, PostgreS
 
 - [Architektur](ARCHITECTURE.md) · [Datenbank/Migrationen](DATABASE.md) · [API](API.md)
 - [Sicherheit](SECURITY.md) · [Deployment](DEPLOYMENT.md) · [Backup/Restore](BACKUP_RESTORE.md)
-- [Audit](PROJECT_AUDIT.md) · [Sicherheitsprüfung](SECURITY_REVIEW.md) · [Roadmap](IMPLEMENTATION_ROADMAP.md)
+- [Audit](PROJECT_AUDIT.md) · [Sicherheitsprüfung](SECURITY_REVIEW.md) · [Roadmap](IMPLEMENTATION_ROADMAP.md) · [Lizenzstatus](LICENSING.md)
