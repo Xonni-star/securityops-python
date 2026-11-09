@@ -291,12 +291,17 @@ def _search_query(
         )
 
     if "keys.read" in permissions and entity_type in (None, "key"):
-        key_visibility = key_query().where(
-            PhysicalKey.archived_at.is_(None),
-            PhysicalKey.key_number.ilike(pattern, escape="\\"),
-        ).join(SecurityObject, SecurityObject.id == PhysicalKey.object_id).where(
-            SecurityObject.archived_at.is_(None),
-            SecurityObject.customer.has(Customer.archived_at.is_(None)),
+        key_visibility = (
+            key_query()
+            .where(
+                PhysicalKey.archived_at.is_(None),
+                PhysicalKey.key_number.ilike(pattern, escape="\\"),
+            )
+            .join(SecurityObject, SecurityObject.id == PhysicalKey.object_id)
+            .where(
+                SecurityObject.archived_at.is_(None),
+                SecurityObject.customer.has(Customer.archived_at.is_(None)),
+            )
         )
         if not {"objects.read_all", "objects.manage_all"} & permissions:
             key_visibility = key_visibility.where(
@@ -328,16 +333,18 @@ def _search_query(
             "correction": "Korrektur",
         }
         category = case(event_labels, value=OWKSEvent.event_type)
-        event_visibility = select(
-            OWKSEvent.id,
-            OWKSEvent.event_type,
-            OWKSEvent.occurred_at,
-        ).join(
-            SecurityObject, SecurityObject.id == OWKSEvent.object_id
-        ).where(
-            SecurityObject.archived_at.is_(None),
-            SecurityObject.customer.has(Customer.archived_at.is_(None)),
-            category.ilike(pattern, escape="\\"),
+        event_visibility = (
+            select(
+                OWKSEvent.id,
+                OWKSEvent.event_type,
+                OWKSEvent.occurred_at,
+            )
+            .join(SecurityObject, SecurityObject.id == OWKSEvent.object_id)
+            .where(
+                SecurityObject.archived_at.is_(None),
+                SecurityObject.customer.has(Customer.archived_at.is_(None)),
+                category.ilike(pattern, escape="\\"),
+            )
         )
         if "objects.read_all" not in permissions:
             event_visibility = event_visibility.where(
