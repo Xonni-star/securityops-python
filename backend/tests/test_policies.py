@@ -401,7 +401,10 @@ def test_policy_validation_expiration_and_employee_permission_boundaries(
 def test_policy_migration_is_linear_after_object_qualifications() -> None:
     import importlib
 
+    from scripts.verify_migration_upgrade import verify_revision_chain
+
     migration = importlib.import_module("migrations.versions.0038_digital_policies")
     assert migration.revision == "0038_digital_policies"
     assert migration.down_revision == "0037_object_qual_requirements"
     assert migration.MANAGER_ROLES == ("administrator", "management", "object_manager")
+    verify_revision_chain()
