@@ -144,6 +144,11 @@ import type {
   AutomationTaskStatus,
   AutomationRunPage,
   AutomationDeadLetterPage,
+  PolicyAssignment,
+  PolicyEmployeeOption,
+  PolicyHistory,
+  PolicyItem,
+  PolicyObjectOption,
 } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -1992,3 +1997,70 @@ export const owksAttachmentUrl = (eventId: string, attachmentId: string, downloa
   const params = download ? "?download=true" : "";
   return `/api/v1/owks/events/${eventId}/attachments/${attachmentId}${params}`;
 };
+
+export const getPolicies = () => request<PolicyItem[]>("/policies");
+
+export const createPolicy = (data: {
+  kind: "instruction" | "training";
+  title: string;
+  object_id?: string;
+  repeat_interval_days?: number;
+  reminder_days?: number;
+}) =>
+  request<PolicyItem>("/policies", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const getPolicyObjects = () => request<PolicyObjectOption[]>("/policies/objects");
+
+export const createPolicyVersion = (
+  policyId: string,
+  data: { content: string; valid_from: string; valid_until?: string },
+) =>
+  request<PolicyItem["versions"][number]>(`/policies/${policyId}/versions`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const getPolicyEmployees = (policyId: string) =>
+  request<PolicyEmployeeOption[]>(`/policies/${policyId}/employees`);
+
+export const assignPolicy = (
+  policyId: string,
+  versionId: string,
+  data: { employee_id: string; due_at?: string },
+) =>
+  request<PolicyAssignment>(
+    `/policies/${policyId}/versions/${versionId}/assignments`,
+    { method: "POST", body: JSON.stringify(data) },
+  );
+
+export const getMyPolicyAssignments = () =>
+  request<PolicyAssignment[]>("/policies/assignments/me");
+
+export const recordPolicyRead = (assignmentId: string) =>
+  request<PolicyAssignment>(`/policies/assignments/${assignmentId}/read`, {
+    method: "POST",
+  });
+
+export const confirmPolicy = (assignmentId: string) =>
+  request<PolicyAssignment>(`/policies/assignments/${assignmentId}/confirm`, {
+    method: "POST",
+  });
+
+export const getPolicyHistory = (policyId: string) =>
+  request<PolicyHistory>(`/policies/${policyId}/history`);
+
+export async function exportPolicyProof(policyId: string): Promise<Blob> {
+  const response = await fetch(`/api/v1/policies/${policyId}/export.csv`, {
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(
+      typeof body?.detail === "string" ? body.detail : `Serverfehler (${response.status})`,
+    );
+  }
+  return response.blob();
+}

@@ -3043,3 +3043,138 @@ class IncidentHistory(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
+
+
+class PolicyItem(Base):
+    __tablename__ = "policy_items"
+    __table_args__ = (
+        CheckConstraint("kind IN ('instruction', 'training')", name="ck_policy_items_kind"),
+        CheckConstraint("length(trim(title)) > 0", name="ck_policy_items_title"),
+        CheckConstraint(
+            "repeat_interval_days IS NULL OR repeat_interval_days > 0",
+            name="ck_policy_items_repeat_interval",
+        ),
+        CheckConstraint(
+            "reminder_days IS NULL OR reminder_days > 0",
+            name="ck_policy_items_reminder_days",
+        ),
+        CheckConstraint(
+            "kind = 'training' OR repeat_interval_days IS NULL",
+            name="ck_policy_items_instruction_repeat",
+        ),
+        Index("ix_policy_items_scope_kind", "object_id", "kind", "archived_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    object_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="RESTRICT"), nullable=True
+    )
+    repeat_interval_days: Mapped[int | None] = mapped_column(nullable=True)
+    reminder_days: Mapped[int | None] = mapped_column(nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class PolicyVersion(Base):
+    __tablename__ = "policy_versions"
+    __table_args__ = (
+        CheckConstraint("version_number > 0", name="ck_policy_versions_number"),
+        CheckConstraint("length(trim(content)) > 0", name="ck_policy_versions_content"),
+        CheckConstraint(
+            "valid_until IS NULL OR valid_until > valid_from",
+            name="ck_policy_versions_validity",
+        ),
+        UniqueConstraint("policy_item_id", "version_number", name="uq_policy_versions_number"),
+        Index("ix_policy_versions_validity", "policy_item_id", "valid_from", "valid_until"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    policy_item_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("policy_items.id", ondelete="RESTRICT"), nullable=False
+    )
+    version_number: Mapped[int] = mapped_column(nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class PolicyVersionClosure(Base):
+    __tablename__ = "policy_version_closures"
+
+    policy_version_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("policy_versions.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    closed_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class PolicyAssignment(Base):
+    __tablename__ = "policy_assignments"
+    __table_args__ = (
+        CheckConstraint("cycle_number > 0", name="ck_policy_assignments_cycle"),
+        UniqueConstraint(
+            "employee_id",
+            "policy_version_id",
+            "cycle_number",
+            name="uq_policy_assignments_cycle",
+        ),
+        Index("ix_policy_assignments_employee_due", "employee_id", "due_at"),
+        Index("ix_policy_assignments_version_employee", "policy_version_id", "employee_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    policy_version_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("policy_versions.id", ondelete="RESTRICT"), nullable=False
+    )
+    employee_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False
+    )
+    cycle_number: Mapped[int] = mapped_column(default=1, nullable=False)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    assigned_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class PolicyReceipt(Base):
+    __tablename__ = "policy_receipts"
+    __table_args__ = (
+        CheckConstraint("action IN ('read', 'confirmed')", name="ck_policy_receipts_action"),
+        UniqueConstraint("assignment_id", "action", name="uq_policy_receipts_assignment_action"),
+        Index("ix_policy_receipts_created", "assignment_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    assignment_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("policy_assignments.id", ondelete="RESTRICT"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
