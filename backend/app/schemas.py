@@ -690,6 +690,223 @@ class KeyObjectCandidate(BaseModel):
     name: str
 
 
+InventoryCategory = Literal[
+    "access_media",
+    "radio",
+    "smartphone",
+    "tablet",
+    "computer",
+    "clothing",
+    "safety_equipment",
+    "vehicle",
+    "other",
+]
+InventoryCondition = Literal["new", "good", "used", "worn", "defective"]
+InventoryStatus = Literal["available", "issued", "maintenance", "lost", "damaged", "archived"]
+InventoryEventType = Literal[
+    "created",
+    "updated",
+    "issued",
+    "returned",
+    "transferred",
+    "lost",
+    "damaged",
+    "maintenance",
+    "repair",
+    "archived",
+]
+InventoryActionType = Literal[
+    "issued", "returned", "transferred", "lost", "damaged", "maintenance", "repair"
+]
+
+
+class InventoryAssetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_number: str = Field(min_length=1, max_length=80)
+    serial_number: str | None = Field(default=None, max_length=120)
+    name: str = Field(min_length=1, max_length=200)
+    category: InventoryCategory
+    condition: InventoryCondition = "good"
+    location: str = Field(min_length=1, max_length=200)
+    object_id: UUID | None = None
+
+    @field_validator("asset_number", "name", "location")
+    @classmethod
+    def required_inventory_values_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Inventarnummer, Bezeichnung und Standort dürfen nicht leer sein.")
+        return value
+
+    @field_validator("serial_number")
+    @classmethod
+    def serial_number_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class InventoryAssetUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    serial_number: str | None = Field(default=None, max_length=120)
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    category: InventoryCategory | None = None
+    condition: InventoryCondition | None = None
+    location: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @field_validator("name", "location")
+    @classmethod
+    def optional_required_inventory_values_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            raise ValueError("Bezeichnung und Standort dürfen nicht null sein.")
+        value = value.strip()
+        if not value:
+            raise ValueError("Bezeichnung und Standort dürfen nicht leer sein.")
+        return value
+
+    @field_validator("category", "condition")
+    @classmethod
+    def inventory_classification_must_not_be_null(cls, value):
+        if value is None:
+            raise ValueError("Kategorie und Zustand dürfen nicht null sein.")
+        return value
+
+    @field_validator("serial_number")
+    @classmethod
+    def optional_serial_number_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+    @model_validator(mode="after")
+    def at_least_one_field_must_be_set(self):
+        if not self.model_fields_set:
+            raise ValueError("Mindestens ein Inventarfeld muss geändert werden.")
+        return self
+
+
+class InventoryAssetRead(BaseModel):
+    id: UUID
+    asset_number: str
+    serial_number: str | None
+    name: str
+    category: InventoryCategory
+    condition: InventoryCondition
+    status: InventoryStatus
+    location: str
+    object_id: UUID | None
+    object_code: str | None
+    object_name: str | None
+    current_employee_id: UUID | None
+    current_employee_name: str | None
+    archived_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class InventoryAssetPage(BaseModel):
+    items: list[InventoryAssetRead]
+    total: int
+    limit: int
+    offset: int
+
+
+class InventoryEventCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: InventoryActionType
+    employee_id: UUID | None = None
+    object_id: UUID | None = None
+    acknowledged: bool = False
+    acknowledgement_note: str | None = Field(default=None, max_length=2000)
+    condition: InventoryCondition | None = None
+    location: str | None = Field(default=None, min_length=1, max_length=200)
+    note: str | None = Field(default=None, max_length=5000)
+
+    @field_validator("acknowledgement_note", "note")
+    @classmethod
+    def inventory_notes_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+    @field_validator("location")
+    @classmethod
+    def optional_location_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("Der Standort darf nicht leer sein.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_action_fields(self):
+        if self.event_type in {"issued", "transferred"}:
+            if self.employee_id is None:
+                raise ValueError("Für Ausgabe und Übergabe muss ein Mitarbeiter gewählt werden.")
+            if not self.acknowledged:
+                raise ValueError("Die Empfangsquittierung muss bestätigt werden.")
+        elif self.employee_id is not None or self.acknowledged or self.acknowledgement_note:
+            raise ValueError(
+                "Mitarbeiter- und Quittierungsangaben sind nur bei Ausgabe und Übergabe zulässig."
+            )
+        if self.event_type in {"lost", "damaged", "maintenance", "repair"} and not self.note:
+            raise ValueError("Für diese Inventarmeldung ist eine Notiz erforderlich.")
+        if self.condition is not None and self.event_type != "repair":
+            raise ValueError("Der Zustand darf nur beim Abschluss einer Reparatur gesetzt werden.")
+        if "object_id" in self.model_fields_set and self.event_type != "transferred":
+            raise ValueError("Das Objekt kann nur bei einer Übergabe geändert werden.")
+        return self
+
+
+class InventoryEventRead(BaseModel):
+    id: UUID
+    asset_id: UUID
+    asset_number: str
+    object_id: UUID | None
+    object_name: str | None
+    from_object_id: UUID | None
+    from_object_name: str | None
+    to_object_id: UUID | None
+    to_object_name: str | None
+    from_employee_id: UUID | None
+    from_employee_name: str | None
+    to_employee_id: UUID | None
+    to_employee_name: str | None
+    actor_id: UUID
+    actor_name: str
+    event_type: InventoryEventType
+    status_after: InventoryStatus
+    condition_after: InventoryCondition
+    location_after: str
+    acknowledged_at: datetime | None
+    acknowledgement_note: str | None
+    note: str | None
+    created_at: datetime
+
+
+class InventoryEventPage(BaseModel):
+    items: list[InventoryEventRead]
+    total: int
+    limit: int
+    offset: int
+
+
+class InventoryEmployeeCandidate(BaseModel):
+    id: UUID
+    employee_number: str
+    full_name: str
+
+
+class InventoryObjectCandidate(BaseModel):
+    id: UUID
+    code: str
+    name: str
+
+
 EmployeeStatus = Literal["active", "inactive", "leave", "terminated"]
 
 

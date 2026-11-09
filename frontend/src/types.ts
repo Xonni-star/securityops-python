@@ -10,6 +10,36 @@ export type ObjectStatus = "active" | "inactive";
 export type ObjectSort = "name" | "code" | "created_at" | "status";
 export type PhysicalKeyStatus = "available" | "issued" | "lost" | "defective" | "archived";
 export type KeyMovementType = "issued" | "returned" | "lost" | "defective" | "inventory";
+export type InventoryCategory =
+  | "access_media"
+  | "radio"
+  | "smartphone"
+  | "tablet"
+  | "computer"
+  | "clothing"
+  | "safety_equipment"
+  | "vehicle"
+  | "other";
+export type InventoryCondition = "new" | "good" | "used" | "worn" | "defective";
+export type InventoryStatus =
+  | "available"
+  | "issued"
+  | "maintenance"
+  | "lost"
+  | "damaged"
+  | "archived";
+export type InventoryEventType =
+  | "created"
+  | "updated"
+  | "issued"
+  | "returned"
+  | "transferred"
+  | "lost"
+  | "damaged"
+  | "maintenance"
+  | "repair"
+  | "archived";
+export type InventoryActionType = Exclude<InventoryEventType, "created" | "updated" | "archived">;
 export type TaskPriority = "low" | "normal" | "high" | "urgent";
 export type TaskStatus = "open" | "in_progress" | "blocked" | "completed" | "cancelled";
 export type IncidentType =
@@ -939,6 +969,77 @@ export interface KeyEmployeeCandidate {
 }
 
 export interface KeyObjectCandidate {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface InventoryAsset {
+  id: string;
+  asset_number: string;
+  serial_number: string | null;
+  name: string;
+  category: InventoryCategory;
+  condition: InventoryCondition;
+  status: InventoryStatus;
+  location: string;
+  object_id: string | null;
+  object_code: string | null;
+  object_name: string | null;
+  current_employee_id: string | null;
+  current_employee_name: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InventoryAssetPage {
+  items: InventoryAsset[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface InventoryEvent {
+  id: string;
+  asset_id: string;
+  asset_number: string;
+  object_id: string | null;
+  object_name: string | null;
+  from_object_id: string | null;
+  from_object_name: string | null;
+  to_object_id: string | null;
+  to_object_name: string | null;
+  from_employee_id: string | null;
+  from_employee_name: string | null;
+  to_employee_id: string | null;
+  to_employee_name: string | null;
+  actor_id: string;
+  actor_name: string;
+  event_type: InventoryEventType;
+  status_after: InventoryStatus;
+  condition_after: InventoryCondition;
+  location_after: string;
+  acknowledged_at: string | null;
+  acknowledgement_note: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface InventoryEventPage {
+  items: InventoryEvent[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface InventoryEmployeeCandidate {
+  id: string;
+  employee_number: string;
+  full_name: string;
+}
+
+export interface InventoryObjectCandidate {
   id: string;
   code: string;
   name: string;

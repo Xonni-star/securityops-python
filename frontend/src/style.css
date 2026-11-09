@@ -241,7 +241,8 @@ footer span { padding: 0 5px; }
 .key-status { display: inline-block; margin-left: 6px; border-radius: 999px; padding: 3px 8px; font-size: .72rem; font-weight: 600; vertical-align: middle; }
 .key-status-available { color: #17664d; background: #e8f5ed; }
 .key-status-issued { color: #245c81; background: #eaf3f8; }
-.key-status-lost, .key-status-defective { color: #a43b33; background: #fff0ef; }
+.key-status-lost, .key-status-defective, .key-status-damaged { color: #a43b33; background: #fff0ef; }
+.key-status-maintenance { color: #805d17; background: #fff7df; }
 .key-status-archived { color: #65717a; background: #eef1f3; }
 .key-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
 .key-history { margin-top: 14px; padding-top: 12px; border-top: 1px solid #e5eaed; }
