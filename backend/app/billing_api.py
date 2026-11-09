@@ -514,6 +514,14 @@ def create_correction(
         raise HTTPException(
             status_code=409, detail="Nur freigegebene Originalrechnungen können korrigiert werden."
         )
+    existing_correction = db.scalar(
+        select(BillingInvoice.id).where(BillingInvoice.correction_of_id == original.id).limit(1)
+    )
+    if existing_correction is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Für diese Rechnung existiert bereits ein Korrektur- oder Stornobeleg.",
+        )
     lines = [
         BillingInvoiceLine(
             position=index,

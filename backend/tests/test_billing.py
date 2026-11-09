@@ -113,6 +113,30 @@ def test_invoice_rounding_state_machine_correction_and_export(client: TestClient
     assert correction.json()["correction_of_id"] == invoice["id"]
     assert correction.json()["kind"] == "cancellation"
     assert correction.json()["gross_amount"] == "-0.06"
+    correction_retry = client.post(
+        f"/api/v1/billing/invoices/{invoice['id']}/corrections",
+        headers=headers,
+        json={
+            "idempotency_key": "correction-test-001",
+            "reason": "Nachvollziehbarer Korrekturtest",
+            "issued_on": "2026-11-09",
+            "due_on": "2026-12-09",
+        },
+    )
+    assert correction_retry.status_code == 201
+    assert correction_retry.json()["id"] == correction.json()["id"]
+    duplicate_correction = client.post(
+        f"/api/v1/billing/invoices/{invoice['id']}/corrections",
+        headers=headers,
+        json={
+            "idempotency_key": "correction-test-002",
+            "reason": "Zweiter Beleg darf die Originalrechnung nicht nochmals stornieren",
+            "issued_on": "2026-11-09",
+            "due_on": "2026-12-09",
+        },
+    )
+    assert duplicate_correction.status_code == 409
+    assert "bereits ein Korrektur- oder Stornobeleg" in duplicate_correction.json()["detail"]
     assert (
         client.post(
             f"/api/v1/billing/invoices/{invoice['id']}/archive",
@@ -153,6 +177,14 @@ def test_invoice_rounding_state_machine_correction_and_export(client: TestClient
     with TestingSessionLocal() as db:
         stored = db.scalar(select(BillingInvoice).where(BillingInvoice.id == UUID(invoice["id"])))
         assert stored is not None
+        assert (
+            db.scalar(
+                select(func.count())
+                .select_from(BillingInvoice)
+                .where(BillingInvoice.correction_of_id == UUID(invoice["id"]))
+            )
+            == 1
+        )
         assert (
             db.scalar(
                 select(BillingInvoiceLine).where(
