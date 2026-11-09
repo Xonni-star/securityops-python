@@ -16,6 +16,7 @@ from app.models import (
     SecurityObject,
     User,
 )
+from app.notifications_service import enqueue_key_issued_event
 from app.schemas import (
     KeyEmployeeCandidate,
     KeyMovementCreate,
@@ -484,6 +485,7 @@ def create_key_movement(
     )
     db.add(movement)
     flush_key_transaction(db)
+    enqueue_key_issued_event(db, movement)
     record_key_audit(
         db,
         principal=principal,

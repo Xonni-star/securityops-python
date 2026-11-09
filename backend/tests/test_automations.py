@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from importlib import import_module
 from uuid import UUID, uuid4
 
@@ -8,13 +8,18 @@ from conftest import ADMIN_PASSWORD, TestingSessionLocal, test_engine
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.identity_api import password_hasher
 from app.models import (
     AuditLog,
     AutomationRule,
     AutomationRun,
+    Employee,
+    KeyMovement,
     Notification,
     NotificationOutbox,
     ObjectAssignment,
+    Permission,
+    Role,
     SecurityObject,
     Task,
     User,
@@ -668,3 +673,282 @@ def test_owks_automation_migration_follows_encrypted_document_storage() -> None:
     migration = import_module("migrations.versions.0034_owks_automation_events")
     assert migration.revision == "0034_owks_automation_events"
     assert migration.down_revision == "0033_encrypted_document_storage"
+
+
+def test_key_issue_automation_is_scoped_minimal_and_idempotent(client: TestClient) -> None:
+    admin_headers = sign_in(client)
+    object_id = UUID(create_owks_object(client, admin_headers, "AUTO-KEY-001"))
+    with TestingSessionLocal() as db:
+        key_read = db.scalar(select(Permission).where(Permission.code == "keys.read"))
+        notification_read = db.scalar(
+            select(Permission).where(Permission.code == "notifications.read_own")
+        )
+        task_read = db.scalar(select(Permission).where(Permission.code == "tasks.read_own"))
+        employee_role = db.scalar(select(Role).where(Role.code == "employee"))
+        assert key_read and notification_read and task_read and employee_role
+
+        authorized_role = Role(
+            code="key_automation_reader",
+            name="Schlüsselbenachrichtigungen",
+            description="Objektbezogener Schlüssel-Lesezugriff",
+            permissions=[key_read, notification_read],
+        )
+        authorized = User(
+            username="key_automation_reader",
+            email="key-automation-reader@example.com",
+            full_name="Test Schlüssel-Leser",
+            password_hash=password_hasher.hash("key-automation-test-password"),
+            roles=[authorized_role],
+        )
+        task_only_role = Role(
+            code="key_automation_task_only",
+            name="Aufgabenbenachrichtigungen",
+            description="Benachrichtigungen ohne Schlüssel-Lesezugriff",
+            permissions=[notification_read, task_read],
+        )
+        task_only = User(
+            username="key_automation_task_only",
+            email="key-automation-task-only@example.com",
+            full_name="Test ohne Schlüsselrecht",
+            password_hash=password_hasher.hash("key-automation-test-password"),
+            roles=[task_only_role],
+        )
+        unassigned_role = Role(
+            code="key_automation_unassigned",
+            name="Nicht zugewiesene Schlüsselbenachrichtigungen",
+            description="Schlüssel-Lesezugriff ohne Objektzuweisung",
+            permissions=[key_read, notification_read],
+        )
+        unassigned = User(
+            username="key_automation_unassigned",
+            email="key-automation-unassigned@example.com",
+            full_name="Test ohne Objektzuweisung",
+            password_hash=password_hasher.hash("key-automation-test-password"),
+            roles=[unassigned_role],
+        )
+        employee_user = User(
+            username="key_automation_employee",
+            email="key-automation-employee@example.com",
+            full_name="Test Schlüsselinhaber",
+            password_hash=password_hasher.hash("key-automation-test-password"),
+            roles=[employee_role],
+        )
+        db.add_all([authorized, task_only, unassigned, employee_user])
+        db.flush()
+        db.add_all(
+            [
+                ObjectAssignment(object_id=object_id, user_id=authorized.id),
+                ObjectAssignment(object_id=object_id, user_id=task_only.id),
+                ObjectAssignment(object_id=object_id, user_id=employee_user.id),
+            ]
+        )
+        employee = Employee(
+            employee_number="MA-AUTO-KEY-001",
+            user_id=employee_user.id,
+            full_name=employee_user.full_name,
+            employment_status="active",
+            hired_on=date(2026, 1, 1),
+        )
+        db.add(employee)
+        db.commit()
+        authorized_id = authorized.id
+        employee_id = employee.id
+
+    created_rule = client.post(
+        "/api/v1/automations/rules",
+        headers=admin_headers,
+        json={"name": "Bestätigte Schlüsselausgabe melden", "trigger_type": "key.issued"},
+    )
+    assert created_rule.status_code == 201, created_rule.text
+    rule_id = UUID(created_rule.json()["id"])
+    assert (
+        client.patch(
+            f"/api/v1/automations/rules/{rule_id}",
+            headers=admin_headers,
+            json={"is_active": True},
+        ).status_code
+        == 200
+    )
+
+    key_response = client.post(
+        "/api/v1/keys",
+        headers=admin_headers,
+        json={
+            "key_number": "K-AUTO-KEY-001",
+            "description": "Testschlüssel ohne vertrauliche Details",
+            "object_id": str(object_id),
+        },
+    )
+    assert key_response.status_code == 201, key_response.text
+    issue = client.post(
+        f"/api/v1/keys/{key_response.json()['id']}/movements",
+        headers=admin_headers,
+        json={"movement_type": "issued", "employee_id": str(employee_id), "acknowledged": True},
+    )
+    assert issue.status_code == 201, issue.text
+    movement_id = UUID(issue.json()["id"])
+    with TestingSessionLocal() as db:
+        source = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.dedupe_key == f"key.issued:{movement_id}"
+            )
+        )
+        assert source is not None
+        assert source.payload == {
+            "schema_version": 1,
+            "movement_id": str(movement_id),
+            "object_id": str(object_id),
+            "recipient_ids": [str(authorized_id)],
+        }
+        source_id = source.id
+
+    worker = NotificationOutboxWorker(TestingSessionLocal)
+    if test_engine.dialect.name == "postgresql":
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _index: worker.run_once(), range(2)))
+        assert sum(result.claimed for result in results) == 1
+    else:
+        assert worker.run_once().claimed == 1
+    assert worker.run_once().claimed == 1
+
+    with TestingSessionLocal() as db:
+        source = db.get(NotificationOutbox, source_id)
+        assert source is not None
+        source.status = "pending"
+        db.commit()
+    assert worker.run_once().claimed == 1
+    with TestingSessionLocal() as db:
+        runs = db.scalars(
+            select(AutomationRun).where(
+                AutomationRun.rule_id == rule_id,
+                AutomationRun.source_event_id == source_id,
+            )
+        ).all()
+        notifications = db.scalars(
+            select(Notification).where(Notification.object_id == object_id)
+        ).all()
+        movements = db.scalars(select(KeyMovement).where(KeyMovement.id == movement_id)).all()
+        audits = db.scalars(select(AuditLog).where(AuditLog.action == "keys.issued")).all()
+    assert len(runs) == 1 and runs[0].status == "succeeded"
+    assert len(notifications) == 1
+    assert notifications[0].recipient_id == authorized_id
+    assert notifications[0].event_type == "key.issued"
+    assert notifications[0].title == "Schlüssel ausgegeben"
+    assert "K-AUTO-KEY-001" not in notifications[0].body
+    assert len(movements) == 1 and len(audits) == 1
+
+    authorized_headers = sign_in(
+        client,
+        "key_automation_reader",
+        "key-automation-test-password",
+    )
+    authorized_inbox = client.get("/api/v1/notifications", headers=authorized_headers)
+    assert authorized_inbox.status_code == 200
+    assert [item["event_type"] for item in authorized_inbox.json()["items"]] == ["key.issued"]
+
+    task_only_headers = sign_in(
+        client,
+        "key_automation_task_only",
+        "key-automation-test-password",
+    )
+    task_only_inbox = client.get("/api/v1/notifications", headers=task_only_headers)
+    assert task_only_inbox.status_code == 200
+    assert task_only_inbox.json()["items"] == []
+
+    unassigned_headers = sign_in(
+        client,
+        "key_automation_unassigned",
+        "key-automation-test-password",
+    )
+    unassigned_inbox = client.get("/api/v1/notifications", headers=unassigned_headers)
+    assert unassigned_inbox.status_code == 200
+    assert unassigned_inbox.json()["items"] == []
+
+    second_key = client.post(
+        "/api/v1/keys",
+        headers=admin_headers,
+        json={
+            "key_number": "K-AUTO-KEY-002",
+            "description": "Zweiter Testschlüssel",
+            "object_id": str(object_id),
+        },
+    )
+    assert second_key.status_code == 201, second_key.text
+    second_issue = client.post(
+        f"/api/v1/keys/{second_key.json()['id']}/movements",
+        headers=admin_headers,
+        json={"movement_type": "issued", "employee_id": str(employee_id), "acknowledged": True},
+    )
+    assert second_issue.status_code == 201, second_issue.text
+    second_movement_id = UUID(second_issue.json()["id"])
+    with TestingSessionLocal() as db:
+        role = db.scalar(select(Role).where(Role.code == "key_automation_reader"))
+        key_permission = db.scalar(select(Permission).where(Permission.code == "keys.read"))
+        assert role is not None and key_permission is not None
+        role.permissions.remove(key_permission)
+        db.commit()
+        second_source = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.dedupe_key == f"key.issued:{second_movement_id}"
+            )
+        )
+        assert second_source is not None
+        second_source_id = second_source.id
+    revoked = worker.run_once()
+    assert revoked.dead_lettered == 1
+    with TestingSessionLocal() as db:
+        second_source = db.get(NotificationOutbox, second_source_id)
+        assert second_source is not None
+        assert second_source.last_error == "unauthorized_recipient"
+        assert (
+            db.scalar(select(Notification).where(Notification.outbox_id == second_source_id))
+            is None
+        )
+
+
+def test_key_issue_automation_rejects_unregistered_payload_fields(client: TestClient) -> None:
+    headers = sign_in(client)
+    object_id = create_owks_object(client, headers, "AUTO-KEY-002")
+    key = client.post(
+        "/api/v1/keys",
+        headers=headers,
+        json={
+            "key_number": "K-AUTO-KEY-002",
+            "description": "Testschlüssel",
+            "object_id": object_id,
+        },
+    )
+    assert key.status_code == 201, key.text
+    with TestingSessionLocal() as db:
+        recipient = db.scalar(select(User).where(User.username == "admin"))
+        assert recipient is not None
+        movement_id = uuid4()
+        source = NotificationOutbox(
+            id=uuid4(),
+            dedupe_key=f"test:key.issued:{movement_id}",
+            event_type="key.issued",
+            aggregate_type="key_movement",
+            aggregate_id=movement_id,
+            payload={
+                "schema_version": 1,
+                "movement_id": str(movement_id),
+                "object_id": object_id,
+                "recipient_ids": [str(recipient.id)],
+                "key_number": "must-not-be-accepted",
+            },
+        )
+        db.add(source)
+        db.commit()
+        source_id = source.id
+
+    result = NotificationOutboxWorker(TestingSessionLocal).run_once()
+    assert result.dead_lettered == 1
+    with TestingSessionLocal() as db:
+        source = db.get(NotificationOutbox, source_id)
+        assert source is not None and source.last_error == "invalid_payload"
+
+
+def test_key_issue_automation_migration_follows_digital_policies() -> None:
+    migration = import_module("migrations.versions.0039_key_issue_automation")
+    assert migration.revision == "0039_key_issue_automation"
+    assert migration.down_revision == "0038_digital_policies"

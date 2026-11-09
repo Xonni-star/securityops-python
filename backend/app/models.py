@@ -363,7 +363,7 @@ class AutomationRule(Base):
         CheckConstraint(
             "trigger_type IN ('task.assigned', 'task.status_changed', "
             "'owks.missed_control', 'owks.deviation_reported', "
-            "'owks.offline_event_synced', 'billing.invoice_approved')",
+            "'owks.offline_event_synced', 'billing.invoice_approved', 'key.issued')",
             name="ck_automation_rules_trigger_type",
         ),
         CheckConstraint(

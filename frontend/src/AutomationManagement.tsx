@@ -32,6 +32,7 @@ const triggerNames: Record<AutomationTrigger, string> = {
   "owks.deviation_reported": "OWKS-Auffälligkeit gemeldet",
   "owks.offline_event_synced": "Offline-Ereignis synchronisiert",
   "billing.invoice_approved": "Rechnung manuell freigegeben",
+  "key.issued": "Schlüssel ausgegeben",
 };
 const eventNames: Record<string, string> = {
   ...triggerNames,
@@ -221,9 +222,10 @@ export default function AutomationManagement() {
         </div>
         <p className="muted">
           Verfügbar sind registrierte Aufgabenereignisse sowie versäumte Kontrollen,
-          gemeldete OWKS-Auffälligkeiten, erfolgreich synchronisierte Offline-Ereignisse und
-          manuelle Rechnungsfreigaben. Benachrichtigungen gehen nur an aktive Benutzer mit
-          passender Objektzuweisung beziehungsweise Rechnungslese- und Benachrichtigungsrecht.
+          gemeldete OWKS-Auffälligkeiten, erfolgreich synchronisierte Offline-Ereignisse,
+          manuelle Rechnungsfreigaben und bestätigte Schlüsselausgaben. Benachrichtigungen gehen
+          nur an aktive Benutzer mit passender Objektzuweisung und den erforderlichen Lese- und
+          Benachrichtigungsrechten.
           Neue Regeln starten deaktiviert.
         </p>
         <form className="form-panel automation-form" onSubmit={(event) => void saveRule(event)}>
@@ -244,6 +246,7 @@ export default function AutomationManagement() {
               <option value="owks.deviation_reported">OWKS-Auffälligkeit gemeldet</option>
               <option value="owks.offline_event_synced">Offline-Ereignis synchronisiert</option>
               <option value="billing.invoice_approved">Rechnung manuell freigegeben</option>
+              <option value="key.issued">Schlüssel ausgegeben</option>
             </select></label>
             {triggerType.startsWith("task.") && <label>Bedingung: Aufgabenstatus<select value={conditionStatus}
               onChange={(event) => setConditionStatus(event.target.value as AutomationTaskStatus | "")}>
@@ -349,8 +352,10 @@ export default function AutomationManagement() {
         <h3 id="automation-limits-heading">Nicht verfügbare Auslöser</h3>
         <p>
           Kontrollgang gestartet/beendet oder unvollständig, Qualifikationsablauf,
-          unbesetzte Dienste, Vorfälle, Schlüssel/Inventar, Dokumente/Verträge, allgemeine
-          Aufgabenfristen und Worker-Ausfall sind nicht registriert und daher nicht auswählbar.
+          unbesetzte Dienste, Vorfälle, ausbleibende Schlüsselrückgabe/Inventar,
+          Dokumente/Verträge, allgemeine Aufgabenfristen und Worker-Ausfall sind nicht
+          registriert und daher nicht auswählbar. Die Schlüsselausgabe ist ein Ereignis ohne
+          Rückgabefrist; sie löst keine Überfälligkeitsmeldung aus.
           Rechnungsfreigaben erzeugen nur eine neutrale In-App-Benachrichtigung für derzeit
           berechtigte Leser. Regeln veröffentlichen keine personenbezogenen OWKS-Beschreibungen
           und ändern keine Aufgaben-, Personal-, OWKS-, Vertrags- oder Rechnungszustände.

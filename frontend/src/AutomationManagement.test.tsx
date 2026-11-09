@@ -101,4 +101,28 @@ describe("Automatisierungen", () => {
       });
     });
   });
+
+  it("bietet bestätigte Schlüsselausgaben ohne Aufgabenbedingung an", async () => {
+    vi.mocked(api.getAutomationRules).mockResolvedValue([]);
+    render(<AutomationManagement />);
+
+    fireEvent.change(await screen.findByLabelText("Regelname"), {
+      target: { value: "Schlüsselausgabe melden" },
+    });
+    fireEvent.change(screen.getByLabelText("Auslöser"), {
+      target: { value: "key.issued" },
+    });
+    expect(screen.queryByLabelText("Bedingung: Aufgabenstatus")).toBeNull();
+    expect(screen.getByText(/Rückgabefrist/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Regel anlegen" }));
+
+    await waitFor(() => {
+      expect(api.createAutomationRule).toHaveBeenCalledWith({
+        name: "Schlüsselausgabe melden",
+        description: undefined,
+        trigger_type: "key.issued",
+        conditions: {},
+      });
+    });
+  });
 });
