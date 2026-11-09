@@ -22,6 +22,8 @@ vi.mock("./api", () => ({
   getDashboard: vi.fn(),
   getCustomerPortalMe: vi.fn(),
   getCustomerPortalInvoices: vi.fn(),
+  getCustomerPortalDocuments: vi.fn(),
+  getCustomerPortalRequests: vi.fn(),
   downloadCustomerPortalInvoice: vi.fn(),
   getControlRoom: vi.fn(),
   getEmployees: vi.fn(),
@@ -234,6 +236,8 @@ describe("Kundenformulare", () => {
       objects: [],
     });
     vi.mocked(api.getCustomerPortalInvoices).mockResolvedValue([]);
+    vi.mocked(api.getCustomerPortalDocuments).mockResolvedValue([]);
+    vi.mocked(api.getCustomerPortalRequests).mockResolvedValue([]);
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: "Willkommen, Kunden." })).toBeTruthy();

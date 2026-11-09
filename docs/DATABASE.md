@@ -470,3 +470,15 @@ PR #39 ist gemergt; die Migrationsfolge auf `main` endet auf `0024_notification_
 - `time_surcharge_calculations` speichert unveränderliche Zeit-/Regelsnapshots; es gibt keine Geldbetrags-Spalte. Geldberechnung ist nicht implementiert.
 - Abwesenheitsdaten und sensible Personal-/Objektdaten sind personenbezogen/sensibel; Verschlüsselung at rest, Aufbewahrung und Löschung müssen für die konkrete Betriebsumgebung entschieden werden.
 - Lokale API-Tests laufen standardmäßig gegen SQLite. PostgreSQL-Constraints, Migrationen und konkurrierende Schreibvorgänge benötigen PostgreSQL-Prüfungen. Backup-/Restore-Skripte und ein synthetischer Restoretest in CI sind vorhanden; das belegt keine Wiederherstellung produktiver Sicherungen.
+
+## Kundenportal-Erweiterung (PR #42)
+
+Der vorstehende Tabellen- und Migrationskatalog ist die historische `main`-Momentaufnahme vom 09.11.2026 und endet daher absichtlich bei 0024. Der gestapelte PR ergänzt darauf linear `0025_unique_incident_owks_event` aus PR #40 sowie die folgenden Portalrevisionen:
+
+| Revision | Vorgänger | Schemaänderung |
+|---|---|---|
+| `0026_customer_portal_access` | `0025_unique_incident_owks_event` | Manuelle, eindeutige Benutzer-/Kundenkontakt-Verknüpfungen und append-only Verknüpfungshistorie; Portalrolle/Rechte. |
+| `0027_customer_document_grants` | `0026_customer_portal_access` | Explizite Dokumentversionsfreigaben mit Akteur/Zeitpunkt und append-only Freigabe-/Widerrufshistorie; Aktivierungsstatus der Verknüpfung. |
+| `0028_customer_portal_requests` | `0027_customer_document_grants` | Kundenanfragen mit Nachrichten, Status- und append-only Verlauf sowie privaten Anhang-Metadaten. |
+
+Die zugehörigen Tabellen sind `customer_portal_links`, `customer_portal_link_history`, `customer_portal_document_grants`, `customer_portal_document_grant_history`, `customer_portal_requests`, `customer_portal_request_messages`, `customer_portal_request_attachments` und `customer_portal_request_history`. Datei-Inhalte von Kundenanhängen liegen im privaten Dateispeicher; die Datenbank hält Speicherreferenz und validierte Metadaten. Zugriffsprotokolle speichern nur notwendige Metadaten, keine Dokument- oder Nachrichteninhalte. Der Portalzugriff ist an die exakte aktive Verknüpfung von Login, Kundenkontakt und Kunde gebunden; Kundenfreigaben werden nicht aus internen Dokumentfreigaben abgeleitet.

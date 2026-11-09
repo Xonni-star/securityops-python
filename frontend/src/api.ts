@@ -114,6 +114,16 @@ import type {
   ControlRoom,
   CustomerPortalInvoice,
   CustomerPortalMe,
+  CustomerPortalDocument,
+  CustomerPortalLink,
+  CustomerPortalManagementOptions,
+  CustomerPortalLinkHistory,
+  CustomerPortalAccessEvent,
+  CustomerPortalDocumentCandidate,
+  CustomerPortalDocumentGrant,
+  CustomerPortalRequest,
+  CustomerPortalRequestMessage,
+  CustomerPortalRequestAttachment,
 } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -162,6 +172,156 @@ export const getCustomerPortalMe = () => request<CustomerPortalMe>("/customer-po
 
 export const getCustomerPortalInvoices = () =>
   request<CustomerPortalInvoice[]>("/customer-portal/invoices");
+
+export const getCustomerPortalDocuments = () =>
+  request<CustomerPortalDocument[]>("/customer-portal/documents");
+
+export const getCustomerPortalLinks = () =>
+  request<CustomerPortalLink[]>("/customer-portal/links");
+
+export const getCustomerPortalManagementOptions = () =>
+  request<CustomerPortalManagementOptions>("/customer-portal/management-options");
+
+export const getCustomerPortalLinkHistory = () =>
+  request<CustomerPortalLinkHistory[]>("/customer-portal/link-history");
+
+export const getCustomerPortalAccessHistory = () =>
+  request<CustomerPortalAccessEvent[]>("/customer-portal/access-history");
+
+export const createCustomerPortalLink = (user_id: string, contact_id: string) =>
+  request<CustomerPortalLink>("/customer-portal/links", {
+    method: "POST",
+    body: JSON.stringify({ user_id, contact_id }),
+  });
+
+export const setCustomerPortalLinkActive = (contactId: string, is_active: boolean) =>
+  request<CustomerPortalLink>(`/customer-portal/links/${encodeURIComponent(contactId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_active }),
+  });
+
+export const unlinkCustomerPortalContact = (contactId: string) =>
+  request<void>(`/customer-portal/links/${encodeURIComponent(contactId)}`, {
+    method: "DELETE",
+  });
+
+export const getCustomerPortalDocumentCandidates = () =>
+  request<CustomerPortalDocumentCandidate[]>("/customer-portal/document-candidates");
+
+export const getCustomerPortalDocumentGrants = (documentId: string) =>
+  request<CustomerPortalDocumentGrant[]>(
+    `/customer-portal/document-grants?document_id=${encodeURIComponent(documentId)}`,
+  );
+
+export const grantCustomerPortalDocument = (document_id: string, version_id: string) =>
+  request<CustomerPortalDocumentGrant>("/customer-portal/document-grants", {
+    method: "POST",
+    body: JSON.stringify({ document_id, version_id }),
+  });
+
+export const revokeCustomerPortalDocument = (grantId: string) =>
+  request<CustomerPortalDocumentGrant>(
+    `/customer-portal/document-grants/${encodeURIComponent(grantId)}`,
+    { method: "DELETE" },
+  );
+
+export const getCustomerPortalRequests = () =>
+  request<CustomerPortalRequest[]>("/customer-portal/requests");
+
+export const createCustomerPortalRequest = (payload: {
+  category: "request" | "question" | "complaint";
+  object_id: string;
+  title: string;
+  first_message: string;
+}) =>
+  request<CustomerPortalRequest>("/customer-portal/requests", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const addCustomerPortalRequestMessage = (requestId: string, body: string) =>
+  request<CustomerPortalRequestMessage>(
+    `/customer-portal/requests/${encodeURIComponent(requestId)}/messages`,
+    { method: "POST", body: JSON.stringify({ body }) },
+  );
+
+export async function uploadCustomerPortalRequestAttachment(
+  requestId: string,
+  file: File,
+): Promise<CustomerPortalRequestAttachment> {
+  const form = new FormData();
+  form.append("file", file);
+  return request<CustomerPortalRequestAttachment>(
+    `/customer-portal/requests/${encodeURIComponent(requestId)}/attachments`,
+    { method: "POST", body: form },
+  );
+}
+
+export async function downloadCustomerPortalRequestAttachment(
+  requestId: string,
+  attachmentId: string,
+): Promise<Blob> {
+  const response = await fetch(
+    `/api/v1/customer-portal/requests/${encodeURIComponent(requestId)}/attachments/${encodeURIComponent(attachmentId)}/download`,
+    { credentials: "same-origin" },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(
+      typeof body?.detail === "string" ? body.detail : `Serverfehler (${response.status})`,
+    );
+  }
+  return response.blob();
+}
+
+export const getManagedCustomerPortalRequests = () =>
+  request<CustomerPortalRequest[]>("/customer-portal/admin/requests");
+
+export const addManagedCustomerPortalRequestMessage = (requestId: string, body: string) =>
+  request<CustomerPortalRequestMessage>(
+    `/customer-portal/admin/requests/${encodeURIComponent(requestId)}/messages`,
+    { method: "POST", body: JSON.stringify({ body }) },
+  );
+
+export const updateManagedCustomerPortalRequestStatus = (
+  requestId: string,
+  status: CustomerPortalRequest["status"],
+) =>
+  request<CustomerPortalRequest>(
+    `/customer-portal/admin/requests/${encodeURIComponent(requestId)}/status`,
+    { method: "PATCH", body: JSON.stringify({ status }) },
+  );
+
+export async function downloadManagedCustomerPortalRequestAttachment(
+  requestId: string,
+  attachmentId: string,
+): Promise<Blob> {
+  const response = await fetch(
+    `/api/v1/customer-portal/admin/requests/${encodeURIComponent(requestId)}/attachments/${encodeURIComponent(attachmentId)}/download`,
+    { credentials: "same-origin" },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(
+      typeof body?.detail === "string" ? body.detail : `Serverfehler (${response.status})`,
+    );
+  }
+  return response.blob();
+}
+
+export async function downloadCustomerPortalDocument(grantId: string): Promise<Blob> {
+  const response = await fetch(
+    `/api/v1/customer-portal/documents/${encodeURIComponent(grantId)}/download`,
+    { credentials: "same-origin" },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(
+      typeof body?.detail === "string" ? body.detail : `Serverfehler (${response.status})`,
+    );
+  }
+  return response.blob();
+}
 
 export async function downloadCustomerPortalInvoice(invoiceId: string): Promise<Blob> {
   const response = await fetch(

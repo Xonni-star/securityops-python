@@ -1,11 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
+  addCustomerPortalRequestMessage,
+  createCustomerPortalRequest,
   downloadCustomerPortalInvoice,
+  downloadCustomerPortalDocument,
+  downloadCustomerPortalRequestAttachment,
+  getCustomerPortalDocuments,
+  uploadCustomerPortalRequestAttachment,
   getCustomerPortalInvoices,
   getCustomerPortalMe,
+  getCustomerPortalRequests,
   logout,
 } from "./api";
-import type { AuthUser, CustomerPortalInvoice, CustomerPortalMe } from "./types";
+import type {
+  AuthUser,
+  CustomerPortalDocument,
+  CustomerPortalInvoice,
+  CustomerPortalMe,
+  CustomerPortalRequest,
+} from "./types";
 
 function addressText(address: CustomerPortalMe["customer"]["business_address"]) {
   if (!address) return "Keine Anschrift hinterlegt.";
@@ -24,6 +37,14 @@ function paymentStatus(status: CustomerPortalInvoice["payment_status"]) {
   return "Offen";
 }
 
+const requestStatusLabels: Record<CustomerPortalRequest["status"], string> = {
+  submitted: "Eingegangen",
+  in_progress: "In Bearbeitung",
+  waiting_customer: "Rückfrage an Sie",
+  resolved: "Gelöst",
+  closed: "Geschlossen",
+};
+
 export default function CustomerPortal({
   user,
   onSignedOut,
@@ -33,17 +54,28 @@ export default function CustomerPortal({
 }) {
   const [portal, setPortal] = useState<CustomerPortalMe | null>(null);
   const [invoices, setInvoices] = useState<CustomerPortalInvoice[]>([]);
+  const [documents, setDocuments] = useState<CustomerPortalDocument[]>([]);
+  const [requests, setRequests] = useState<CustomerPortalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyInvoice, setBusyInvoice] = useState("");
+  const [busyDocument, setBusyDocument] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     let active = true;
-    Promise.all([getCustomerPortalMe(), getCustomerPortalInvoices()])
-      .then(([me, invoiceList]) => {
+    Promise.all([
+      getCustomerPortalMe(),
+      getCustomerPortalInvoices(),
+      getCustomerPortalDocuments(),
+      getCustomerPortalRequests(),
+    ])
+      .then(([me, invoiceList, documentList, requestList]) => {
         if (!active) return;
         setPortal(me);
         setInvoices(invoiceList);
+        setDocuments(documentList);
+        setRequests(requestList);
       })
       .catch((reason: unknown) => {
         if (active) {
@@ -60,6 +92,70 @@ export default function CustomerPortal({
     };
   }, []);
 
+  async function submitRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    setError("");
+    setNotice("");
+    try {
+      const created = await createCustomerPortalRequest({
+        category: String(data.get("category")) as "request" | "question" | "complaint",
+        object_id: String(data.get("object_id")),
+        title: String(data.get("title")).trim(),
+        first_message: String(data.get("first_message")).trim(),
+      });
+      const file = data.get("attachment");
+      let attachmentError = "";
+      if (file instanceof File && file.size > 0) {
+        try {
+          await uploadCustomerPortalRequestAttachment(created.id, file);
+        } catch (reason) {
+          attachmentError = reason instanceof Error ? reason.message : "Datei konnte nicht hochgeladen werden.";
+        }
+      }
+      setRequests(await getCustomerPortalRequests());
+      setNotice(attachmentError
+        ? `Vorgang wurde angelegt. Der Anhang wurde nicht übernommen: ${attachmentError}`
+        : "Ihre Anfrage wurde übermittelt.");
+      form.reset();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Anfrage konnte nicht übermittelt werden.");
+    }
+  }
+
+  async function replyToRequest(event: FormEvent<HTMLFormElement>, requestId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const body = String(new FormData(form).get("reply") ?? "").trim();
+    if (!body) return;
+    try {
+      await addCustomerPortalRequestMessage(requestId, body);
+      setRequests(await getCustomerPortalRequests());
+      form.reset();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Nachricht konnte nicht gesendet werden.");
+    }
+  }
+
+  async function downloadRequestAttachment(
+    requestItem: CustomerPortalRequest,
+    attachmentId: string,
+    fileName: string,
+  ) {
+    try {
+      const blob = await downloadCustomerPortalRequestAttachment(requestItem.id, attachmentId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Anhang konnte nicht geladen werden.");
+    }
+  }
+
   async function downloadInvoice(invoice: CustomerPortalInvoice) {
     setBusyInvoice(invoice.id);
     setError("");
@@ -75,6 +171,24 @@ export default function CustomerPortal({
       setError(reason instanceof Error ? reason.message : "Rechnung konnte nicht geladen werden.");
     } finally {
       setBusyInvoice("");
+    }
+  }
+
+  async function downloadDocument(item: CustomerPortalDocument) {
+    setBusyDocument(item.grant_id);
+    setError("");
+    try {
+      const blob = await downloadCustomerPortalDocument(item.grant_id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = item.file_name;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Dokument konnte nicht geladen werden.");
+    } finally {
+      setBusyDocument("");
     }
   }
 
@@ -106,6 +220,7 @@ export default function CustomerPortal({
       </section>
 
       {error && <p className="alert page-alert" role="alert">{error}</p>}
+      {notice && <p className="success page-alert" role="status">{notice}</p>}
       {loading && <p className="muted">Portaldaten werden geladen …</p>}
 
       {portal && <>
@@ -174,6 +289,100 @@ export default function CustomerPortal({
                   </tr>
                 ))}</tbody>
               </table>
+            </div>}
+        </section>
+
+        <section className="panel" aria-labelledby="portal-documents-title">
+          <div className="panel-heading">
+            <div><p className="eyebrow">DOKUMENTE</p><h2 id="portal-documents-title">Freigegebene Dokumente</h2></div>
+          </div>
+          {documents.length === 0
+            ? <p className="muted">Es liegen keine freigegebenen Dokumente vor.</p>
+            : <div className="table-scroll">
+              <table>
+                <thead><tr><th>Dokument</th><th>Kategorie</th><th>Version</th><th>Freigegeben am</th><th>Datei</th></tr></thead>
+                <tbody>{documents.map((item) => (
+                  <tr key={item.grant_id}>
+                    <td><strong>{item.title}</strong><small>{item.document_number}</small></td>
+                    <td>{item.category}</td>
+                    <td>{item.version}</td>
+                    <td>{new Date(item.granted_at).toLocaleDateString("de-DE")}</td>
+                    <td><button
+                      type="button"
+                      disabled={busyDocument === item.grant_id}
+                      onClick={() => void downloadDocument(item)}
+                    >{busyDocument === item.grant_id ? "Wird geladen …" : "Datei laden"}</button></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>}
+        </section>
+
+        <section className="panel" aria-labelledby="portal-requests-title">
+          <div className="panel-heading">
+            <div><p className="eyebrow">RÜCKFRAGEN & BESCHWERDEN</p><h2 id="portal-requests-title">Ihre Vorgänge</h2></div>
+          </div>
+          <form className="form-grid" onSubmit={(event) => void submitRequest(event)}>
+            <label>Art
+              <select name="category" defaultValue="question">
+                <option value="question">Rückfrage</option>
+                <option value="request">Anfrage</option>
+                <option value="complaint">Beschwerde</option>
+              </select>
+            </label>
+            <label>Objekt
+              <select name="object_id" required defaultValue={portal.objects[0]?.id ?? ""}>
+                {portal.objects.filter((object) => object.status === "active").map((object) => (
+                  <option key={object.id} value={object.id}>{object.name} ({object.code})</option>
+                ))}
+              </select>
+            </label>
+            <label>Titel<input name="title" maxLength={200} required /></label>
+            <label>Nachricht<textarea name="first_message" maxLength={4000} required /></label>
+            <label>Anhang (PDF, PNG oder JPEG; höchstens 10 MiB)
+              <input name="attachment" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" />
+            </label>
+            <button type="submit" disabled={!portal.objects.some((object) => object.status === "active")}>
+              Anfrage übermitteln
+            </button>
+          </form>
+          {requests.length === 0
+            ? <p className="muted">Sie haben noch keine Vorgänge.</p>
+            : <div className="content-grid">
+              {requests.map((item) => (
+                <article className="panel" key={item.id}>
+                  <div className="panel-heading">
+                    <div><h3>{item.title}</h3><p className="muted">{
+                      item.category === "complaint"
+                        ? "Beschwerde"
+                        : item.category === "request" ? "Anfrage" : "Rückfrage"
+                    } · {item.object_name}</p></div>
+                    <span className="status">{requestStatusLabels[item.status]}</span>
+                  </div>
+                  {item.messages.map((message) => (
+                    <p key={message.id}>
+                      <strong>{message.author_id === user.id ? "Sie" : "SecurityOps"} · </strong>
+                      {message.body}
+                    </p>
+                  ))}
+                  {item.attachments.map((attachment) => (
+                    <button
+                      type="button"
+                      className="text-button"
+                      key={attachment.id}
+                      onClick={() => void downloadRequestAttachment(item, attachment.id, attachment.file_name)}
+                    >Anhang laden: {attachment.file_name}</button>
+                  ))}
+                  <form className="form-grid" onSubmit={(event) => {
+                    void replyToRequest(event, item.id);
+                  }}>
+                    <label>Nachricht ergänzen
+                      <textarea name="reply" maxLength={4000} required />
+                    </label>
+                    <button type="submit">Nachricht senden</button>
+                  </form>
+                </article>
+              ))}
             </div>}
         </section>
       </>}
