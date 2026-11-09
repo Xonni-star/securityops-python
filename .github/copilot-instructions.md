@@ -7,6 +7,7 @@ SecurityOps ist ein deutschsprachiger modularer Monolith für Sicherheitsdienste
 - Backend: `backend/app/main.py` registriert API-Router; Fachendpunkte liegen in den jeweiligen `*_api.py`-Dateien, Pydantic-Modelle/Schemas in `*_schemas.py`, SQLAlchemy-Modelle in `models.py`. Tests liegen in `backend/tests/`; Alembic-Konfiguration, Migrationen und Hilfsskripte in `backend/alembic.ini`, `backend/migrations/` und `backend/scripts/`.
 - Frontend: `frontend/src/` enthält React-/TypeScript-Oberflächen nach Fachbereich sowie `api.ts`, `types.ts` und Styles. TypeScript ist strikt konfiguriert; halte Komponenten, API-Aufrufe und Typen konsistent und folge bestehenden Mustern. Verwende die npm-Skripte aus `frontend/package.json`.
 - Dokumentation: `docs/` enthält Architektur, API, Datenbank, Sicherheit, Betrieb, Projektstatus und Roadmap. Aktualisiere die direkt betroffene Dokumentation und leite Aussagen zu API und Datenbank aus registrierten Routern, Modellen und Migrationen ab.
+- `.github/agents/*.agent.md` enthält unterstützte benutzerdefinierte Agenten für GitHub Copilot und VS Code. `.github/prompts/*.prompt.md` sind manuell aufrufbare VS-Code-Prompts für den Local-Harness; Copilot Cloud und die Copilot-App führen diese Prompt-Dateien nicht aus.
 - Ändere nur den beauftragten Umfang und erhalte bestehendes Verhalten. Ergänze Tests für geänderte Funktionalität. Benutzeroberfläche, Fehlermeldungen und Dokumentation sind auf Deutsch.
 
 ## Backend, Daten und Sicherheit
