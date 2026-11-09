@@ -370,7 +370,7 @@ def test_postgresql_key_migration_append_only_and_data_safe_downgrade(
         ):
             migration.downgrade()
         connection.rollback()
-        assert context.get_current_revision() == "0025_unique_incident_owks_event"
+        assert context.get_current_revision() == "0028_customer_portal_requests"
         assert inspect(connection).has_table("key_movements")
 
 
@@ -381,7 +381,7 @@ def test_postgresql_key_migration_append_only_and_data_safe_downgrade(
 def test_postgresql_database_has_key_management_migration_applied(client: TestClient) -> None:
     with test_engine.connect() as connection:
         context = MigrationContext.configure(connection)
-        assert context.get_current_revision() == "0025_unique_incident_owks_event"
+        assert context.get_current_revision() == "0028_customer_portal_requests"
         inspector = inspect(connection)
         assert {
             "physical_keys",

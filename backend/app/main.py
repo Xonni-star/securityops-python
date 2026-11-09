@@ -16,6 +16,7 @@ from app.api import router
 from app.billing_api import router as billing_router
 from app.config import get_settings
 from app.control_room_api import router as control_room_router
+from app.customer_portal_api import router as customer_portal_router
 from app.database import engine
 from app.documents_contracts_api import router as documents_contracts_router
 from app.employee_portal_api import router as employee_portal_router
@@ -61,6 +62,11 @@ async def validation_error_handler(request, exc: RequestValidationError):
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content={"detail": "Eingaben für den Vorfall sind ungültig."},
         )
+    if request.url.path.startswith(f"{settings.api_prefix}/customer-portal"):
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": "Eingaben für den Kundenportalvorgang sind ungültig."},
+        )
     return await request_validation_exception_handler(request, exc)
 
 
@@ -87,6 +93,7 @@ app.include_router(identity_router, prefix=settings.api_prefix)
 app.include_router(incidents_router, prefix=settings.api_prefix)
 app.include_router(owks_router, prefix=settings.api_prefix)
 app.include_router(control_room_router, prefix=settings.api_prefix)
+app.include_router(customer_portal_router, prefix=settings.api_prefix)
 
 
 @app.get("/health/live", tags=["System"])

@@ -620,6 +620,188 @@ export interface AuthUser {
   permissions: string[];
 }
 
+export interface CustomerPortalAddress {
+  street: string;
+  house_number: string;
+  postal_code: string;
+  city: string;
+  country_code: string;
+}
+
+export interface CustomerPortalContact {
+  id: string;
+  first_name: string;
+  last_name: string;
+  responsibility: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface CustomerPortalCustomer {
+  customer_number: string;
+  company_name: string;
+  email: string | null;
+  phone: string | null;
+  legal_form: string | null;
+  website: string | null;
+  business_address: CustomerPortalAddress | null;
+  billing_address: CustomerPortalAddress | null;
+}
+
+export interface CustomerPortalObject {
+  id: string;
+  code: string;
+  name: string;
+  object_type: string | null;
+  status: ObjectStatus;
+  operating_hours: string | null;
+  service_times: string | null;
+  address: CustomerPortalAddress | null;
+}
+
+export interface CustomerPortalMe {
+  contact: CustomerPortalContact;
+  customer: CustomerPortalCustomer;
+  objects: CustomerPortalObject[];
+}
+
+export interface CustomerPortalInvoiceLine {
+  position: number;
+  description: string;
+  quantity: string;
+  unit: string;
+  unit_price: string;
+  tax_rate: string;
+  net_amount: string;
+  tax_amount: string;
+  gross_amount: string;
+}
+
+export interface CustomerPortalInvoice {
+  id: string;
+  invoice_number: string;
+  kind: "invoice" | "correction" | "cancellation";
+  payment_status: "open" | "partial" | "paid";
+  currency: string;
+  issued_on: string;
+  due_on: string;
+  net_amount: string;
+  tax_amount: string;
+  gross_amount: string;
+  lines: CustomerPortalInvoiceLine[];
+}
+
+export interface CustomerPortalDocument {
+  grant_id: string;
+  document_id: string;
+  version_id: string;
+  document_number: string;
+  title: string;
+  category: string;
+  version: number;
+  file_name: string;
+  media_type: string;
+  size_bytes: number;
+  granted_at: string;
+}
+
+export interface CustomerPortalLink {
+  id: string;
+  user_id: string;
+  contact_id: string;
+  created_at: string;
+  is_active: boolean;
+}
+
+export interface CustomerPortalManagementOptions {
+  users: { id: string; username: string; full_name: string }[];
+  contacts: {
+    id: string;
+    customer_id: string;
+    customer_name: string;
+    first_name: string;
+    last_name: string;
+  }[];
+}
+
+export interface CustomerPortalLinkHistory {
+  user_id: string;
+  contact_id: string;
+  actor_id: string | null;
+  action: "linked" | "unlinked" | "activated" | "deactivated";
+  created_at: string;
+}
+
+export interface CustomerPortalAccessEvent {
+  actor_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  created_at: string;
+}
+
+export interface CustomerPortalDocumentCandidate {
+  document_id: string;
+  version_id: string;
+  customer_id: string;
+  customer_name: string;
+  object_id: string | null;
+  document_number: string;
+  title: string;
+  version: number;
+  file_name: string;
+}
+
+export interface CustomerPortalDocumentGrant {
+  id: string;
+  document_id: string;
+  version_id: string;
+  customer_id: string;
+  granted_by_id: string | null;
+  granted_at: string;
+  revoked_by_id: string | null;
+  revoked_at: string | null;
+}
+
+export interface CustomerPortalRequestMessage {
+  id: string;
+  author_id: string | null;
+  body: string;
+  created_at: string;
+}
+
+export interface CustomerPortalRequestAttachment {
+  id: string;
+  file_name: string;
+  media_type: string;
+  size_bytes: number;
+  uploaded_by_id: string | null;
+  created_at: string;
+}
+
+export interface CustomerPortalRequestHistory {
+  actor_id: string | null;
+  action: string;
+  old_status: string | null;
+  new_status: string | null;
+  created_at: string;
+}
+
+export interface CustomerPortalRequest {
+  id: string;
+  category: "request" | "question" | "complaint";
+  object_id: string;
+  object_name: string;
+  customer_name: string;
+  title: string;
+  status: "submitted" | "in_progress" | "waiting_customer" | "resolved" | "closed";
+  created_at: string;
+  updated_at: string;
+  messages: CustomerPortalRequestMessage[];
+  attachments: CustomerPortalRequestAttachment[];
+  history: CustomerPortalRequestHistory[];
+}
+
 export interface TaskItem {
   id: string;
   title: string;

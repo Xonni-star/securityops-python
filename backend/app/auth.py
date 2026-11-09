@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import Role, User, UserSession
+from app.models import CustomerPortalLink, Role, User, UserSession
 
 SESSION_COOKIE = "securityops_session"
 CSRF_COOKIE = "securityops_csrf"
@@ -29,13 +29,29 @@ def as_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
+def is_customer_portal_restricted(db: Session, user: User) -> bool:
+    if any(role.code == "customer_portal" for role in user.roles):
+        return True
+    return (
+        db.scalar(
+            select(CustomerPortalLink.id).where(CustomerPortalLink.user_id == user.id).limit(1)
+        )
+        is not None
+    )
+
+
 @dataclass
 class AuthPrincipal:
     user: User
     session: UserSession
+    customer_portal_restricted: bool = False
 
     @property
     def permission_codes(self) -> set[str]:
+        if self.customer_portal_restricted or any(
+            role.code == "customer_portal" for role in self.user.roles
+        ):
+            return {"customer_portal.access"}
         return {permission.code for role in self.user.roles for permission in role.permissions}
 
     @property
@@ -105,7 +121,11 @@ def get_auth_principal(
         as_utc(session.absolute_expires_at),
     )
     db.commit()
-    return AuthPrincipal(user=session.user, session=session)
+    return AuthPrincipal(
+        user=session.user,
+        session=session,
+        customer_portal_restricted=is_customer_portal_restricted(db, session.user),
+    )
 
 
 def require_permission(permission_code: str):

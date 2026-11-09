@@ -10,6 +10,40 @@ Außer `/health/live`, `/health/ready` und `/api/v1/auth/login` sind Endpunkte s
 
 `GET /api/v1/...`-Antworten sind JSON, sofern unten nicht CSV/Datei steht. `[]` bedeutet JSON-Array, `Page` paginierte Antwort. Body-Namen verweisen auf Pydantic-Schemas in `backend/app/schemas.py`; Upload nutzt multipart/form-data. Erfolgsstatus und Response-Schema folgen dem OpenAPI-Output. Parameter in der Spalte **Eingabe** sind zusätzliche Queryparameter und JSON-/Multipart-Bodys; Pfad-IDs stehen im jeweiligen Pfad.
 
+## Kundenportal (PR #42)
+
+Die folgenden Routen sind die Portal-Erweiterung dieses PRs; das darüber dokumentierte API-Inventar bleibt eine historische Momentaufnahme von `main`. Kundenendpunkte verwenden ausschließlich das serverseitig verknüpfte aktive Portal-Konto und den damit verbundenen Kontakt/Kunden. Ein vom Client übermittelter Kunden- oder Kontaktbezug begründet keinen Zugriff. Kundenkonten erhalten keine allgemeinen Kunden-, Dokument-, Vorfall- oder Personalrechte. Schreibende Requests benötigen Sitzung und CSRF-Token.
+
+| Methode und Route | Recht / Bereich | Eingabe | Erfolg / Response |
+|---|---|---|---|
+| `GET /api/v1/customer-portal/me` | `customer_portal.access`; eigener verknüpfter Kontakt, Kunde und nicht archivierte Kundenobjekte | – | `200 CustomerPortalMeRead` |
+| `GET /api/v1/customer-portal/invoices` | `customer_portal.access`; ausschließlich freigegebene Rechnungen des verknüpften Kunden | – | `200 CustomerPortalInvoiceRead[]` |
+| `GET /api/v1/customer-portal/invoices/{invoice_id}/pdf` | `customer_portal.access`; ausschließlich freigegebene Rechnung des verknüpften Kunden | Pfad `invoice_id` | `200 application/pdf` |
+| `GET /api/v1/customer-portal/documents` | `customer_portal.access`; explizit freigegebene aktuelle Versionen, begrenzt auf den verknüpften Kunden | – | `200 CustomerPortalDocumentRead[]` |
+| `GET /api/v1/customer-portal/documents/{grant_id}/download` | `customer_portal.access`; aktive Freigabe und Kunden-/Objektzugehörigkeit werden serverseitig geprüft | Pfad `grant_id` | `200` Datei |
+| `GET /api/v1/customer-portal/requests` | `customer_portal.access`; eigene Anfragen des verknüpften Kontakts | – | `200 CustomerPortalRequestRead[]` |
+| `POST /api/v1/customer-portal/requests` | `customer_portal.access`; aktives Objekt desselben Kunden | `CustomerPortalRequestCreate` | `201 CustomerPortalRequestRead` |
+| `GET /api/v1/customer-portal/requests/{request_id}` | `customer_portal.access`; eigene Anfrage | Pfad `request_id` | `200 CustomerPortalRequestRead` inklusive Nachrichten und Verlauf |
+| `POST /api/v1/customer-portal/requests/{request_id}/messages` | `customer_portal.access`; eigene Anfrage | `CustomerPortalRequestMessageCreate` | `201 CustomerPortalRequestMessageRead` |
+| `POST /api/v1/customer-portal/requests/{request_id}/attachments` | `customer_portal.access`; eigene Anfrage; privater Speicher, Typ-/Größenprüfung und fail-closed ClamAV | Multipart `file` | `201 CustomerPortalRequestAttachmentRead` |
+| `GET /api/v1/customer-portal/requests/{request_id}/attachments/{attachment_id}/download` | `customer_portal.access`; eigener Anfrageanhang | Pfad-IDs | `200` Datei |
+| `GET /api/v1/customer-portal/links` | `customers.portal.manage` | – | `200 CustomerPortalLinkRead[]` |
+| `GET /api/v1/customer-portal/management-options` | `customers.portal.manage` | – | `200 CustomerPortalManagementOptions` |
+| `GET /api/v1/customer-portal/link-history` | `customers.portal.manage` | – | `200 CustomerPortalLinkHistoryRead[]` |
+| `GET /api/v1/customer-portal/access-history` | `customers.portal.manage`; notwendige Zugriff-Metadaten, keine Inhalte | – | `200 CustomerPortalAccessEventRead[]` |
+| `POST /api/v1/customer-portal/links` | `customers.portal.manage`; eindeutige aktive Benutzer-/Kontakt-Verknüpfung | `CustomerPortalLinkCreate` | `201 CustomerPortalLinkRead` |
+| `PATCH /api/v1/customer-portal/links/{contact_id}` | `customers.portal.manage`; Verknüpfung aktivieren/deaktivieren | `CustomerPortalLinkStateUpdate` | `200 CustomerPortalLinkRead` |
+| `DELETE /api/v1/customer-portal/links/{contact_id}` | `customers.portal.manage`; Verknüpfung aufheben, Historie bleibt erhalten | Pfad `contact_id` | `204` |
+| `GET /api/v1/customer-portal/document-candidates` | `customer_portal.documents.manage`; geeignete nicht-personenbezogene Dokumente | – | `200 CustomerPortalDocumentCandidateRead[]` |
+| `GET /api/v1/customer-portal/document-grants` | `customer_portal.documents.manage` | Query `document_id` | `200 CustomerPortalDocumentGrantRead[]` |
+| `POST /api/v1/customer-portal/document-grants` | `customer_portal.documents.manage`; explizite Freigabe aktueller geeigneter Version | `CustomerPortalDocumentGrantCreate` | `201 CustomerPortalDocumentGrantRead` |
+| `DELETE /api/v1/customer-portal/document-grants/{grant_id}` | `customer_portal.documents.manage`; Freigabe widerrufen, Historie bleibt erhalten | Pfad `grant_id` | `200 CustomerPortalDocumentGrantRead` |
+| `GET /api/v1/customer-portal/admin/requests` | `customer_portal.requests.manage` | – | `200 CustomerPortalRequestRead[]` |
+| `GET /api/v1/customer-portal/admin/requests/{request_id}` | `customer_portal.requests.manage` | Pfad `request_id` | `200 CustomerPortalRequestRead` |
+| `POST /api/v1/customer-portal/admin/requests/{request_id}/messages` | `customer_portal.requests.manage` | `CustomerPortalRequestMessageCreate` | `201 CustomerPortalRequestMessageRead` |
+| `PATCH /api/v1/customer-portal/admin/requests/{request_id}/status` | `customer_portal.requests.manage`; nur unterstützte Statuswerte, append-only Verlauf | `CustomerPortalRequestStatusUpdate` | `200 CustomerPortalRequestRead` |
+| `GET /api/v1/customer-portal/admin/requests/{request_id}/attachments/{attachment_id}/download` | `customer_portal.requests.manage` | Pfad-IDs | `200` Datei |
+
 ## System und Anmeldung
 
 | Methode und Route | Recht / Bereich | Eingabe | Erfolg / Response | Wesentliche Fehler |

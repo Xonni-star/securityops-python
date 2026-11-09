@@ -31,6 +31,8 @@ import KeyManagement from "./KeyManagement";
 import IncidentManagement from "./IncidentManagement";
 import ControlRoom from "./ControlRoom";
 import EmployeePortal from "./EmployeePortal";
+import CustomerPortal from "./CustomerPortal";
+import CustomerPortalManagement from "./CustomerPortalManagement";
 import type {
   AuthUser,
   Customer,
@@ -89,6 +91,7 @@ type ActiveModule =
   | "notifications"
   | "keys"
   | "incidents"
+  | "customer_portal"
   | "security";
 
 function messageFrom(reason: unknown, fallback: string) {
@@ -182,6 +185,11 @@ export default function App() {
     user?.permissions.includes("notifications.read_own") && canReadTasks,
   );
   const canReadKeys = user?.permissions.includes("keys.read") ?? false;
+  const canManageCustomerPortal = user?.permissions.includes("customers.portal.manage") ?? false;
+  const canManageCustomerPortalRequests =
+    user?.permissions.includes("customer_portal.requests.manage") ?? false;
+  const canManageCustomerPortalDocuments =
+    user?.permissions.includes("customer_portal.documents.manage") ?? false;
   const canManageKeys = user?.permissions.includes("keys.manage") ?? false;
   const canMoveKeys = user?.permissions.includes("keys.move") ?? false;
   const canAccessIncidents = user?.permissions.some((permission) =>
@@ -569,6 +577,10 @@ export default function App() {
     );
   }
 
+  if (user.roles.includes("customer_portal")) {
+    return <CustomerPortal user={user} onSignedOut={clearLocalSession} />;
+  }
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -638,6 +650,9 @@ export default function App() {
         {canAccessIncidents && <button
           className={activeModule === "incidents" ? "module-tab active" : "module-tab"}
           onClick={() => selectModule("incidents")}>Vorfälle & Beschwerden</button>}
+        {canManageCustomerPortal && <button
+          className={activeModule === "customer_portal" ? "module-tab active" : "module-tab"}
+          onClick={() => selectModule("customer_portal")}>Kundenportal</button>}
         <button
           className={activeModule === "security" ? "module-tab active" : "module-tab"}
           onClick={() => selectModule("security")}>Sicherheit</button>
@@ -652,6 +667,11 @@ export default function App() {
         />
         : activeModule === "employee_portal" && isEmployeePortal
         ? <EmployeePortal />
+        : activeModule === "customer_portal" && canManageCustomerPortal
+        ? <CustomerPortalManagement
+          canManageRequests={canManageCustomerPortalRequests}
+          canManageDocuments={canManageCustomerPortalDocuments}
+        />
         : activeModule === "tasks" && (canReadTasks || canCreateTasks)
         ? <TaskManagement user={user} />
         : activeModule === "control_room" && user.permissions.includes("control_room.read")

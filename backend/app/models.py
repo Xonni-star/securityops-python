@@ -481,6 +481,242 @@ class CustomerContact(Base):
     customer: Mapped[Customer] = relationship(back_populates="contacts")
 
 
+class CustomerPortalLink(Base):
+    __tablename__ = "customer_portal_links"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_customer_portal_links_user"),
+        UniqueConstraint("contact_id", name="uq_customer_portal_links_contact"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    contact_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("customer_contacts.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class CustomerPortalLinkHistory(Base):
+    __tablename__ = "customer_portal_link_history"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('linked', 'unlinked', 'activated', 'deactivated')",
+            name="ck_customer_portal_link_action",
+        ),
+        Index("ix_customer_portal_link_history_created", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    contact_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("customer_contacts.id", ondelete="RESTRICT"), nullable=False
+    )
+    actor_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class CustomerPortalDocumentGrant(Base):
+    __tablename__ = "customer_portal_document_grants"
+    __table_args__ = (
+        CheckConstraint(
+            "(revoked_at IS NULL AND revoked_by_id IS NULL) OR "
+            "(revoked_at IS NOT NULL AND revoked_by_id IS NOT NULL)",
+            name="ck_customer_portal_document_grants_revocation",
+        ),
+        Index(
+            "uq_customer_portal_document_grants_active",
+            "document_id",
+            "version_id",
+            "customer_id",
+            unique=True,
+            postgresql_where=text("revoked_at IS NULL"),
+            sqlite_where=text("revoked_at IS NULL"),
+        ),
+        Index("ix_customer_portal_document_grants_customer", "customer_id", "granted_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    document_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("documents.id", ondelete="RESTRICT"), nullable=False
+    )
+    version_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("document_versions.id", ondelete="RESTRICT"), nullable=False
+    )
+    customer_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False
+    )
+    granted_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    revoked_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CustomerPortalDocumentGrantHistory(Base):
+    __tablename__ = "customer_portal_document_grant_history"
+    __table_args__ = (
+        CheckConstraint("action IN ('granted', 'revoked')", name="ck_portal_document_grant_action"),
+        Index("ix_customer_portal_document_grant_history_created", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    grant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("customer_portal_document_grants.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    actor_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class CustomerPortalRequest(Base):
+    __tablename__ = "customer_portal_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('request', 'question', 'complaint')",
+            name="ck_customer_portal_requests_category",
+        ),
+        CheckConstraint(
+            "status IN ('submitted', 'in_progress', 'waiting_customer', 'resolved', 'closed')",
+            name="ck_customer_portal_requests_status",
+        ),
+        CheckConstraint("length(trim(title)) > 0", name="ck_customer_portal_requests_title"),
+        Index("ix_customer_portal_requests_customer_updated", "customer_id", "updated_at"),
+        Index("ix_customer_portal_requests_status_updated", "status", "updated_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    customer_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False
+    )
+    contact_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("customer_contacts.id", ondelete="RESTRICT"), nullable=False
+    )
+    object_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="RESTRICT"), nullable=False
+    )
+    category: Mapped[str] = mapped_column(String(20), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="submitted", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+
+class CustomerPortalRequestMessage(Base):
+    __tablename__ = "customer_portal_request_messages"
+    __table_args__ = (
+        CheckConstraint("length(trim(body)) > 0", name="ck_customer_portal_request_messages_body"),
+        Index(
+            "ix_customer_portal_request_messages_request_created",
+            "request_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    request_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("customer_portal_requests.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    author_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class CustomerPortalRequestAttachment(Base):
+    __tablename__ = "customer_portal_request_attachments"
+    __table_args__ = (
+        CheckConstraint("size_bytes > 0", name="ck_customer_portal_request_attachments_size"),
+        CheckConstraint(
+            "media_type IN ('application/pdf', 'image/png', 'image/jpeg')",
+            name="ck_customer_portal_request_attachments_type",
+        ),
+        Index("ix_customer_portal_request_attachments_request", "request_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    request_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("customer_portal_requests.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    storage_key: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    uploaded_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class CustomerPortalRequestHistory(Base):
+    __tablename__ = "customer_portal_request_history"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('created', 'message_added', 'attachment_added', 'status_changed')",
+            name="ck_customer_portal_request_history_action",
+        ),
+        Index("ix_customer_portal_request_history_request_created", "request_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    request_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("customer_portal_requests.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    actor_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    action: Mapped[str] = mapped_column(String(30), nullable=False)
+    old_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    new_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
 class CustomerHistory(Base):
     __tablename__ = "customer_history"
     __table_args__ = (Index("ix_customer_history_customer_created", "customer_id", "created_at"),)
