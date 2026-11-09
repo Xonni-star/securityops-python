@@ -177,7 +177,6 @@ def provision_roles() -> None:
                     )
                 )
 
-        transfer_application_ownership(connection, ADMIN_ROLE, MIGRATION_ROLE)
         connection.execute(
             sql.SQL("ALTER DATABASE {} OWNER TO {}").format(
                 sql.Identifier(database), sql.Identifier(MIGRATION_ROLE)
@@ -186,6 +185,7 @@ def provision_roles() -> None:
         connection.execute(
             sql.SQL("ALTER SCHEMA public OWNER TO {}").format(sql.Identifier(MIGRATION_ROLE))
         )
+        transfer_application_ownership(connection, ADMIN_ROLE, MIGRATION_ROLE)
         connection.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
         connection.execute(
             sql.SQL("REVOKE ALL ON DATABASE {} FROM {}").format(
