@@ -948,7 +948,7 @@ def test_key_issue_automation_rejects_unregistered_payload_fields(client: TestCl
         assert source is not None and source.last_error == "invalid_payload"
 
 
-def test_key_issue_automation_migration_follows_digital_policies() -> None:
-    migration = import_module("migrations.versions.0039_key_issue_automation")
-    assert migration.revision == "0039_key_issue_automation"
-    assert migration.down_revision == "0038_digital_policies"
+def test_key_issue_automation_migration_follows_billing_corrections() -> None:
+    migration = import_module("migrations.versions.0040_key_issue_automation")
+    assert migration.revision == "0040_key_issue_automation"
+    assert migration.down_revision == "0039_unique_billing_corrections"
