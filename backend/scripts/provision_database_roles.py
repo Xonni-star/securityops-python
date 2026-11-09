@@ -28,6 +28,17 @@ def transfer_application_ownership(
         WHERE namespace.nspname = 'public'
           AND relation.relowner = (SELECT oid FROM pg_roles WHERE rolname = %s)
           AND relation.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
+          AND NOT (
+              relation.relkind = 'S'
+              AND EXISTS (
+                  SELECT 1
+                  FROM pg_depend AS ownership
+                  WHERE ownership.classid = 'pg_class'::regclass
+                    AND ownership.objid = relation.oid
+                    AND ownership.refclassid = 'pg_class'::regclass
+                    AND ownership.deptype IN ('a', 'i')
+              )
+          )
           AND NOT EXISTS (
               SELECT 1
               FROM pg_depend AS dependency
