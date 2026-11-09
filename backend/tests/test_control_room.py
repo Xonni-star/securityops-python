@@ -397,8 +397,14 @@ def test_object_operations_report_aggregates_date_bounded_data_without_narrative
     range_start = datetime.combine(today, datetime.min.time(), tzinfo=UTC)
     range_end = range_start + timedelta(days=1)
     with TestingSessionLocal() as db:
-        employee = db.scalar(select(Employee).where(Employee.user_id == UUID(user_id)))
-        assert employee is not None
+        report_employee = Employee(
+            employee_number="P-REPORT-TEST",
+            full_name="Testkraft Objektbericht",
+            employment_status="active",
+            hired_on=today,
+        )
+        db.add(report_employee)
+        db.flush()
         db.add_all(
             (
                 OWKSEvent(
@@ -440,21 +446,21 @@ def test_object_operations_report_aggregates_date_bounded_data_without_narrative
                     created_at=range_end,
                 ),
                 ScheduleShift(
-                    employee_id=employee.id,
+                    employee_id=report_employee.id,
                     object_id=UUID(object_a_id),
                     starts_at=range_end - timedelta(hours=1),
                     ends_at=range_end + timedelta(hours=1),
                     status="published",
                 ),
                 ScheduleShift(
-                    employee_id=employee.id,
+                    employee_id=report_employee.id,
                     object_id=UUID(object_a_id),
                     starts_at=range_end,
                     ends_at=range_end + timedelta(hours=1),
                     status="published",
                 ),
                 ScheduleShift(
-                    employee_id=employee.id,
+                    employee_id=report_employee.id,
                     object_id=UUID(object_a_id),
                     starts_at=range_start,
                     ends_at=range_start + timedelta(hours=1),
