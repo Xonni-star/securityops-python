@@ -62,6 +62,11 @@ async def validation_error_handler(request, exc: RequestValidationError):
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content={"detail": "Eingaben für den Vorfall sind ungültig."},
         )
+    if request.url.path.startswith(f"{settings.api_prefix}/customer-portal"):
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": "Eingaben für den Kundenportalvorgang sind ungültig."},
+        )
     return await request_validation_exception_handler(request, exc)
 
 

@@ -4,17 +4,22 @@ from conftest import ADMIN_PASSWORD, TestingSessionLocal
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.identity_api import password_hasher
+from app.malware_scanner import MalwareScannerError
 from app.models import (
     AuditLog,
+    CustomerPortalDocumentGrantHistory,
     CustomerPortalLink,
     CustomerPortalLinkHistory,
+    CustomerPortalRequestHistory,
     ObjectAddress,
     ObjectSecurityDetails,
     Role,
     SecurityObject,
     User,
 )
+from app.rate_limit import limiter
 
 PORTAL_PASSWORD = "portal-test-password-2026"
 
@@ -339,6 +344,355 @@ def test_customer_portal_link_management_requires_specific_permission(client: Te
         ).status_code
         == 403
     )
+
+
+def test_customer_portal_link_activation_is_audited_and_revokes_portal_access(
+    client: TestClient,
+):
+    admin_headers = sign_in(client)
+    customer = create_customer(client, admin_headers, "Aktivierungstest")
+    contact = create_contact(client, admin_headers, customer["id"])
+    user_id = create_role_user("portal-activation")
+    link = client.post(
+        "/api/v1/customer-portal/links",
+        headers=admin_headers,
+        json={"user_id": str(user_id), "contact_id": contact["id"]},
+    )
+    assert link.status_code == 201
+    assert link.json()["is_active"] is True
+
+    options = client.get("/api/v1/customer-portal/management-options")
+    assert options.status_code == 200
+    assert any(option["id"] == str(user_id) for option in options.json()["users"])
+    assert any(option["id"] == contact["id"] for option in options.json()["contacts"])
+    assert options.headers["cache-control"] == "private, no-store"
+
+    deactivated = client.patch(
+        f"/api/v1/customer-portal/links/{contact['id']}",
+        headers=admin_headers,
+        json={"is_active": False},
+    )
+    assert deactivated.status_code == 200, deactivated.text
+    assert deactivated.json()["is_active"] is False
+
+    client.post("/api/v1/auth/logout", headers=admin_headers)
+    portal_headers = sign_in(client, "portal-activation", PORTAL_PASSWORD)
+    assert client.get("/api/v1/customer-portal/me").status_code == 403
+    client.post("/api/v1/auth/logout", headers=portal_headers)
+
+    admin_headers = sign_in(client)
+    activated = client.patch(
+        f"/api/v1/customer-portal/links/{contact['id']}",
+        headers=admin_headers,
+        json={"is_active": True},
+    )
+    assert activated.status_code == 200, activated.text
+    assert activated.json()["is_active"] is True
+    history = client.get("/api/v1/customer-portal/link-history")
+    assert history.status_code == 200, history.text
+    assert [
+        item["action"] for item in reversed(history.json()) if item["user_id"] == str(user_id)
+    ] == ["linked", "deactivated", "activated"]
+    assert "customer_name" not in history.text
+    access_history = client.get("/api/v1/customer-portal/access-history")
+    assert access_history.status_code == 200
+    assert {
+        event["action"]
+        for event in access_history.json()
+        if event["entity_type"] == "customer_portal_link"
+    } >= {"customer_portal.linked", "customer_portal.deactivated", "customer_portal.activated"}
+    assert "details" not in access_history.json()[0]
+
+
+def test_customer_document_requires_explicit_active_grant_and_is_scoped(
+    client: TestClient, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(get_settings(), "document_storage_path", tmp_path)
+    admin_headers = sign_in(client)
+    customer = create_customer(client, admin_headers, "Dokumentenfreigabe")
+    contact = create_contact(client, admin_headers, customer["id"])
+    foreign_customer = create_customer(client, admin_headers, "Fremde Dokumentenfreigabe")
+    user_id = create_role_user("portal-document-reader")
+    linked = client.post(
+        "/api/v1/customer-portal/links",
+        headers=admin_headers,
+        json={"user_id": str(user_id), "contact_id": contact["id"]},
+    )
+    assert linked.status_code == 201
+
+    upload = client.post(
+        "/api/v1/documents",
+        headers=admin_headers,
+        data={
+            "document_number": "PORTAL-DOC-1",
+            "title": "Freigegebene Kundenunterlage",
+            "category": "Information",
+            "status": "active",
+            "customer_id": customer["id"],
+        },
+        files={"file": ("information.pdf", b"%PDF-1.7\nsynthetic portal file", "application/pdf")},
+    )
+    foreign_upload = client.post(
+        "/api/v1/documents",
+        headers=admin_headers,
+        data={
+            "document_number": "PORTAL-DOC-2",
+            "title": "Fremde Kundenunterlage",
+            "category": "Information",
+            "status": "active",
+            "customer_id": foreign_customer["id"],
+        },
+        files={"file": ("fremd.pdf", b"%PDF-1.7\nsynthetic foreign file", "application/pdf")},
+    )
+    assert upload.status_code == 201, upload.text
+    assert foreign_upload.status_code == 201, foreign_upload.text
+    version_id = upload.json()["latest_version"]["id"]
+    candidate_ids = {
+        candidate["document_id"]
+        for candidate in client.get(
+            "/api/v1/customer-portal/document-candidates",
+            headers=admin_headers,
+        ).json()
+    }
+    assert upload.json()["id"] in candidate_ids
+    assert foreign_upload.json()["id"] in candidate_ids
+
+    client.post("/api/v1/auth/logout", headers=admin_headers)
+    portal_headers = sign_in(client, "portal-document-reader", PORTAL_PASSWORD)
+    assert client.get("/api/v1/customer-portal/documents").json() == []
+    assert (
+        client.get(f"/api/v1/customer-portal/documents/{upload.json()['id']}/download").status_code
+        == 404
+    )
+    client.post("/api/v1/auth/logout", headers=portal_headers)
+
+    admin_headers = sign_in(client)
+    grant = client.post(
+        "/api/v1/customer-portal/document-grants",
+        headers=admin_headers,
+        json={"document_id": upload.json()["id"], "version_id": version_id},
+    )
+    assert grant.status_code == 201, grant.text
+    foreign_grant = client.post(
+        "/api/v1/customer-portal/document-grants",
+        headers=admin_headers,
+        json={
+            "document_id": foreign_upload.json()["id"],
+            "version_id": foreign_upload.json()["latest_version"]["id"],
+        },
+    )
+    assert foreign_grant.status_code == 201, foreign_grant.text
+    assert (
+        client.post(
+            "/api/v1/customer-portal/document-grants",
+            headers=admin_headers,
+            json={"document_id": upload.json()["id"], "version_id": version_id},
+        ).status_code
+        == 409
+    )
+
+    client.post("/api/v1/auth/logout", headers=admin_headers)
+    portal_headers = sign_in(client, "portal-document-reader", PORTAL_PASSWORD)
+    visible = client.get("/api/v1/customer-portal/documents")
+    assert visible.status_code == 200
+    assert [document["document_id"] for document in visible.json()] == [upload.json()["id"]]
+    downloaded = client.get(f"/api/v1/customer-portal/documents/{grant.json()['id']}/download")
+    assert downloaded.status_code == 200
+    assert downloaded.content == b"%PDF-1.7\nsynthetic portal file"
+    assert downloaded.headers["cache-control"] == "private, no-store"
+    assert (
+        client.get(
+            f"/api/v1/customer-portal/documents/{foreign_grant.json()['id']}/download"
+        ).status_code
+        == 404
+    )
+    assert client.get("/api/v1/documents").status_code == 403
+
+    client.post("/api/v1/auth/logout", headers=portal_headers)
+    admin_headers = sign_in(client)
+    revoked = client.delete(
+        f"/api/v1/customer-portal/document-grants/{grant.json()['id']}",
+        headers=admin_headers,
+    )
+    assert revoked.status_code == 200
+    client.post("/api/v1/auth/logout", headers=admin_headers)
+    limiter.reset()
+    sign_in(client, "portal-document-reader", PORTAL_PASSWORD)
+    assert client.get("/api/v1/customer-portal/documents").json() == []
+    assert (
+        client.get(f"/api/v1/customer-portal/documents/{grant.json()['id']}/download").status_code
+        == 404
+    )
+
+    with TestingSessionLocal() as db:
+        history = db.scalars(
+            select(CustomerPortalDocumentGrantHistory).where(
+                CustomerPortalDocumentGrantHistory.grant_id == UUID(grant.json()["id"])
+            )
+        ).all()
+        assert [event.action for event in history] == ["granted", "revoked"]
+
+
+def test_customer_portal_request_thread_object_scope_admin_status_and_private_upload(
+    client: TestClient, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(get_settings(), "document_storage_path", tmp_path)
+    admin_headers = sign_in(client)
+    customer = create_customer(client, admin_headers, "Anfragetest")
+    contact = create_contact(client, admin_headers, customer["id"])
+    foreign_customer = create_customer(client, admin_headers, "Fremder Anfragetest")
+    with TestingSessionLocal() as db:
+        own_object = SecurityObject(
+            customer_id=UUID(customer["id"]),
+            code="REQ-OWN",
+            name="Eigener Anfrage-Standort",
+            status="active",
+        )
+        foreign_object = SecurityObject(
+            customer_id=UUID(foreign_customer["id"]),
+            code="REQ-FOREIGN",
+            name="Fremder Anfrage-Standort",
+            status="active",
+        )
+        db.add_all([own_object, foreign_object])
+        db.commit()
+        own_object_id = own_object.id
+        foreign_object_id = foreign_object.id
+
+    user_id = create_role_user("portal-requester")
+    link = client.post(
+        "/api/v1/customer-portal/links",
+        headers=admin_headers,
+        json={"user_id": str(user_id), "contact_id": contact["id"]},
+    )
+    assert link.status_code == 201
+    client.post("/api/v1/auth/logout", headers=admin_headers)
+    portal_headers = sign_in(client, "portal-requester", PORTAL_PASSWORD)
+    assert client.get("/api/v1/customer-portal/admin/requests").status_code == 403
+    denied = client.post(
+        "/api/v1/customer-portal/requests",
+        headers=portal_headers,
+        json={
+            "category": "complaint",
+            "object_id": str(foreign_object_id),
+            "title": "Fremdobjekt",
+            "first_message": "Diese Anfrage darf nicht angenommen werden.",
+        },
+    )
+    assert denied.status_code == 404
+
+    created = client.post(
+        "/api/v1/customer-portal/requests",
+        headers=portal_headers,
+        json={
+            "category": "complaint",
+            "object_id": str(own_object_id),
+            "title": "Rückmeldung zum Standort",
+            "first_message": "Bitte prüfen Sie den Zugang zum Haupteingang.",
+        },
+    )
+    assert created.status_code == 201, created.text
+    request_id = created.json()["id"]
+    assert created.json()["status"] == "submitted"
+    assert created.json()["messages"][0]["body"] == "Bitte prüfen Sie den Zugang zum Haupteingang."
+    assert created.json()["history"][0]["action"] == "created"
+
+    def scanner_unavailable(_content: bytes) -> None:
+        raise MalwareScannerError("unavailable")
+
+    with monkeypatch.context() as scanner_patch:
+        scanner_patch.setattr("app.upload_scanning.scan_upload", scanner_unavailable)
+        rejected = client.post(
+            f"/api/v1/customer-portal/requests/{request_id}/attachments",
+            headers=portal_headers,
+            files={
+                "file": ("nicht-gespeichert.pdf", b"%PDF-1.7\nsynthetic file", "application/pdf")
+            },
+        )
+    assert rejected.status_code == 503
+    assert list(tmp_path.iterdir()) == []
+
+    uploaded = client.post(
+        f"/api/v1/customer-portal/requests/{request_id}/attachments",
+        headers=portal_headers,
+        files={
+            "file": ("hinweis.pdf", b"%PDF-1.7\nsynthetic customer attachment", "application/pdf")
+        },
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    attachment_id = uploaded.json()["id"]
+    downloaded = client.get(
+        f"/api/v1/customer-portal/requests/{request_id}/attachments/{attachment_id}/download",
+        headers=portal_headers,
+    )
+    assert downloaded.status_code == 200
+    assert downloaded.content == b"%PDF-1.7\nsynthetic customer attachment"
+    assert downloaded.headers["cache-control"] == "private, no-store"
+    assert (
+        client.get(
+            f"/api/v1/customer-portal/requests/{uuid4()}/attachments/{attachment_id}/download",
+            headers=portal_headers,
+        ).status_code
+        == 404
+    )
+
+    message = client.post(
+        f"/api/v1/customer-portal/requests/{request_id}/messages",
+        headers=portal_headers,
+        json={"body": "Ergänzende Kundenangabe."},
+    )
+    assert message.status_code == 201
+    client.post("/api/v1/auth/logout", headers=portal_headers)
+
+    admin_headers = sign_in(client)
+    managed_list = client.get("/api/v1/customer-portal/admin/requests", headers=admin_headers)
+    assert managed_list.status_code == 200, managed_list.text
+    assert [item["id"] for item in managed_list.json()] == [request_id]
+    admin_reply = client.post(
+        f"/api/v1/customer-portal/admin/requests/{request_id}/messages",
+        headers=admin_headers,
+        json={"body": "Wir prüfen Ihre Meldung."},
+    )
+    assert admin_reply.status_code == 201
+    status_update = client.patch(
+        f"/api/v1/customer-portal/admin/requests/{request_id}/status",
+        headers=admin_headers,
+        json={"status": "in_progress"},
+    )
+    assert status_update.status_code == 200
+    assert status_update.json()["status"] == "in_progress"
+    admin_download = client.get(
+        f"/api/v1/customer-portal/admin/requests/{request_id}/attachments/{attachment_id}/download",
+        headers=admin_headers,
+    )
+    assert admin_download.status_code == 200
+    assert admin_download.content == downloaded.content
+
+    client.post("/api/v1/auth/logout", headers=admin_headers)
+    portal_headers = sign_in(client, "portal-requester", PORTAL_PASSWORD)
+    customer_view = client.get(f"/api/v1/customer-portal/requests/{request_id}")
+    assert customer_view.status_code == 200
+    assert [item["body"] for item in customer_view.json()["messages"]] == [
+        "Bitte prüfen Sie den Zugang zum Haupteingang.",
+        "Ergänzende Kundenangabe.",
+        "Wir prüfen Ihre Meldung.",
+    ]
+    assert customer_view.json()["history"][-1]["new_status"] == "in_progress"
+    assert client.get("/api/v1/incidents").status_code == 403
+
+    with TestingSessionLocal() as db:
+        actions = db.scalars(
+            select(CustomerPortalRequestHistory.action)
+            .where(CustomerPortalRequestHistory.request_id == UUID(request_id))
+            .order_by(CustomerPortalRequestHistory.created_at)
+        ).all()
+        assert actions == [
+            "created",
+            "attachment_added",
+            "message_added",
+            "message_added",
+            "status_changed",
+        ]
 
 
 def test_unlinked_customer_portal_role_has_no_portal_or_generic_access(client: TestClient):

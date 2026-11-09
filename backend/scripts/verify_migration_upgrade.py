@@ -13,6 +13,8 @@ from sqlalchemy import URL, create_engine, text
 BASE_REVISION = "0024_notification_outbox_worker"
 INCIDENT_REVISION = "0025_unique_incident_owks_event"
 PORTAL_REVISION = "0026_customer_portal_access"
+DOCUMENT_GRANTS_REVISION = "0027_customer_document_grants"
+CUSTOMER_REQUESTS_REVISION = "0028_customer_portal_requests"
 
 
 def postgres_connection_options() -> dict[str, str | int]:
@@ -32,7 +34,15 @@ def verify_revision_chain() -> None:
         raise RuntimeError(f"{INCIDENT_REVISION} folgt nicht auf {BASE_REVISION}.")
     if portal_revision is None or portal_revision.down_revision != INCIDENT_REVISION:
         raise RuntimeError(f"{PORTAL_REVISION} folgt nicht auf {INCIDENT_REVISION}.")
-    if script.get_heads() != [PORTAL_REVISION]:
+    grants_revision = script.get_revision(DOCUMENT_GRANTS_REVISION)
+    if grants_revision is None or grants_revision.down_revision != PORTAL_REVISION:
+        raise RuntimeError(f"{DOCUMENT_GRANTS_REVISION} folgt nicht auf {PORTAL_REVISION}.")
+    requests_revision = script.get_revision(CUSTOMER_REQUESTS_REVISION)
+    if requests_revision is None or requests_revision.down_revision != DOCUMENT_GRANTS_REVISION:
+        raise RuntimeError(
+            f"{CUSTOMER_REQUESTS_REVISION} folgt nicht auf {DOCUMENT_GRANTS_REVISION}."
+        )
+    if script.get_heads() != [CUSTOMER_REQUESTS_REVISION]:
         raise RuntimeError(f"Unerwartete Alembic-Heads: {script.get_heads()}")
 
 
@@ -92,9 +102,9 @@ def main() -> None:
         with engine.connect() as connection:
             if (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                != PORTAL_REVISION
+                != CUSTOMER_REQUESTS_REVISION
             ):
-                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0026 geendet.")
+                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0028 geendet.")
             if (
                 connection.execute(
                     text("SELECT company_name FROM customers WHERE id = :id"),
@@ -124,6 +134,12 @@ def main() -> None:
             for table_name in (
                 "customer_portal_links",
                 "customer_portal_link_history",
+                "customer_portal_document_grants",
+                "customer_portal_document_grant_history",
+                "customer_portal_requests",
+                "customer_portal_request_messages",
+                "customer_portal_request_attachments",
+                "customer_portal_request_history",
             ):
                 if not connection.execute(
                     text("SELECT to_regclass(:table_name) IS NOT NULL"),
