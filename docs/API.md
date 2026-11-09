@@ -55,6 +55,15 @@ Die aktuelle API ist unter `/api/v1` versioniert. OpenAPI/Swagger ist während d
 | GET/PUT | `/api/v1/objects/{object_id}/assignments` | `objects.assign` und globales Verwaltungsrecht oder Objektzuweisung; PUT + CSRF |
 | GET | `/api/v1/objects/{object_id}/security` | `objects.sensitive.read` und globales Leserecht oder Objektzuweisung |
 | PATCH | `/api/v1/objects/{object_id}/security` | `objects.sensitive.manage` und globales Verwaltungsrecht oder Objektzuweisung + CSRF |
+| GET | `/api/v1/inventory/assets` | `inventory.read`; Suche/Filter/Pagination, zusätzlich auf den Objektbereich begrenzt |
+| POST | `/api/v1/inventory/assets` | `inventory.manage`; Objektbereich beziehungsweise globaler Zugriff für zentrales Inventar + CSRF |
+| PATCH | `/api/v1/inventory/assets/{asset_id}` | `inventory.manage` und Objektzugriff + CSRF |
+| POST | `/api/v1/inventory/assets/{asset_id}/archive` | `inventory.manage` und Objektzugriff + CSRF |
+| POST | `/api/v1/inventory/assets/{asset_id}/events` | `inventory.move` und Objektzugriff; Ausgabe, Rückgabe, Übergabe, Meldungen, Wartung/Reparatur + CSRF |
+| GET | `/api/v1/inventory/assets/{asset_id}/events` | `inventory.read` und Objektzugriff; append-only Ereignishistorie |
+| GET | `/api/v1/inventory/objects` | `inventory.read`; aktive, im eigenen Bereich erreichbare Objekte |
+| GET | `/api/v1/inventory/employees` | `inventory.read`; nur aktuell zugeordnete Mitarbeiter im eigenen Objektbereich |
+| GET | `/api/v1/inventory/eligible-employees` | `inventory.move`; aktive Konten mit passender Objektzuweisung |
 | GET | `/api/v1/employees` | `employees.read`; `q`, `status`, `include_archived`, `sort_by`, `sort_order`, `limit`, `offset` |
 | POST | `/api/v1/employees` | `employees.manage` + CSRF |
 | GET | `/api/v1/employees/{employee_id}` | `employees.read` |
@@ -125,6 +134,8 @@ Die aktuelle API ist unter `/api/v1` versioniert. OpenAPI/Swagger ist während d
 | DELETE | `/api/v1/customer-portal/links/{contact_id}` | `customers.portal.manage`; Verknüpfung lösen, Historie und Audit bleiben erhalten |
 
 Kundenlisten blenden archivierte Datensätze standardmäßig aus. Sie können nach Kundenstatus (`status`) und Vertragsstatus (`contract_status`) filtern. Die Sortierfelder sind `company_name`, `customer_number`, `created_at`, `status` und `contract_status`; die Sortierrichtung ist `asc` oder `desc`. Die Suche berücksichtigt Kunden-, Kontakt-, Anschrift- und Websitedaten.
+
+Inventarwerte, zulässige Vorgänge und Objektbereichsregeln sind in [`INVENTORY.md`](INVENTORY.md) dokumentiert. Physische Einzelschlüssel bleiben im separaten Schlüsselregister; Inventarereignisse sind append-only.
 
 Kunden können Geschäfts- und Rechnungsanschrift, Rechtsform, Website, Vertragsstatus, Umsatzsteuer-ID, Steuernummer und interne Notizen enthalten. Websites müssen HTTP- oder HTTPS-URLs sein. Vertragsstatuswerte: `none` (kein Vertrag), `draft` (in Vorbereitung), `active` (aktiv), `expired` (abgelaufen), `terminated` (beendet). Ansprechpartner werden separat verwaltet; pro Kunde kann höchstens einer als primär markiert sein. Kunden werden archiviert statt physisch gelöscht. Historieneinträge speichern Ereignis, Akteur, Zeitpunkt und geänderte Feldnamen; das Audit-Protokoll hält dieselben geänderten Bereiche fest, aber keine vorherigen/neuen Feldwerte.
 
