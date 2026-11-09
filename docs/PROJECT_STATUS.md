@@ -1,6 +1,6 @@
 # SecurityOps – Projektstatus
 
-**Geprüft:** 09.11.2026 · **`main`:** `463ddba0fa1173d5c8a068362cd2f6af96018820` (Commit vom 09.11.2026, 12:47 Uhr +01:00) · **Alembic-Head:** `0030_inventory_management`
+**Geprüft:** 09.11.2026, 15:19 Uhr +01:00 · **`main`:** `463ddba0fa1173d5c8a068362cd2f6af96018820` (Commit vom 09.11.2026, 12:47 Uhr +01:00) · **Alembic-Head:** `0030_inventory_management`
 
 Diese Momentaufnahme wurde mit dem aktuellen `main`-Quellcode und der Live-Abfrage von GitHub abgeglichen. Implementierung, erfolgreiche CI, fachliche Abnahme und produktiver Betrieb sind getrennte Nachweise. Ein Merge oder grüner CI-Lauf belegt für sich weder fachliche, rechtliche oder steuerliche Abnahme noch einen produktiven Rollout.
 
@@ -24,7 +24,7 @@ Diese Momentaufnahme wurde mit dem aktuellen `main`-Quellcode und der Live-Abfra
 
 `docker-compose.yml` enthält PostgreSQL, Redis, ClamAV, API, Frontend, separaten Worker sowie profilgebundene Rollen-Provisionierung und Release-Migration. Das Frontend wird als statische Dateien durch Nginx ausgeliefert; API und Frontend sind am Host-Loopback gebunden. Die API erzwingt im Produktionsmodus Secure-Cookies, Redis für Rate-Limits und eine explizite Proxy-IP-Liste. TLS wird laut Deployment-Dokumentation durch einen separat zu konfigurierenden Reverse Proxy terminiert, nicht durch Compose selbst.
 
-Backup-/Restore-Hilfen, PostgreSQL-Integrationsprüfungen und CI-Scans sind im Repository vorhanden. Sie weisen keinen Rollout, keine TLS-/DNS-/Proxy-Konfiguration in einer Zielumgebung, keine produktive Überwachung/Alarmierung und keine regelmäßige Wiederherstellung aus einer realen Betreiber-Sicherung nach. Issue #9 bleibt deshalb offen. Der private Dateispeicher verwendet zufällige Speicher-IDs, Dateisystemrechte und autorisierte Downloads; die Datei-Nutzdaten sind dort derzeit nicht anwendungsseitig verschlüsselt, und Schlüsselrotation ist nicht vorhanden (offen in Issue #56). Für die konkrete Umgebung müssen unter anderem Secret-Verwaltung, Backupziel/Aufbewahrung, Restoreübungen, Monitoring, Incident-Abläufe sowie Datenschutz- und Aufbewahrungsvorgaben eingerichtet und belegt werden. Eine Produktionsfreigabe wird nicht behauptet.
+Backup-/Restore-Hilfen, PostgreSQL-Integrationsprüfungen und CI-Scans sind im Repository vorhanden. Sie weisen keinen Rollout, keine TLS-/DNS-/Proxy-Konfiguration in einer Zielumgebung, keine produktive Überwachung/Alarmierung und keine regelmäßige Wiederherstellung aus einer realen Betreiber-Sicherung nach. Issue #9 bleibt deshalb offen. PR #58 schlägt Worker-/Outbox-Monitoring vor, ist aber ein Draft und nicht Bestandteil von `main` oder ein Nachweis für produktiven Betrieb. Der private Dateispeicher verwendet zufällige Speicher-IDs, Dateisystemrechte und autorisierte Downloads; die Datei-Nutzdaten sind dort derzeit nicht anwendungsseitig verschlüsselt, und Schlüsselrotation ist nicht vorhanden (offen in Issue #56). PR #57 schlägt Verschlüsselung und einen expliziten Rekey-Prozess vor, ist offen und auf PR #55 gestapelt; seine grünen CI-Checks sind kein Nachweis einer Implementierung in `main` oder einer produktiven Migration. Für die konkrete Umgebung müssen unter anderem Secret-Verwaltung, Backupziel/Aufbewahrung, Restoreübungen, Monitoring, Incident-Abläufe sowie Datenschutz- und Aufbewahrungsvorgaben eingerichtet und belegt werden. Eine Produktionsfreigabe wird nicht behauptet.
 
 ## GitHub-Status
 
@@ -49,27 +49,29 @@ Die bei diesen Merge-PRs angezeigten CI-Prüfungen waren erfolgreich (Backend/Po
 |---|---|---|
 | [#54](https://github.com/Xonni-star/securityops-python/pull/54) | Offen, Basis `main` | Sichere Automatisierungsregeln für Aufgaben, Migration `0031`; beschränkt auf vorhandene Auslöser `task.assigned`/`task.status_changed`, validierte Aufgabenstatus-Bedingung und In-App-Benachrichtigung. Die acht angezeigten PR-CI-Checks sind erfolgreich. Ein Security-Review fand laut PR-Status keine Findings. |
 | [#55](https://github.com/Xonni-star/securityops-python/pull/55) | Offen, Basis `macrave-dee-sichere-automatisierungen` (PR #54) | Mitarbeiterportal-Folgearbeit: Rücknahme eigener offener Abwesenheits-/Verfügbarkeitsanträge und ausdrückliche Freigabe von Qualifikationsdateien. Allgemeine Personal-/Vertragsdokumente und Stammdatenänderungsanträge sind laut PR-Beschreibung ausgeschlossen. Die acht angezeigten PR-CI-Checks sind erfolgreich. |
+| [#57](https://github.com/Xonni-star/securityops-python/pull/57) | Offen, Basis `dermaster1-mitarbeiterportal-vervollstaendigen` (PR #55), Head `0178d64` | Private Dateiverschlüsselung und Schlüsselrotation, Migration `0033`; vorgeschlagene AES-256-GCM-Verschlüsselung, externer Schlüsselring, expliziter wiederaufnehmbarer Rekey-Befehl. Die acht angezeigten PR-CI-Checks sind erfolgreich. Kein Merge oder produktiver Rekey. |
+| [#58](https://github.com/Xonni-star/securityops-python/pull/58) | **Draft**, offen, Basis `main` | Worker-/Outbox-Monitoring: Heartbeat, berechtigte Monitoring-API und datensparsame Queue-/Dead-Letter-Kennzahlen, Migration `0031_worker_monitoring`. Die acht angezeigten PR-CI-Checks sind erfolgreich. Draft-Vorschlag, nicht Bestandteil von `main`; Issue #9 bleibt offen. |
 
-Beide PRs sind Vorschläge auf offenen Branches. Ihre Implementierung und grünen CI-Prüfungen ändern den `main`-Bestand nicht, solange kein Merge erfolgt. PR #55 ist gestapelt und setzt den in PR #54 vorgeschlagenen Branch voraus.
+Alle vier PRs sind Vorschläge auf offenen Branches. Ihre Implementierung und grünen CI-Prüfungen ändern den `main`-Bestand nicht, solange kein Merge erfolgt. #55 baut auf #54 auf; #57 baut auf #55 auf. #58 ist ein eigenständiger Draft gegen `main`.
 
 ### Issues
 
 | Issue | Live-Status | Einordnung |
 |---|---|---|
 | [#7](https://github.com/Xonni-star/securityops-python/issues/7) | Offen | Rechnungswesen ist implementiert; Tarif-, Rundungs-, Steuer- und Buchhaltungsregeln benötigen fachliche Entscheidungen und Abnahme. |
-| [#9](https://github.com/Xonni-star/securityops-python/issues/9) | Offen | Betreiberabnahme, Zielumgebung und realer Datenbank-/Datei-Restore sind nicht nachgewiesen. |
+| [#9](https://github.com/Xonni-star/securityops-python/issues/9) | Offen | Betreiberabnahme, Zielumgebung und realer Datenbank-/Datei-Restore sind nicht nachgewiesen. PR #58 schlägt Worker-/Outbox-Monitoring vor, ist Draft und belegt keinen produktiven Betrieb. |
 | [#10](https://github.com/Xonni-star/securityops-python/issues/10) | Geschlossen am 09.11.2026 | GitHub-Kommentar bestätigt die integrierten Planungs-/Vertretungsfunktionen und Issue-Akzeptanzkriterien. Das ist keine Aussage zur gesetzlichen Ruhezeitkonformität. |
 | [#45](https://github.com/Xonni-star/securityops-python/issues/45) | Geschlossen am 09.11.2026 | Audit-/Datenbankrollenanforderungen wurden mit PR #47 integriert. |
 | [#48](https://github.com/Xonni-star/securityops-python/issues/48) | Geschlossen am 09.11.2026 | Inventaranforderungen wurden mit PR #50 integriert. |
 | [#51](https://github.com/Xonni-star/securityops-python/issues/51) | Offen | PR #54 schlägt einen begrenzten Aufgabenregel-Umfang vor; Issue bleibt offen, bis die Implementierung integriert und der Gesamtumfang abgeglichen ist. |
 | [#52](https://github.com/Xonni-star/securityops-python/issues/52) | Offen | PR #55 schlägt Antragsrücknahme und Freigabe von Qualifikationsdateien vor; die Folgearbeit ist offen und nicht Bestandteil von `main`. |
-| [#56](https://github.com/Xonni-star/securityops-python/issues/56) | Offen · sehr hohe Priorität | Private Dateinutzdaten sind nicht anwendungsseitig verschlüsselt; Verschlüsselung des gemeinsamen Speichers, explizite Bestandsmigration und Schlüsselrotation sind offen. Die Umsetzung läuft separat gestapelt auf dem Mitarbeiterportal-Branch und ist nicht Bestandteil von `main` oder PR #53. |
+| [#56](https://github.com/Xonni-star/securityops-python/issues/56) | Offen · sehr hohe Priorität | Private Dateinutzdaten sind in `main` nicht anwendungsseitig verschlüsselt; Bestandsmigration und Schlüsselrotation sind offen. PR #57 schlägt die Umsetzung vor, ist offen, hat grüne CI und ist auf PR #55 gestapelt. Keine der PR-Änderungen ist Bestandteil von `main`; kein produktiver Rekey ist nachgewiesen. |
 
 Die Issues #2–#6 und #8 sind ebenfalls geschlossen. Geschlossene Issues und gemergte PRs werden nicht als offene Arbeit oder als außerhalb von `main` dargestellt. Offene Issues beschreiben verbleibende fachliche beziehungsweise betriebliche Arbeit, nicht zwingend fehlende Grundfunktionen.
 
 ## CI, Abnahme und produktiver Nachweis
 
-Der Code enthält Backend- und Frontendtests sowie CI für Lint/Format, PostgreSQL-Migrationen und -Integration, Frontend-Build/-Tests, Container, Sicherheitsanalyse und einen isolierten Backup-/Restorelauf. Für die offenen Vorschläge #54 und #55 waren die jeweils angezeigten acht PR-CI-Checks erfolgreich; PR #54 hat laut Review-Status keine Findings. Dies sind Nachweise für die jeweiligen PR-Heads, nicht für `main` oder eine fachliche/produktive Abnahme. Diese Projektstatusdatei nennt bewusst keine aggregierten Testzahlen; sie wurden für diesen Snapshot nicht neu erhoben.
+Der Code enthält Backend- und Frontendtests sowie CI für Lint/Format, PostgreSQL-Migrationen und -Integration, Frontend-Build/-Tests, Container, Sicherheitsanalyse und einen isolierten Backup-/Restorelauf. Für die offenen Vorschläge #54, #55, #57 und Draft #58 waren die jeweils angezeigten acht PR-CI-Checks erfolgreich; PR #54 hat laut Review-Status keine Findings. Dies sind Nachweise für die jeweiligen PR-Heads, nicht für `main`, fachliche Abnahme oder produktive Prüfung. Insbesondere belegen die CI von #57 keine produktive Verschlüsselung/Rotation; die CI von #58 ist kein Nachweis eines eingerichteten Betriebsmonitorings. Diese Projektstatusdatei nennt bewusst keine aggregierten Testzahlen; sie wurden für diesen Snapshot nicht neu erhoben.
 
 | Nachweisart | Status |
 |---|---|
