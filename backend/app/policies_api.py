@@ -676,7 +676,8 @@ def get_policy_history(
 
 def csv_safe(value: object) -> str:
     text = "" if value is None else str(value)
-    return f"'{text}" if text.startswith(("=", "+", "-", "@", "\t", "\r")) else text
+    formula_prefix = text.lstrip().startswith(("=", "+", "-", "@"))
+    return f"'{text}" if formula_prefix or text.startswith(("\t", "\r")) else text
 
 
 @router.get("/policies/{policy_id}/export.csv")

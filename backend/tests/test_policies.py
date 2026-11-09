@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
+import pytest
 from conftest import ADMIN_PASSWORD, TestingSessionLocal
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -15,6 +16,28 @@ from app.models import (
     SecurityObject,
     User,
 )
+from app.policies_api import csv_safe
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (" =1+1", "' =1+1"),
+        ("  +1+1", "'  +1+1"),
+        ("\t -1+1", "'\t -1+1"),
+        ("\r @SUM(A1)", "'\r @SUM(A1)"),
+        ("\t=1+1", "'\t=1+1"),
+        ("\r=1+1", "'\r=1+1"),
+        ("\tMitarbeiter", "'\tMitarbeiter"),
+        ("\rMitarbeiter", "'\rMitarbeiter"),
+        (" Mitarbeiter", " Mitarbeiter"),
+    ],
+)
+def test_csv_safe_preserves_value_and_protects_formula_prefix(
+    value: str,
+    expected: str,
+) -> None:
+    assert csv_safe(value) == expected
 
 
 def sign_in(client: TestClient, username: str, password: str) -> str:
