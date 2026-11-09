@@ -400,7 +400,7 @@ Primärschlüssel sind in der Tabellenübersicht aufgeführt. Die folgenden bena
 | `document_contract_reminder_settings` | Check `ck_doc_contract_reminder_settings_singleton` (`id = 1`) |
 | `document_contract_reminders` | Unique `uq_doc_contract_reminders_dedupe`; Checks `ck_doc_contract_reminders_single_target`, `ck_doc_contract_reminders_type`, `ck_doc_contract_reminders_status`; Index `ix_doc_contract_reminders_due_status` |
 | `billing_rates` | Unique `uq_billing_rates_code`; Checks `ck_billing_rates_unit_price`, `ck_billing_rates_kind`, `ck_billing_rates_tax_rate` |
-| `billing_invoices` | Unique `uq_billing_invoices_number(invoice_number)`, `uq_billing_invoices_idempotency(idempotency_key)`; Checks `ck_billing_invoices_payment_status`, `ck_billing_invoices_currency`, `ck_billing_invoices_kind`, `ck_billing_invoices_dunning_status`, `ck_billing_invoices_status`, `ck_billing_invoices_due_date`, `ck_billing_invoices_correction_link`; Indizes `ix_billing_invoices_status_due`, `ix_billing_invoices_customer_date` |
+| `billing_invoices` | Unique `uq_billing_invoices_number(invoice_number)`, `uq_billing_invoices_idempotency(idempotency_key)`; partieller Unique-Index `uq_billing_invoices_correction_of(correction_of_id)` nur für Folgebelege; Checks `ck_billing_invoices_payment_status`, `ck_billing_invoices_currency`, `ck_billing_invoices_kind`, `ck_billing_invoices_dunning_status`, `ck_billing_invoices_status`, `ck_billing_invoices_due_date`, `ck_billing_invoices_correction_link`; Indizes `ix_billing_invoices_status_due`, `ix_billing_invoices_customer_date` |
 | `billing_invoice_lines` | Unique `uq_billing_invoice_lines_position(invoice_id, position)`; Checks `ck_billing_invoice_lines_tax_rate`, `ck_billing_invoice_lines_position` |
 | `billing_payments` | Unique `uq_billing_payments_idempotency(invoice_id, idempotency_key)`; Check `ck_billing_payments_amount`; Index `ix_billing_payments_invoice_date` |
 | `billing_exports` | Unique `uq_billing_exports_invoice_version(invoice_id, format_version)`, `uq_billing_exports_idempotency(idempotency_key)` |
@@ -601,6 +601,7 @@ erDiagram
 | `0036_billing_approval_automation` | `0035_worker_monitoring` | Erlaubt `billing.invoice_approved` als Automatisierungsauslöser; ergänzt `notifications.invoice_id` mit FK `RESTRICT` und erweitert den Ziel-Check auf genau ein Aufgaben-, Objekt- oder Rechnungsziel. |
 | `0037_object_qual_requirements` | `0036_billing_approval_automation` | Ergänzt eindeutige, normalisierte Qualifikationsanforderungen je Objekt mit RESTRICT-Fremdschlüssel auf `objects`. |
 | `0038_digital_policies` | `0037_object_qual_requirements` | Ergänzt Dienstanweisungs-/Unterweisungsstammdaten, immutable Versionen/Abschlüsse, Mitarbeiterzuweisungen und Nachweise sowie Rechte und Append-only-Trigger. |
+| `0039_unique_billing_corrections` | `0038_digital_policies` | Vorgeschlagen in offenem PR #85: partieller eindeutiger Index auf `billing_invoices.correction_of_id`; bei bereits mehrfach korrigierten Originalen bricht die Migration vor Änderungen ab. |
 
 Die Migration `0033_encrypted_document_storage` wurde mit PR #57 in `main` integriert. Sie ergänzt optionale `storage_key`-Spalten und nullable Legacy-BLOBs für OWKS-/Personalanhänge. Die Migration ändert keine vorhandenen Inhalte; ein expliziter Wartungsbefehl schreibt verschlüsselte Dateien atomar in den privaten Speicher und löscht den BLOB erst zusammen mit dem Datenbankverweis innerhalb einer Transaktion. Der OWKS-Append-only-Trigger erlaubt ausschließlich diesen eng begrenzten Umzug. Downgrade wird abgelehnt, sobald ein Datensatz auf den Dateispeicher verweist. Die Integration belegt keine durchgeführte Betreiber-Bestandsmigration oder Rotation; den aktuellen Issue- und Betriebsstatus dokumentiert [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
@@ -608,7 +609,7 @@ Neue Schemaänderungen benötigen eine neue Alembic-Migration. Ein `Base.metadat
 
 Historischer Hinweis zum ursprünglichen Outbox-PR: PR #39 und die Dokumentationsänderung PR #25 sind gemergt; PR #40 ist ebenfalls gemergt und Bestandteil von `main`. PR #39 fügte `0024_notification_outbox_worker` mit einer Attempt-Tabelle sowie Lock-/Lease-Feldern und einem Index hinzu. Issue #7 bleibt trotz des Billing-Merges offen zur fachlichen Abnahme. `main` reicht inzwischen bis `0038_digital_policies`; der aktuelle Live-PR- und Migrationsstatus steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
-Die aktuelle lineare Kette setzt `0036_billing_approval_automation` mit `0037_object_qual_requirements` und `0038_digital_policies` fort. Revision 0037 ergänzt normalisierte Objekt-Qualifikationsanforderungen; Revision 0038 ergänzt fünf Policy-Tabellen, die Berechtigungen `policies.manage`/`policies.read_own` und Append-only-Trigger.
+Die `main`-Kette setzt `0036_billing_approval_automation` mit `0037_object_qual_requirements` und `0038_digital_policies` fort. Revision 0037 ergänzt normalisierte Objekt-Qualifikationsanforderungen; Revision 0038 ergänzt fünf Policy-Tabellen, die Berechtigungen `policies.manage`/`policies.read_own` und Append-only-Trigger. Der offene PR #85 schlägt als Revision 0039 eine Datenbank-Eindeutigkeitssicherung vor, die pro Originalrechnung höchstens einen Korrektur- oder Stornobeleg zulässt; vor dem Anlegen des Indexes weist die Migration vorhandene Mehrfachbelege zur fachlichen Prüfung zurück.
 
 ## Datenhaltungsgrenzen
 
@@ -747,6 +748,7 @@ Die Basistabellen `customers`/`objects`/`employees` und die vorangehenden Tabell
 | `0036_billing_approval_automation` | `notifications` | Ergänzt nullable `invoice_id` mit FK auf `billing_invoices.id` (`RESTRICT`); der Ziel-Check erlaubt genau eines von `task_id`, `object_id` oder `invoice_id`; `automation_rules.trigger_type` erlaubt `billing.invoice_approved` |
 | `0037_object_qual_requirements` | `object_qualification_requirements` | PK `id`; `object_id` mit FK auf `objects.id` (`RESTRICT`); `name`; eindeutig je Objekt und Name |
 | `0038_digital_policies` | `policy_items`, `policy_versions`, `policy_version_closures`, `policy_assignments`, `policy_receipts` | Versionierte Dienstanweisungen/Unterweisungen, Gültigkeitsabschlüsse, Mitarbeiterzuweisungen und append-only Lese-/Bestätigungsnachweise; Details zu Spalten, Constraints und Fremdschlüsseln stehen in den vorstehenden Katalogen |
+| `0039_unique_billing_corrections` | `billing_invoices` | Partieller Unique-Index `uq_billing_invoices_correction_of(correction_of_id)` auf nicht-NULL Folgebelegverweisen |
 
 ### Ergänzende aktuelle ER-Diagramme
 

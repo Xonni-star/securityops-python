@@ -1,10 +1,14 @@
-from datetime import UTC, datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, date, datetime, timedelta
+from threading import Barrier
 from uuid import UUID
 
-from conftest import ADMIN_PASSWORD, TestingSessionLocal
+import pytest
+from conftest import ADMIN_PASSWORD, TestingSessionLocal, app, test_engine
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from test_time_tracking import setup_tracking
 
 from app.models import (
@@ -202,6 +206,121 @@ def test_invoice_rounding_state_machine_correction_and_export(client: TestClient
                 )
             )
             is not None
+        )
+
+
+@pytest.mark.skipif(
+    test_engine.dialect.name != "postgresql",
+    reason="PostgreSQL-Unique-Index unter parallelen Transaktionen",
+)
+def test_postgresql_prevents_concurrent_duplicate_invoice_corrections(client: TestClient):
+    headers = sign_in(client)
+    original = create_invoice(client, headers)
+    approved = client.post(f"/api/v1/billing/invoices/{original['id']}/approve", headers=headers)
+    assert approved.status_code == 200
+    original_id = UUID(original["id"])
+    barrier = Barrier(2)
+
+    def create_correction(suffix: str) -> str | None:
+        with TestingSessionLocal() as db:
+            assert (
+                db.scalar(
+                    select(BillingInvoice.id).where(BillingInvoice.correction_of_id == original_id)
+                )
+                is None
+            )
+            barrier.wait(timeout=10)
+            db.add(
+                BillingInvoice(
+                    invoice_number=f"R-2026-CONCURRENCY-{suffix}",
+                    idempotency_key=f"billing-concurrent-correction-{suffix}",
+                    customer_id=UUID(original["customer_id"]),
+                    kind="cancellation",
+                    status="draft",
+                    payment_status="open",
+                    dunning_status="none",
+                    currency="EUR",
+                    issued_on=date(2026, 11, 9),
+                    due_on=date(2026, 12, 9),
+                    correction_of_id=original_id,
+                    correction_reason="Synthetischer Parallelitätstest",
+                    customer_snapshot={},
+                    inputs_snapshot={},
+                    net_amount=0,
+                    tax_amount=0,
+                    gross_amount=0,
+                )
+            )
+            try:
+                db.commit()
+            except IntegrityError as exc:
+                db.rollback()
+                assert exc.orig.diag.constraint_name == "uq_billing_invoices_correction_of"
+                return "duplicate"
+            return None
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(create_correction, ("a", "b")))
+
+    assert sorted(outcome or "created" for outcome in outcomes) == ["created", "duplicate"]
+    with TestingSessionLocal() as db:
+        assert (
+            db.scalar(
+                select(func.count())
+                .select_from(BillingInvoice)
+                .where(BillingInvoice.correction_of_id == original_id)
+            )
+            == 1
+        )
+
+
+@pytest.mark.skipif(
+    test_engine.dialect.name != "postgresql",
+    reason="PostgreSQL-parallele Rechnungs-Korrekturanfragen",
+)
+def test_postgresql_concurrent_correction_requests_create_one_followup(client: TestClient):
+    headers = sign_in(client)
+    original = create_invoice(client, headers)
+    approved = client.post(f"/api/v1/billing/invoices/{original['id']}/approve", headers=headers)
+    assert approved.status_code == 200
+    barrier = Barrier(2)
+    session_cookie = client.cookies.get("securityops_session")
+    csrf_cookie = client.cookies.get("securityops_csrf")
+    assert session_cookie and csrf_cookie
+
+    def submit_correction(suffix: str) -> int:
+        with TestClient(app) as concurrent_client:
+            concurrent_client.cookies.set(
+                "securityops_session", session_cookie, domain="testserver.local", path="/"
+            )
+            concurrent_client.cookies.set(
+                "securityops_csrf", csrf_cookie, domain="testserver.local", path="/"
+            )
+            barrier.wait(timeout=10)
+            response = concurrent_client.post(
+                f"/api/v1/billing/invoices/{original['id']}/corrections",
+                headers=headers,
+                json={
+                    "idempotency_key": f"parallel-correction-{suffix}-001",
+                    "reason": "Synthetischer paralleler Anfragetest",
+                    "issued_on": "2026-11-09",
+                    "due_on": "2026-12-09",
+                },
+            )
+            return response.status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        status_codes = list(pool.map(submit_correction, ("a", "b")))
+
+    assert sorted(status_codes) == [201, 409]
+    with TestingSessionLocal() as db:
+        assert (
+            db.scalar(
+                select(func.count())
+                .select_from(BillingInvoice)
+                .where(BillingInvoice.correction_of_id == UUID(original["id"]))
+            )
+            == 1
         )
 
 

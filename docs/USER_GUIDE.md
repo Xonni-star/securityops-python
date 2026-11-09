@@ -66,7 +66,7 @@ Benutzer mit den passenden Rechnungsrechten können Preise mit Art, Einheit, Wä
 
 Ein Entwurf wird separat freigegeben; dabei werden Statuswechsel und Audit transaktional gespeichert. Erst danach sind PDF und versionierter JSON-Export verfügbar. Der Export ist eine nachvollziehbare Schnittstelle, keine bestätigte DATEV- oder sonstige Buchhaltungskonformität. Zahlungen und Mahnstatus werden manuell erfasst; automatische Zahlungserinnerungen gibt es nicht.
 
-Ein freigegebenes Original bleibt unverändert. Dafür kann genau ein Korrektur- oder Stornobeleg als neuer Entwurf angelegt werden; ein weiterer Folgebeleg für dasselbe Original wird abgewiesen, da eine versionierte Korrekturfolge noch nicht umgesetzt ist. Steuerbehandlung, Rundungsregeln, Tarifzuordnung und Buchhaltungsformat benötigen fachliche Festlegung und unabhängige Prüfung. Das Rechnungswesen bestätigt keine steuerliche, buchhalterische oder rechtliche Konformität.
+Ein freigegebenes Original bleibt unverändert. Dafür kann genau ein Korrektur- oder Stornobeleg als neuer Entwurf angelegt werden; ein weiterer Folgebeleg für dasselbe Original wird abgewiesen, da eine versionierte Korrekturfolge noch nicht umgesetzt ist. Ein eindeutiger Datenbankindex sichert diese Begrenzung auch bei parallelen Anfragen ab. Steuerbehandlung, Rundungsregeln, Tarifzuordnung und Buchhaltungsformat benötigen fachliche Festlegung und unabhängige Prüfung. Das Rechnungswesen bestätigt keine steuerliche, buchhalterische oder rechtliche Konformität.
 
 ## Online-Wachbuch und Kontrollgänge
 
