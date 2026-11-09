@@ -333,6 +333,43 @@ def test_incident_attachment_uses_private_scanned_storage_and_checks_scope(
     assert downloaded.status_code == 200
     assert downloaded.content == b"%PDF-synthetischer-test"
     assert downloaded.headers["cache-control"] == "private, no-store"
+
+    with TestingSessionLocal() as db:
+        employee_role = db.scalar(select(Role).where(Role.code == "employee"))
+        assert employee_role is not None
+        incident_sensitive_read = db.scalar(
+            select(Permission).where(Permission.code == "incidents.sensitive.read")
+        )
+        assert incident_sensitive_read is not None
+        unassigned_role = Role(
+            code="incident_attachment_unassigned_reader_role",
+            name="Vorfallsicht ohne Objektzuweisung",
+            description="Testrolle ohne Objektbereich",
+            permissions=[*employee_role.permissions, incident_sensitive_read],
+        )
+        db.add(unassigned_role)
+        db.flush()
+        unassigned_reader = User(
+            username="incident_attachment_unassigned_reader",
+            email="incident-attachment-unassigned@example.com",
+            full_name="Testkonto ohne Objektzuweisung",
+            password_hash=password_hasher.hash("vorfall-test-passwort-2026"),
+            roles=[unassigned_role],
+        )
+        db.add(unassigned_reader)
+        db.commit()
+    unassigned_headers = sign_in(
+        client,
+        "incident_attachment_unassigned_reader",
+        "vorfall-test-passwort-2026",
+    )
+    denied = client.get(
+        f"/api/v1/incidents/{incident_id}/attachments/{attachment_id}/download",
+        headers=unassigned_headers,
+    )
+    assert denied.status_code == 404
+    assert denied.content != b"%PDF-synthetischer-test"
+
     client.cookies.clear()
     assert (
         client.get(
