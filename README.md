@@ -116,11 +116,26 @@ Bei direktem Backend-Start außerhalb von Docker: Python 3.12+, `cd backend`, `p
 
 ```sh
 cd backend
-pip install '.[test]'
+pip install -e '.[test]'
 pytest
 ```
 
 Die lokalen API-Tests verwenden standardmäßig eine isolierte SQLite-Testdatenbank. Die GitHub-CI wendet alle Alembic-Migrationen auf PostgreSQL 17 an, führt die Backendtests gegen PostgreSQL und Redis aus und prüft einen verschlüsselten Backup-/Restore-Zyklus in einer isolierten Datenbank. Das belegt keinen Restore einer Produktionssicherung.
+
+### Browser-E2E
+
+Ein einzelner Playwright-Test prüft die Anmeldung, die Navigation zur Objektliste und den echten API-Zugriff: ohne Sitzung antwortet `GET /api/v1/objects` mit `401`, mit Leserecht wird ein synthetisches Objekt angezeigt und ohne dieses Recht antwortet derselbe Endpunkt mit `403`. Der Test startet FastAPI und Vite lokal mit einer kurzlebigen SQLite-Datenbank, synthetischen Konten und Testdaten; er benötigt weder Migrationen noch produktive Secrets.
+
+```sh
+cd backend
+pip install -e '.[test]'
+cd ../frontend
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
+Diese Prüfung deckt ausschließlich den Login-/Objektzugriffsablauf ab. Sie ersetzt weder die Backend-/Frontend-Suites noch E2E-Prüfungen anderer Geschäftsabläufe und weist keine Abdeckung des Gesamtsystems oder aller 16 Geschäftsprozessschritte nach.
 
 ## Projektstatus und Sicherheit
 
