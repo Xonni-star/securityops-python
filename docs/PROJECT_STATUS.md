@@ -12,10 +12,10 @@ Diese Momentaufnahme wurde mit dem aktuellen `main`-Quellcode und der Live-Abfra
 - **Kunden, Objekte und Personal:** Kunden- und Objektverwaltung, objektbezogene Zugriffsgrenzen, Personalakten, Qualifikationen, Abwesenheiten und nachvollziehbare Zuweisungsverläufe. Personal-Objektzuweisungen berücksichtigen serverseitig den Objektzugriff.
 - **Dienstplanung und Zeiterfassung:** Schichten, Verfügbarkeiten, Anträge und Vertretungen mit serverseitigen Konfliktprüfungen, konfigurierbarer IANA-Zeitzone/Mindestruhezeit und Datenbankabsicherung gegen Überschneidungen. Zeitnachweise, Korrekturen, Freigaben, Zuschlagszeit-Regeln und Periodensperren sind vorhanden. Diese Konfigurationen belegen keine arbeitsrechtliche Konformität; Zuschlags-Geldbeträge werden nicht berechnet.
 - **OWKS, Vorfälle und Schlüssel:** Wachbuch, Kontrollgänge und Anhänge; objektgebundene Vorfälle/Beschwerden mit getrennten Rechten für sensible Inhalte; physische Schlüssel mit protokolliertem Bewegungsverlauf. Statische QR-/NFC-Kennungen belegen keine physische Anwesenheit. Neue relevante Uploads werden fail-closed mit ClamAV geprüft; vorhandene Dateien werden nicht rückwirkend geprüft.
-- **Aufgaben und Worker:** Generischer Aufgaben-Kern mit In-App-Benachrichtigungen über eine transaktionale Outbox. Der separate Worker verarbeitet die Task-Ereignisse mit Claims, Lease/Wiederaufnahme, Retry und Dead-Letter-Historie und führt außerdem den OWKS-Prüfzyklus aus. Er ist kein allgemeines Automatisierungsregelwerk; frei definierbare Regeln/Aktionen, E-Mail/Push und Task-Erinnerungen/Eskalationen sind nicht vorhanden.
+- **Aufgaben und Worker:** Generischer Aufgaben-Kern mit In-App-Benachrichtigungen über eine transaktionale Outbox. Der separate Worker verarbeitet die Task-Ereignisse mit Claims, Lease/Wiederaufnahme, Retry und Dead-Letter-Historie und führt außerdem den OWKS-Prüfzyklus aus. Ein allgemeines, konfigurierbares Automatisierungsregelwerk ist nicht Bestandteil von `main`; PR #54 schlägt derzeit eine beschränkte Aufgabenregel-Verwaltung vor. E-Mail/Push und Task-Erinnerungen/Eskalationen sind nicht in `main` enthalten.
 - **Leitstelle:** Berechtigungsgefilterte Momentaufnahme für erreichbare Objekte; operative Aktionen umfassen die serverseitige Suche und erneute Prüfung von Vertretungskandidaten beim Speichern. Die Ansicht ist kein Echtzeit- oder Alarmierungsdienst.
 - **Kundenportal:** Separat verknüpfte Kundenkontakte können freigegebene Rechnungs-/Dokumentinformationen sowie Vorgänge mit Nachrichten und Anhängen nutzen. Dokumentfreigaben und Zugriffs-/Änderungsverläufe sind im Backend modelliert; kein generischer Zugriff auf interne Dokumente.
-- **Mitarbeiterportal:** Eigene Schichten, Aufgaben, Benachrichtigungen, Qualifikationen, Zeitübersicht sowie Abwesenheits- und Verfügbarkeitsanträge. Eigene offene Anträge können bearbeitet werden. Rücknahme von Anträgen und ein explizites Freigabemodell für persönliche Mitarbeiterdokumente sind nicht implementiert (offen in Issue #52).
+- **Mitarbeiterportal:** Eigene Schichten, Aufgaben, Benachrichtigungen, Qualifikationen, Zeitübersicht sowie Abwesenheits- und Verfügbarkeitsanträge. Eigene offene Anträge können bearbeitet werden. Rücknahme von Anträgen und ein explizites Freigabemodell für persönliche Mitarbeiterdokumente sind nicht Bestandteil von `main`; PR #55 schlägt diese Folgearbeit vor und baut auf PR #54 auf. Issue #52 bleibt offen.
 - **Globale Suche:** Der registrierte Suchendpunkt berücksichtigt die jeweiligen Leserechte und Datenbereiche für Kunden, Objekte, Personal, Dokumente, Verträge, Schichten, Aufgaben, Vorfälle, Schlüssel, Inventar und OWKS-Ereignisse.
 - **Inventar:** Inventargegenstände mit objekt-/personalbezogener Bereichsprüfung, Berechtigungen für Lesen/Verwalten/Bewegungen sowie Ereignishistorie für Ausgabe, Rückgabe, Übergabe, Verlust, Beschädigung, Wartung und weitere Statusänderungen. Inventarereignisse sind in PostgreSQL append-only abgesichert.
 - **Audit und Datenbankrollen:** Migration `0029_audit_integrity` ergänzt eine SHA-256-Hashkette, Append-only-Trigger für Audit-Einträge/Integritätsdaten und ein Prüfskript. Der Provisioner trennt Administrator-, Migrations- und Laufzeitrolle; `securityops_runtime` darf Audit-Einträge lesen/einfügen, aber nicht ändern/löschen, und erhält keinen Zugriff auf die Integritätstabelle. Datenbank-Owner/Superuser können weiterhin privilegierte Änderungen vornehmen; für externe Manipulationserkennung sind getrennt gespeicherte Prüfpunkte und unveränderliche Sicherungen nötig.
@@ -28,7 +28,7 @@ Backup-/Restore-Hilfen, PostgreSQL-Integrationsprüfungen und CI-Scans sind im R
 
 ## GitHub-Status
 
-Live am 09.11.2026 geprüft: Es gibt keine offenen Pull Requests. Die zuletzt relevanten Änderungen sind in `main`:
+Live am 09.11.2026 geprüft: PR #54 und der darauf gestapelte PR #55 sind offen und nicht Bestandteil von `main`. Die zuletzt relevanten integrierten Änderungen sind:
 
 | PR | Live-Status | In `main` integrierter Umfang |
 |---|---|---|
@@ -43,6 +43,15 @@ Live am 09.11.2026 geprüft: Es gibt keine offenen Pull Requests. Die zuletzt re
 
 Die bei diesen Merge-PRs angezeigten CI-Prüfungen waren erfolgreich (Backend/PostgreSQL/Migrationen, Frontend, Container, Restore und Sicherheitsanalyse). CI-Erfolg ist kein fachlicher oder produktiver Nachweis.
 
+### Offene Pull Requests – Vorschläge, nicht Bestandteil von `main`
+
+| PR | Status und Basis | Vorschlag / CI |
+|---|---|---|
+| [#54](https://github.com/Xonni-star/securityops-python/pull/54) | Offen, Basis `main` | Sichere Automatisierungsregeln für Aufgaben, Migration `0031`; beschränkt auf vorhandene Auslöser `task.assigned`/`task.status_changed`, validierte Aufgabenstatus-Bedingung und In-App-Benachrichtigung. Die acht angezeigten PR-CI-Checks sind erfolgreich. Ein Security-Review fand laut PR-Status keine Findings. |
+| [#55](https://github.com/Xonni-star/securityops-python/pull/55) | Offen, Basis `macrave-dee-sichere-automatisierungen` (PR #54) | Mitarbeiterportal-Folgearbeit: Rücknahme eigener offener Abwesenheits-/Verfügbarkeitsanträge und ausdrückliche Freigabe von Qualifikationsdateien. Allgemeine Personal-/Vertragsdokumente und Stammdatenänderungsanträge sind laut PR-Beschreibung ausgeschlossen. Die acht angezeigten PR-CI-Checks sind erfolgreich. |
+
+Beide PRs sind Vorschläge auf offenen Branches. Ihre Implementierung und grünen CI-Prüfungen ändern den `main`-Bestand nicht, solange kein Merge erfolgt. PR #55 ist gestapelt und setzt den in PR #54 vorgeschlagenen Branch voraus.
+
 ### Issues
 
 | Issue | Live-Status | Einordnung |
@@ -52,14 +61,14 @@ Die bei diesen Merge-PRs angezeigten CI-Prüfungen waren erfolgreich (Backend/Po
 | [#10](https://github.com/Xonni-star/securityops-python/issues/10) | Geschlossen am 09.11.2026 | GitHub-Kommentar bestätigt die integrierten Planungs-/Vertretungsfunktionen und Issue-Akzeptanzkriterien. Das ist keine Aussage zur gesetzlichen Ruhezeitkonformität. |
 | [#45](https://github.com/Xonni-star/securityops-python/issues/45) | Geschlossen am 09.11.2026 | Audit-/Datenbankrollenanforderungen wurden mit PR #47 integriert. |
 | [#48](https://github.com/Xonni-star/securityops-python/issues/48) | Geschlossen am 09.11.2026 | Inventaranforderungen wurden mit PR #50 integriert. |
-| [#51](https://github.com/Xonni-star/securityops-python/issues/51) | Offen | Sicheres, regelbasiertes Automatisierungssystem ist noch nicht implementiert; vorhandener Worker ist kein solches Regelwerk. |
-| [#52](https://github.com/Xonni-star/securityops-python/issues/52) | Offen | Rücknahme eigener offener Mitarbeiteranträge und ausdrücklich freigegebene Mitarbeiterdokumente fehlen. |
+| [#51](https://github.com/Xonni-star/securityops-python/issues/51) | Offen | PR #54 schlägt einen begrenzten Aufgabenregel-Umfang vor; Issue bleibt offen, bis die Implementierung integriert und der Gesamtumfang abgeglichen ist. |
+| [#52](https://github.com/Xonni-star/securityops-python/issues/52) | Offen | PR #55 schlägt Antragsrücknahme und Freigabe von Qualifikationsdateien vor; die Folgearbeit ist offen und nicht Bestandteil von `main`. |
 
 Die Issues #2–#6 und #8 sind ebenfalls geschlossen. Geschlossene Issues und gemergte PRs werden nicht als offene Arbeit oder als außerhalb von `main` dargestellt. Offene Issues beschreiben verbleibende fachliche beziehungsweise betriebliche Arbeit, nicht zwingend fehlende Grundfunktionen.
 
 ## CI, Abnahme und produktiver Nachweis
 
-Der Code enthält Backend- und Frontendtests sowie CI für Lint/Format, PostgreSQL-Migrationen und -Integration, Frontend-Build/-Tests, Container, Sicherheitsanalyse und einen isolierten Backup-/Restorelauf. Diese Projektstatusdatei nennt bewusst keine aggregierten Testzahlen; sie wurden für diesen Snapshot nicht neu erhoben.
+Der Code enthält Backend- und Frontendtests sowie CI für Lint/Format, PostgreSQL-Migrationen und -Integration, Frontend-Build/-Tests, Container, Sicherheitsanalyse und einen isolierten Backup-/Restorelauf. Für die offenen Vorschläge #54 und #55 waren die jeweils angezeigten acht PR-CI-Checks erfolgreich; PR #54 hat laut Review-Status keine Findings. Dies sind Nachweise für die jeweiligen PR-Heads, nicht für `main` oder eine fachliche/produktive Abnahme. Diese Projektstatusdatei nennt bewusst keine aggregierten Testzahlen; sie wurden für diesen Snapshot nicht neu erhoben.
 
 | Nachweisart | Status |
 |---|---|

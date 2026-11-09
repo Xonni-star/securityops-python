@@ -11,12 +11,12 @@ Diese Roadmap basiert auf dem geprüften `main`-Stand vom 09.11.2026 (SHA `463dd
 ## P1 – Fachentscheidungen und Portalgrenzen
 
 1. **Issue #7 bleibt offen.** Für das implementierte Rechnungswesen müssen fachlich bestätigte Tarif-, Zuschlags-, Rundungs-, Steuer-, Korrektur- und Buchhaltungsexportregeln festgelegt und anhand der Akzeptanzkriterien geprüft werden. `Decimal`/`NUMERIC`, PDF und Export belegen keine Steuer- oder Buchhaltungskonformität.
-2. **Issue #52 bleibt offen.** Eigene noch offene Mitarbeiteranträge zurücknehmen und persönliche Mitarbeiterdokumente ausdrücklich, widerrufbar und nachvollziehbar für das zugeordnete Konto freigeben. Bis zur Umsetzung gibt es weder Antrag-Rücknahme noch ein Portal-Freigabemodell für Mitarbeiterdokumente; vertrauliche interne Personalunterlagen dürfen nicht generisch sichtbar werden.
+2. **Issue #52 bleibt offen.** PR #55 schlägt die Rücknahme eigener offener Abwesenheits-/Verfügbarkeitsanträge sowie eine explizite, widerrufbare Freigabe von Qualifikationsdateien vor. PR #55 ist offen und auf PR #54 gestapelt, daher ist die Folgearbeit noch nicht Bestandteil von `main`. Laut Beschreibung bleiben allgemeine Personal-/Vertragsdokumente ausgeschlossen; vertrauliche interne Personalunterlagen dürfen nicht generisch sichtbar werden.
 3. Issue #10 ist laut GitHub am 09.11.2026 nach Integration der Planungs-/Vertretungsfunktionen geschlossen. Das bestätigt die Issue-Akzeptanzkriterien, nicht die gesetzliche Konformität konfigurierter Ruhezeiten oder eine externe arbeitsrechtliche Abnahme.
 
 ## P2 – Sichere Automatisierungsregeln
 
-**Issue #51 ist offen.** Der vorhandene Outbox-/Worker-Pfad verarbeitet Task-Zuweisungs-/Statusereignisse und OWKS-Prüfungen, bietet aber weder ein konfigurierbares Regelwerk noch eine Admin-Oberfläche oder frei definierbare Fachaktionen. Eine Umsetzung soll ausschließlich explizit registrierte Trigger und typisierte Bedingungen/Aktionen zulassen, idempotent über Outbox/Worker laufen, Berechtigungen und Ausführungshistorie prüfen und unbeabsichtigte rechtlich/finanziell relevante Statusänderungen verhindern. Keine beliebigen SQL-Ausdrücke, Skripte oder dynamische Codeausführung ergänzen.
+**Issue #51 ist offen.** PR #54 schlägt ein eingeschränktes Regelwerk für die vorhandenen Auslöser `task.assigned` und `task.status_changed` vor, mit typisierter Aufgabenstatus-Bedingung, In-App-Benachrichtigungsaktion, Admin-Oberfläche, Ausführungshistorie und Dead-Letter-Wiederholung. PR #54 ist offen und nicht Bestandteil von `main`; laut aktueller PR-Prüfung sind die CI-Checks erfolgreich und das Security-Review fand keine Findings. Das Issue bleibt offen, bis der vorgeschlagene Umfang integriert und mit den Issue-Akzeptanzkriterien abgeglichen ist. Keine beliebigen SQL-Ausdrücke, Skripte oder dynamische Codeausführung ergänzen.
 
 ## P3 – Betriebsqualität und vollständiger Nachweis
 
@@ -27,7 +27,7 @@ Diese Roadmap basiert auf dem geprüften `main`-Stand vom 09.11.2026 (SHA `463dd
 ## GitHub-Lage am Prüftag
 
 - PRs #40, #42, #43, #44, #46, #47, #49 und #50 sind gemergt und ihre Änderungen sind in `main` enthalten; für diese PRs waren die angezeigten CI-Prüfungen erfolgreich. #50 war auf #47 gestapelt und brachte die letzte Inventarmigration `0030_inventory_management` ein.
-- Es gibt keine offenen Pull Requests. Issues #7, #9, #51 und #52 sind offen. Issue #10 wurde geschlossen; Issues #45 und #48 sind nach Integration der Audit-/Rollen- beziehungsweise Inventarfunktionen geschlossen.
+- Offen sind PR #54 auf `main` und der darauf gestapelte PR #55; ihre Änderungen und CI-Ergebnisse sind nicht Bestandteil von `main`. Für beide PRs waren alle acht angezeigten CI-Checks erfolgreich. Issues #7, #9, #51 und #52 sind offen. Issue #10 wurde geschlossen; Issues #45 und #48 sind nach Integration der Audit-/Rollen- beziehungsweise Inventarfunktionen geschlossen.
 - CI, fachliche Abnahme und produktive Prüfung sind unterschiedliche Nachweise. Insbesondere belegen Merge und CI weder Betreiber-Restore noch Produktionsfreigabe oder Rechts-/Steuerkonformität.
 
 ## Abhängigkeiten und Abschlusskriterien
