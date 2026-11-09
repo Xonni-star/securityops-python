@@ -6,6 +6,7 @@
 |---|---|---|
 | GET | `/health/live` | öffentlich, Prozessstatus |
 | GET | `/health/ready` | öffentlich, Datenbankverbindung und in Produktion Redis |
+| GET | `/api/v1/monitoring/notifications` | `system.monitoring.read` (`administrator`, `operations`); Worker-Heartbeat und datensparsame Outbox-/Dead-Letter-Zählungen |
 | POST | `/api/v1/auth/login` | öffentlich, 5/min je vertrauenswürdiger Client-IP; MFA- oder Wiederherstellungscode falls aktiviert, in Produktion gemeinsam über Redis |
 | GET | `/api/v1/auth/me` | angemeldete Sitzung |
 | POST | `/api/v1/auth/logout` | angemeldet + CSRF |
@@ -144,6 +145,8 @@ Dieses API-Inventar ist eine historische Momentaufnahme vom 09.11.2026 auf Basis
 Außer `/health/live`, `/health/ready` und `/api/v1/auth/login` sind Endpunkte sitzungsgebunden. Schreibende authentifizierte Requests benötigen zusätzlich den CSRF-Cookie und `X-CSRF-Token` mit demselben Tokenwert; die Sitzung enthält nur Token-Hashes. „Scope“ meint eine zusätzliche serverseitige Bereichsprüfung, nicht ein Ersatzrecht. Die Rechtedaten werden aus Rollen im Backend geladen.
 
 **Allgemeine Fehler:** fehlende/ungültige Sitzung `401`; fehlendes Recht oder CSRF-Fehler `403`; fehlende Ressource bzw. bei Scope-Schutz teils absichtlich verborgene Ressource `404`; Status-/Integritätskonflikt häufig `409`; Validierungsfehler `422`. Login-Limit `429`. Health-Readiness bei DB- oder Redis-Ausfall `503`. Uploads können bei Malware-Erkennung `422`, bei Überschreiten des Scannerlimits `413` sowie bei Scanner-/Protokollfehlern, Timeout oder Nichterreichbarkeit `503` liefern; Details: [`UPLOAD_SECURITY.md`](UPLOAD_SECURITY.md). Nicht jede dieser Antworten ist im OpenAPI-Schema als eigene Response modelliert; `HTTPValidationError`/`422` ist dort für viele validierte Parameter und Bodies ausgewiesen.
+
+`GET /api/v1/monitoring/notifications` erfordert eine angemeldete Sitzung und `system.monitoring.read` (Administrator oder Betrieb). Ein fehlender Worker-Heartbeat wird als `unknown`, ein älterer als 90 Sekunden als `stale` gemeldet. Die Antwort enthält ausschließlich Zeitstempel und aggregierte Outbox-Zahlen, keine Payloads, Empfänger, Ereignis-IDs oder Fehlertexte. Der Endpunkt ist für bedarfsgerechte Betriebsabfragen gedacht, nicht für häufiges Polling.
 
 `GET /api/v1/...`-Antworten sind JSON, sofern unten nicht CSV/Datei steht. `[]` bedeutet JSON-Array, `Page` paginierte Antwort. Body-Namen verweisen auf Pydantic-Schemas in `backend/app/schemas.py`; Upload nutzt multipart/form-data. Erfolgsstatus und Response-Schema folgen dem OpenAPI-Output. Parameter in der Spalte **Eingabe** sind zusätzliche Queryparameter und JSON-/Multipart-Bodys; Pfad-IDs stehen im jeweiligen Pfad.
 

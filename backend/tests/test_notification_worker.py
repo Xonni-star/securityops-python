@@ -296,6 +296,7 @@ def test_attempt_history_is_append_only(client) -> None:
 def test_worker_loop_stops_cleanly_after_stop_signal() -> None:
     stop = asyncio.Event()
     cycles = 0
+    heartbeats = 0
 
     def run_cycle():
         nonlocal cycles
@@ -303,6 +304,18 @@ def test_worker_loop_stops_cleanly_after_stop_signal() -> None:
         stop.set()
         return CycleResult()
 
-    asyncio.run(run_worker(stop, run_cycle=run_cycle, poll_interval_seconds=60))
+    def write_heartbeat():
+        nonlocal heartbeats
+        heartbeats += 1
+
+    asyncio.run(
+        run_worker(
+            stop,
+            run_cycle=run_cycle,
+            poll_interval_seconds=60,
+            heartbeat_writer=write_heartbeat,
+        )
+    )
 
     assert cycles == 1
+    assert heartbeats == 1

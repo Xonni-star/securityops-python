@@ -449,6 +449,15 @@ class AutomationRun(Base):
     )
 
 
+class NotificationWorkerHeartbeat(Base):
+    __tablename__ = "notification_worker_heartbeats"
+
+    worker_name: Mapped[str] = mapped_column(String(80), primary_key=True)
+    heartbeat_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
 class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (

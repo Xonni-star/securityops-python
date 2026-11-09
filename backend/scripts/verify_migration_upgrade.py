@@ -1,4 +1,4 @@
-"""Verify the portal migration chain upgrades a database containing existing data."""
+"""Verify the migration chain upgrades a database containing existing data."""
 
 import os
 import subprocess
@@ -24,6 +24,7 @@ AUTOMATION_REVISION = "0031_safe_automations"
 EMPLOYEE_PORTAL_REVISION = "0032_employee_portal"
 DOCUMENT_STORAGE_REVISION = "0033_encrypted_document_storage"
 OWKS_AUTOMATION_REVISION = "0034_owks_automation_events"
+MONITORING_REVISION = "0035_worker_monitoring"
 
 
 def admin_connection_options() -> dict[str, str | int]:
@@ -91,7 +92,10 @@ def verify_revision_chain() -> None:
         raise RuntimeError(
             f"{OWKS_AUTOMATION_REVISION} folgt nicht auf {DOCUMENT_STORAGE_REVISION}."
         )
-    if script.get_heads() != [OWKS_AUTOMATION_REVISION]:
+    monitoring_revision = script.get_revision(MONITORING_REVISION)
+    if monitoring_revision is None or monitoring_revision.down_revision != OWKS_AUTOMATION_REVISION:
+        raise RuntimeError(f"{MONITORING_REVISION} folgt nicht auf {OWKS_AUTOMATION_REVISION}.")
+    if script.get_heads() != [MONITORING_REVISION]:
         raise RuntimeError(f"Unerwartete Alembic-Heads: {script.get_heads()}")
 
 
@@ -200,9 +204,9 @@ def main() -> None:
         with engine.connect() as connection:
             if (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                != OWKS_AUTOMATION_REVISION
+                != MONITORING_REVISION
             ):
-                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0034 geendet.")
+                raise RuntimeError("Die Upgrade-Kette hat nicht beim Monitoring-Head geendet.")
             if (
                 connection.execute(
                     text("SELECT company_name FROM customers WHERE id = :id"),
@@ -268,6 +272,10 @@ def main() -> None:
                     {"table_name": table_name},
                 ).scalar_one():
                     raise RuntimeError(f"Inventartabelle {table_name} fehlt nach dem Upgrade.")
+            if not connection.execute(
+                text("SELECT to_regclass('notification_worker_heartbeats') IS NOT NULL")
+            ).scalar_one():
+                raise RuntimeError("Die Notification-Worker-Heartbeat-Tabelle fehlt.")
             inventory_permissions = connection.execute(
                 text(
                     "SELECT count(*) FROM permissions "
@@ -276,6 +284,20 @@ def main() -> None:
             ).scalar_one()
             if inventory_permissions != 3:
                 raise RuntimeError("Inventarberechtigungen wurden nicht angelegt.")
+            monitoring_roles = (
+                connection.execute(
+                    text(
+                        "SELECT r.code FROM role_permissions rp "
+                        "JOIN roles r ON r.id = rp.role_id "
+                        "JOIN permissions p ON p.id = rp.permission_id "
+                        "WHERE p.code = 'system.monitoring.read' ORDER BY r.code"
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if monitoring_roles != ["administrator", "operations"]:
+                raise RuntimeError("Die Monitoring-Berechtigung ist falschen Rollen zugewiesen.")
             if (
                 connection.execute(
                     text(

@@ -8,7 +8,7 @@ Der Versand von E-Mail oder Push ist nicht konfiguriert: Es gibt keinen vorhande
 
 ## Betrieb
 
-Der Dienst verwendet dasselbe Backend-Image und dieselbe PostgreSQL-Konfiguration wie die API. Er wartet auf den gesunden Datenbankdienst und besitzt einen Datenbank-/Schema-Healthcheck. Nach einer Migration wird er mit `docker compose up -d notification-worker` gestartet; für einen vollständigen Start kann er zusammen mit API und Frontend gestartet werden.
+Der Dienst verwendet dasselbe Backend-Image und dieselbe PostgreSQL-Konfiguration wie die API. Er wartet auf den gesunden Datenbankdienst und besitzt einen Datenbank-/Schema-/Heartbeat-Healthcheck. Nach einer Migration wird er mit `docker compose up -d notification-worker` gestartet; für einen vollständigen Start kann er zusammen mit API und Frontend gestartet werden.
 
 Konfigurierbare Worker-Variablen:
 
@@ -47,6 +47,8 @@ Die Ausgabe enthält keine Outbox-Payload, Titel, Nachrichtenkörper, Empfänger
 ## Sichere Regeln
 
 Regelverwaltung und Ausführungshistorie sind in der API/Oberfläche ausschließlich mit `automations.manage` zugänglich, standardmäßig nur für Administratoren. Es sind nur Aufgaben-Zuweisungs-/Statusereignisse, ein optionaler typisierter Aufgabenstatus und eine In-App-Benachrichtigung an die bestehenden Empfänger verfügbar. Weitere Auslöser/Aktionen und zeitbasierte Aufgabenfristen sind nicht implementiert. Die Historie hat keine automatische Bereinigung; Einzelheiten und Grenzen stehen in [`AUTOMATIONS.md`](AUTOMATIONS.md).
+
+Für autorisierte Betriebsabfragen stellt die API `GET /api/v1/monitoring/notifications` bereit (`system.monitoring.read`, Administrator oder Betrieb). Der Worker schreibt nach erfolgreichem Zyklus höchstens alle 30 Sekunden einen Heartbeat in PostgreSQL; fehlt er oder ist er älter als 90 Sekunden, meldet die API `unknown` beziehungsweise `stale`. Die Antwort enthält Statuszählungen, älteste Pending-/Dead-Letter-Zeitpunkte und verwaiste `processing`-Claims, jedoch keine Payloads, Empfänger oder Ereignis-IDs. Den Endpunkt bedarfsgerecht abfragen; er ist nicht für häufiges Polling vorgesehen. API- und Redis-Readiness bleiben die separaten Prüfungen unter `/health/ready`.
 
 ## Noch nicht enthalten
 
