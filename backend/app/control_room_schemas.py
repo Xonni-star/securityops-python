@@ -95,3 +95,24 @@ class ControlRoomRead(BaseModel):
     absences: list[ControlRoomAbsence] | None = None
     qualifications: list[ControlRoomQualification] | None = None
     billing_approvals: list[ControlRoomBillingApproval] | None = None
+
+
+class ObjectOperationsReportItem(BaseModel):
+    object_id: UUID
+    object_code: str
+    object_name: str
+    published_assigned_shifts: int
+    incidents_created: int
+    control_events: int
+    missed_controls: int
+    task_status_counts: dict[str, int]
+
+
+class ObjectOperationsReportRead(BaseModel):
+    range_start: date
+    range_end: date
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
+    items: list[ObjectOperationsReportItem]

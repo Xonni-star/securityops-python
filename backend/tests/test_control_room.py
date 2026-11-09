@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from uuid import UUID
 
 from conftest import ADMIN_PASSWORD, TestingSessionLocal
 from fastapi.testclient import TestClient
@@ -385,3 +386,207 @@ def test_control_room_applies_date_range_to_events_and_absences(client: TestClie
     assert payload["counts"]["active_shifts"] == 1
     assert payload["counts"]["open_incidents"] == 1
     assert payload["counts"]["open_tasks"] == 1
+
+
+def test_object_operations_report_aggregates_date_bounded_data_without_narratives(
+    client: TestClient,
+) -> None:
+    user_id, object_a_id, object_b_id = setup_control_room_scope()
+    headers = sign_in(client, "control_room_operator", "leitstelle-test-passwort-2026")
+    today = datetime.now(UTC).date()
+    range_start = datetime.combine(today, datetime.min.time(), tzinfo=UTC)
+    range_end = range_start + timedelta(days=1)
+    with TestingSessionLocal() as db:
+        report_employee = Employee(
+            employee_number="P-REPORT-TEST",
+            full_name="Testkraft Objektbericht",
+            employment_status="active",
+            hired_on=today,
+        )
+        db.add(report_employee)
+        db.flush()
+        db.add_all(
+            (
+                OWKSEvent(
+                    object_id=UUID(object_a_id),
+                    event_type="control",
+                    severity="info",
+                    title="Nicht auszugebender Kontrolltext",
+                    occurred_at=range_start,
+                ),
+                OWKSEvent(
+                    object_id=UUID(object_a_id),
+                    event_type="missed",
+                    severity="warning",
+                    title="Ereignis genau am exklusiven Ende",
+                    occurred_at=range_end,
+                ),
+                Incident(
+                    title="Vorfall genau am exklusiven Ende",
+                    report="Dieser Text darf nicht im Bericht stehen.",
+                    incident_type="incident",
+                    severity="high",
+                    object_id=UUID(object_a_id),
+                    status="reported",
+                    assigned_to_id=UUID(user_id),
+                    created_at=range_end,
+                ),
+                Task(
+                    title="Aufgabe an der Startgrenze",
+                    assigned_to_id=UUID(user_id),
+                    object_id=UUID(object_a_id),
+                    status="completed",
+                    created_at=range_start,
+                ),
+                Task(
+                    title="Aufgabe am exklusiven Ende",
+                    assigned_to_id=UUID(user_id),
+                    object_id=UUID(object_a_id),
+                    status="open",
+                    created_at=range_end,
+                ),
+                ScheduleShift(
+                    employee_id=report_employee.id,
+                    object_id=UUID(object_a_id),
+                    starts_at=range_end - timedelta(hours=1),
+                    ends_at=range_end,
+                    status="published",
+                ),
+                ScheduleShift(
+                    employee_id=report_employee.id,
+                    object_id=UUID(object_a_id),
+                    starts_at=range_end,
+                    ends_at=range_end + timedelta(hours=1),
+                    status="published",
+                ),
+                ScheduleShift(
+                    employee_id=report_employee.id,
+                    object_id=UUID(object_a_id),
+                    starts_at=range_start,
+                    ends_at=range_start + timedelta(hours=1),
+                    status="draft",
+                ),
+            )
+        )
+        db.commit()
+
+    response = client.get(
+        "/api/v1/object-operations-report",
+        headers=headers,
+        params={"object_id": object_a_id, "from_date": today, "to_date": today},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["total"] == 1
+    assert len(payload["items"]) == 1
+    item = payload["items"][0]
+    assert item["published_assigned_shifts"] == 2
+    assert item["incidents_created"] == 1
+    assert item["control_events"] == 1
+    assert item["missed_controls"] == 2
+    assert item["task_status_counts"]["open"] == 1
+    assert item["task_status_counts"]["completed"] == 1
+    assert object_b_id not in response.text
+    assert "Nicht auszugebender Kontrolltext" not in response.text
+    assert "Dieser Text darf nicht im Bericht stehen." not in response.text
+    assert user_id not in response.text
+    assert (
+        client.get(
+            "/api/v1/object-operations-report",
+            headers=headers,
+            params={"object_id": object_b_id, "from_date": today, "to_date": today},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            "/api/v1/object-operations-report",
+            headers=headers,
+            params={"from_date": today - timedelta(days=367), "to_date": today},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.get(
+            "/api/v1/object-operations-report",
+            headers=headers,
+            params={"from_date": today, "to_date": today - timedelta(days=1)},
+        ).status_code
+        == 422
+    )
+
+
+def test_object_operations_report_requires_object_read_and_bounds_pages_and_csv(
+    client: TestClient,
+) -> None:
+    _, _object_a_id, object_b_id = setup_control_room_scope()
+    headers = sign_in(client, "control_room_operator", "leitstelle-test-passwort-2026")
+    today = datetime.now(UTC).date()
+    with TestingSessionLocal() as db:
+        role = db.scalar(select(Role).where(Role.code == "object_manager"))
+        assert role is not None
+        object_read_all = db.scalar(select(Permission).where(Permission.code == "objects.read_all"))
+        assert object_read_all is not None
+        role.permissions = [*role.permissions, object_read_all]
+        object_b = db.scalar(select(SecurityObject).where(SecurityObject.id == UUID(object_b_id)))
+        assert object_b is not None
+        object_b.name = "=1+1"
+        db.commit()
+
+    params = {"from_date": today, "to_date": today, "limit": 1}
+    first_page = client.get("/api/v1/object-operations-report", headers=headers, params=params)
+    assert first_page.status_code == 200, first_page.text
+    assert first_page.json()["total"] == 2
+    assert first_page.json()["has_more"] is True
+    second_page = client.get(
+        "/api/v1/object-operations-report",
+        headers=headers,
+        params={**params, "offset": 1},
+    )
+    assert second_page.status_code == 200, second_page.text
+    assert second_page.json()["has_more"] is False
+    assert second_page.json()["items"][0]["object_id"] != first_page.json()["items"][0]["object_id"]
+    assert (
+        client.get(
+            "/api/v1/object-operations-report",
+            headers=headers,
+            params={**params, "limit": 101},
+        ).status_code
+        == 422
+    )
+
+    export = client.get(
+        "/api/v1/object-operations-report.csv",
+        headers=headers,
+        params={**params, "object_id": object_b_id},
+    )
+    assert export.status_code == 200, export.text
+    assert export.headers["content-type"].startswith("text/csv")
+    assert (
+        'attachment; filename="objektbetriebsbericht.csv"' in export.headers["content-disposition"]
+    )
+    assert "Objektnummer;Objekt;" in export.text
+    assert "'=1+1" in export.text
+    assert "Dieser Text darf nicht im Bericht stehen." not in export.text
+
+    with TestingSessionLocal() as db:
+        role = db.scalar(select(Role).where(Role.code == "object_manager"))
+        assert role is not None
+        objects_read = db.scalar(select(Permission).where(Permission.code == "objects.read"))
+        control_room_read = db.scalar(
+            select(Permission).where(Permission.code == "control_room.read")
+        )
+        assert objects_read is not None and control_room_read is not None
+        role.permissions = [control_room_read]
+        db.commit()
+    no_object_read_headers = sign_in(
+        client, "control_room_operator", "leitstelle-test-passwort-2026"
+    )
+    assert (
+        client.get(
+            "/api/v1/object-operations-report",
+            headers=no_object_read_headers,
+            params={"from_date": today, "to_date": today},
+        ).status_code
+        == 403
+    )

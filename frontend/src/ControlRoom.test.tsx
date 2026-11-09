@@ -1,14 +1,26 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ControlRoom from "./ControlRoom";
-import { getControlRoom, getEmployees, getSession } from "./api";
-import type { AuthUser, ControlRoom as ControlRoomData } from "./types";
+import {
+  exportObjectOperationsReport,
+  getControlRoom,
+  getEmployees,
+  getObjectOperationsReport,
+  getSession,
+} from "./api";
+import type {
+  AuthUser,
+  ControlRoom as ControlRoomData,
+  ObjectOperationsReport,
+} from "./types";
 
 vi.mock("./api", () => ({
   getControlRoom: vi.fn(),
   getEmployees: vi.fn(),
+  getObjectOperationsReport: vi.fn(),
+  exportObjectOperationsReport: vi.fn(),
   getSession: vi.fn(),
 }));
 
@@ -61,8 +73,44 @@ const response: ControlRoomData = {
   ],
 };
 
+const objectReport: ObjectOperationsReport = {
+  range_start: "2026-11-09",
+  range_end: "2026-11-09",
+  total: 1,
+  limit: 50,
+  offset: 0,
+  has_more: false,
+  items: [{
+    object_id: "object-1",
+    object_code: "TEST-1",
+    object_name: "Testobjekt",
+    published_assigned_shifts: 2,
+    incidents_created: 1,
+    control_events: 3,
+    missed_controls: 0,
+    task_status_counts: {
+      open: 1,
+      in_progress: 0,
+      blocked: 0,
+      completed: 2,
+      cancelled: 0,
+    },
+  }],
+};
+
 describe("Leitstelle", () => {
   afterEach(cleanup);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getObjectOperationsReport).mockResolvedValue(objectReport);
+    vi.mocked(exportObjectOperationsReport).mockResolvedValue(new Blob(["csv"]));
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:test"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+  });
 
   it("zeigt Momentaufnahme, Statusfilter und lädt erneut mit Objekt- und Zeitfiltern", async () => {
     vi.mocked(getControlRoom).mockResolvedValue(response);
@@ -94,7 +142,7 @@ describe("Leitstelle", () => {
     }));
     vi.mocked(getSession).mockResolvedValue({ user });
     render(<ControlRoom />);
-    expect(screen.getByRole("status").textContent).toContain("werden geladen");
+    expect(screen.getByText("Leitstellendaten werden geladen …")).toBeTruthy();
     rejectRequest(new Error("Leitstelle nicht erreichbar"));
     expect((await screen.findByRole("alert")).textContent).toContain("Leitstelle nicht erreichbar");
     expect(screen.queryByRole("region", { name: "Leitstellenkennzahlen" })).toBeNull();
@@ -144,6 +192,32 @@ describe("Leitstelle", () => {
       sortOrder: "asc",
       limit: 25,
       offset: 0,
+    });
+  });
+
+  it("zeigt aggregierte Objektwerte, filtert sie und exportiert die aktuelle Seite", async () => {
+    vi.mocked(getControlRoom).mockResolvedValue(response);
+    vi.mocked(getSession).mockResolvedValue({ user });
+    render(<ControlRoom />);
+
+    expect(await screen.findByRole("row", { name: /Testobjekt \(TEST-1\).*2.*1.*3/ })).toBeTruthy();
+    expect(screen.getByText(/Eine Besetzungs- oder Ausfallquote/)).toBeTruthy();
+    expect(getObjectOperationsReport).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 50, offset: 0 }),
+    );
+
+    fireEvent.change(screen.getByLabelText("Objekt"), { target: { value: "object-1" } });
+    await waitFor(() => {
+      expect(getObjectOperationsReport).toHaveBeenLastCalledWith(
+        expect.objectContaining({ object_id: "object-1", offset: 0 }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "CSV herunterladen (aktuelle Seite)" }));
+    await waitFor(() => {
+      expect(exportObjectOperationsReport).toHaveBeenCalledWith(
+        expect.objectContaining({ object_id: "object-1", limit: 50, offset: 0 }),
+      );
     });
   });
 });
