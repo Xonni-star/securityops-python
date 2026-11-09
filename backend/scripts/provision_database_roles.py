@@ -17,6 +17,110 @@ def required_secret(name: str) -> str:
     return value
 
 
+def transfer_application_ownership(
+    connection: psycopg.Connection, previous_owner: str, new_owner: str
+) -> None:
+    relations = connection.execute(
+        """
+        SELECT relation.relkind, relation.relname
+        FROM pg_class AS relation
+        JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = 'public'
+          AND relation.relowner = (SELECT oid FROM pg_roles WHERE rolname = %s)
+          AND relation.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM pg_depend AS dependency
+              WHERE dependency.classid = 'pg_class'::regclass
+                AND dependency.objid = relation.oid
+                AND dependency.refclassid = 'pg_extension'::regclass
+                AND dependency.deptype = 'e'
+          )
+        """,
+        (previous_owner,),
+    ).fetchall()
+    relation_commands = {
+        "r": "ALTER TABLE",
+        "p": "ALTER TABLE",
+        "v": "ALTER VIEW",
+        "m": "ALTER MATERIALIZED VIEW",
+        "f": "ALTER FOREIGN TABLE",
+        "S": "ALTER SEQUENCE",
+    }
+    for kind, name in relations:
+        connection.execute(
+            sql.SQL("{} {}.{} OWNER TO {}").format(
+                sql.SQL(relation_commands[kind]),
+                sql.Identifier("public"),
+                sql.Identifier(name),
+                sql.Identifier(new_owner),
+            )
+        )
+
+    types = connection.execute(
+        """
+        SELECT type.typtype, type.typname
+        FROM pg_type AS type
+        JOIN pg_namespace AS namespace ON namespace.oid = type.typnamespace
+        WHERE namespace.nspname = 'public'
+          AND type.typowner = (SELECT oid FROM pg_roles WHERE rolname = %s)
+          AND type.typtype IN ('c', 'd', 'e')
+          AND type.typrelid = 0
+          AND NOT EXISTS (
+              SELECT 1
+              FROM pg_depend AS dependency
+              WHERE dependency.classid = 'pg_type'::regclass
+                AND dependency.objid = type.oid
+                AND dependency.refclassid = 'pg_extension'::regclass
+                AND dependency.deptype = 'e'
+          )
+        """,
+        (previous_owner,),
+    ).fetchall()
+    for kind, name in types:
+        command = "ALTER DOMAIN" if kind == "d" else "ALTER TYPE"
+        connection.execute(
+            sql.SQL("{} {}.{} OWNER TO {}").format(
+                sql.SQL(command),
+                sql.Identifier("public"),
+                sql.Identifier(name),
+                sql.Identifier(new_owner),
+            )
+        )
+
+    functions = connection.execute(
+        """
+        SELECT procedure.prokind, procedure.proname,
+               pg_get_function_identity_arguments(procedure.oid)
+        FROM pg_proc AS procedure
+        JOIN pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+        WHERE namespace.nspname = 'public'
+          AND procedure.proowner = (SELECT oid FROM pg_roles WHERE rolname = %s)
+          AND procedure.prokind IN ('f', 'p')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM pg_depend AS dependency
+              WHERE dependency.classid = 'pg_proc'::regclass
+                AND dependency.objid = procedure.oid
+                AND dependency.refclassid = 'pg_extension'::regclass
+                AND dependency.deptype = 'e'
+          )
+        """,
+        (previous_owner,),
+    ).fetchall()
+    for kind, name, arguments in functions:
+        command = "ALTER PROCEDURE" if kind == "p" else "ALTER FUNCTION"
+        connection.execute(
+            sql.SQL("{} {}.{}({}) OWNER TO {}").format(
+                sql.SQL(command),
+                sql.Identifier("public"),
+                sql.Identifier(name),
+                sql.SQL(arguments),
+                sql.Identifier(new_owner),
+            )
+        )
+
+
 def provision_roles() -> None:
     database = os.environ.get("POSTGRES_DB", "securityops")
     if ADMIN_ROLE in {MIGRATION_ROLE, RUNTIME_ROLE}:
@@ -73,11 +177,7 @@ def provision_roles() -> None:
                     )
                 )
 
-        connection.execute(
-            sql.SQL("REASSIGN OWNED BY {} TO {}").format(
-                sql.Identifier(ADMIN_ROLE), sql.Identifier(MIGRATION_ROLE)
-            )
-        )
+        transfer_application_ownership(connection, ADMIN_ROLE, MIGRATION_ROLE)
         connection.execute(
             sql.SQL("ALTER DATABASE {} OWNER TO {}").format(
                 sql.Identifier(database), sql.Identifier(MIGRATION_ROLE)
