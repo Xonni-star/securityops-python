@@ -13,10 +13,12 @@ import type {
   Employee,
   EmployeeAccountCandidate,
   EmployeeAbsence,
-  EmployeeAbsenceStatus,
+  EmployeeAbsenceManagedStatus,
   EmployeeAbsenceType,
   EmployeePortalAbsence,
   EmployeePortalAvailabilityRequest,
+  EmployeePortalDocument,
+  EmployeePortalDocumentGrant,
   EmployeePortalNotification,
   EmployeePortalProfile,
   EmployeePortalQualification,
@@ -968,7 +970,7 @@ export const createEmployeeAbsence = (
     absence_type: EmployeeAbsenceType;
     starts_on: string;
     ends_on: string;
-    status?: EmployeeAbsenceStatus;
+    status?: EmployeeAbsenceManagedStatus;
   },
 ) =>
   request<EmployeeAbsence>(`/employees/${id}/absences`, {
@@ -979,7 +981,7 @@ export const createEmployeeAbsence = (
 export const updateEmployeeAbsence = (
   employeeId: string,
   absenceId: string,
-  data: { status: EmployeeAbsenceStatus },
+  data: { status: EmployeeAbsenceManagedStatus },
 ) =>
   request<EmployeeAbsence>(`/employees/${employeeId}/absences/${absenceId}`, {
     method: "PATCH",
@@ -1046,6 +1048,49 @@ export const updateEmployeePortalAbsence = (
 
 export const getEmployeePortalAvailabilityRequests = () =>
   request<EmployeePortalAvailabilityRequest[]>("/employee-portal/me/availability-requests");
+
+export const getEmployeePortalDocuments = () =>
+  request<EmployeePortalDocument[]>("/employee-portal/me/documents");
+
+export const employeePortalDocumentUrl = (document: EmployeePortalDocument) =>
+  `/api/v1/employees/${encodeURIComponent(document.employee_id)}` +
+  `/qualifications/${encodeURIComponent(document.qualification_id)}` +
+  `/documents/${encodeURIComponent(document.document_id)}?download=true`;
+
+export const withdrawEmployeePortalAbsence = (absenceId: string) =>
+  request<EmployeePortalAbsence>(
+    `/employee-portal/me/absences/${encodeURIComponent(absenceId)}/withdraw`,
+    { method: "POST" },
+  );
+
+export const withdrawEmployeePortalAvailabilityRequest = (requestId: string) =>
+  request<EmployeePortalAvailabilityRequest>(
+    `/employee-portal/me/availability-requests/${encodeURIComponent(requestId)}/withdraw`,
+    { method: "POST" },
+  );
+
+export const getEmployeePortalDocumentGrants = (employeeId: string) =>
+  request<EmployeePortalDocumentGrant[]>(
+    `/employee-portal/document-grants?employee_id=${encodeURIComponent(employeeId)}`,
+  );
+
+export const grantEmployeePortalDocument = (
+  employeeId: string,
+  qualificationDocumentId: string,
+) =>
+  request<EmployeePortalDocumentGrant>("/employee-portal/document-grants", {
+    method: "POST",
+    body: JSON.stringify({
+      employee_id: employeeId,
+      qualification_document_id: qualificationDocumentId,
+    }),
+  });
+
+export const revokeEmployeePortalDocument = (grantId: string) =>
+  request<EmployeePortalDocumentGrant>(
+    `/employee-portal/document-grants/${encodeURIComponent(grantId)}`,
+    { method: "DELETE" },
+  );
 
 export const createEmployeePortalAvailabilityRequest = (data: {
   kind: ScheduleAvailabilityRequestKind;

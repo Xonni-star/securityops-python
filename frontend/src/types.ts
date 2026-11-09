@@ -253,7 +253,8 @@ export interface ControlRoom {
 
 export type EmployeeStatus = "active" | "inactive" | "leave" | "terminated";
 export type EmployeeAbsenceType = "vacation" | "sick_leave" | "other";
-export type EmployeeAbsenceStatus = "pending" | "approved" | "rejected";
+export type EmployeeAbsenceStatus = "pending" | "approved" | "rejected" | "withdrawn";
+export type EmployeeAbsenceManagedStatus = "pending" | "approved" | "rejected";
 export type ScheduleShiftStatus = "draft" | "published" | "cancelled";
 export type TimeEntryStatus =
   | "open"
@@ -541,7 +542,7 @@ export interface EmployeePortalTimeOverview {
 export type EmployeePortalAbsenceType = EmployeeAbsenceType;
 
 export interface EmployeePortalRequestHistory {
-  event: "requested" | "updated" | "approved" | "accepted" | "rejected";
+  event: "requested" | "updated" | "approved" | "accepted" | "rejected" | "withdrawn";
   occurred_at: string;
 }
 
@@ -567,6 +568,33 @@ export interface EmployeePortalAvailabilityRequest {
   updated_at: string;
   reviewed_at: string | null;
   history: EmployeePortalRequestHistory[];
+}
+
+export interface EmployeePortalDocument {
+  grant_id: string;
+  employee_id: string;
+  qualification_id: string;
+  document_id: string;
+  qualification_name: string;
+  version: number;
+  file_name: string;
+  media_type: "application/pdf" | "image/jpeg" | "image/png";
+  size_bytes: number;
+  granted_at: string;
+}
+
+export interface EmployeePortalDocumentGrant {
+  id: string;
+  employee_id: string;
+  user_id: string;
+  qualification_document_id: string;
+  qualification_name: string;
+  version: number;
+  file_name: string;
+  granted_by_id: string | null;
+  granted_at: string;
+  revoked_by_id: string | null;
+  revoked_at: string | null;
 }
 
 export interface EmployeePage {
@@ -1261,7 +1289,11 @@ export interface EmployeeAvailabilityWindow {
 }
 
 export type ScheduleAvailabilityRequestKind = "preferred" | "blocked";
-export type ScheduleAvailabilityRequestStatus = "open" | "accepted" | "rejected";
+export type ScheduleAvailabilityRequestStatus =
+  | "open"
+  | "accepted"
+  | "rejected"
+  | "withdrawn";
 export type ScheduleReplacementReason =
   | "short_notice"
   | "schedule_change"

@@ -2,8 +2,10 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
   createEmployeePortalAbsence,
   createEmployeePortalAvailabilityRequest,
+  employeePortalDocumentUrl,
   updateEmployeePortalAbsence,
   updateEmployeePortalAvailabilityRequest,
+  getEmployeePortalDocuments,
   getEmployeePortalAbsences,
   getEmployeePortalAvailabilityRequests,
   getEmployeePortalNotifications,
@@ -14,10 +16,13 @@ import {
   getEmployeePortalTasks,
   getEmployeePortalTimeOverview,
   markEmployeePortalNotificationRead,
+  withdrawEmployeePortalAbsence,
+  withdrawEmployeePortalAvailabilityRequest,
 } from "./api";
 import type {
   EmployeePortalAbsence,
   EmployeePortalAvailabilityRequest,
+  EmployeePortalDocument,
   EmployeePortalNotification,
   EmployeePortalProfile,
   EmployeePortalQualification,
@@ -30,6 +35,7 @@ type PortalSection =
   | "shifts"
   | "tasks"
   | "notifications"
+  | "documents"
   | "qualifications"
   | "time"
   | "requests";
@@ -38,6 +44,7 @@ const sectionTitles: Record<PortalSection, string> = {
   shifts: "Meine Dienste",
   tasks: "Meine Aufgaben",
   notifications: "Benachrichtigungen",
+  documents: "Freigegebene Dokumente",
   qualifications: "Qualifikationen",
   time: "Arbeitszeiten",
   requests: "Abwesenheit & Verfügbarkeit",
@@ -62,6 +69,7 @@ const statusNames: Record<string, string> = {
   locked: "Abgeschlossen",
   pending: "Ausstehend",
   accepted: "Angenommen",
+  withdrawn: "Zurückgezogen",
 };
 
 function messageFrom(reason: unknown, fallback: string) {
@@ -110,6 +118,7 @@ function historyEventName(event: string) {
     approved: "Freigegeben",
     accepted: "Angenommen",
     rejected: "Abgelehnt",
+    withdrawn: "Zurückgezogen",
   };
   return names[event] ?? event;
 }
@@ -119,6 +128,7 @@ export default function EmployeePortal() {
   const [shifts, setShifts] = useState<PortalShift[]>([]);
   const [tasks, setTasks] = useState<EmployeePortalTask[]>([]);
   const [notifications, setNotifications] = useState<EmployeePortalNotification[]>([]);
+  const [documents, setDocuments] = useState<EmployeePortalDocument[]>([]);
   const [qualifications, setQualifications] = useState<EmployeePortalQualification[]>([]);
   const [timeOverview, setTimeOverview] = useState<EmployeePortalTimeOverview | null>(null);
   const [absences, setAbsences] = useState<EmployeePortalAbsence[]>([]);
@@ -143,6 +153,7 @@ export default function EmployeePortal() {
         nextShifts,
         nextTasks,
         nextNotifications,
+        nextDocuments,
         nextQualifications,
         nextTimeOverview,
         nextAbsences,
@@ -152,6 +163,7 @@ export default function EmployeePortal() {
         getEmployeePortalShifts(),
         getEmployeePortalTasks(),
         getEmployeePortalNotifications(),
+        getEmployeePortalDocuments(),
         getEmployeePortalQualifications(),
         getEmployeePortalTimeOverview(),
         getEmployeePortalAbsences(),
@@ -161,6 +173,7 @@ export default function EmployeePortal() {
       setShifts(nextShifts);
       setTasks(nextTasks);
       setNotifications(nextNotifications);
+      setDocuments(nextDocuments);
       setQualifications(nextQualifications);
       setTimeOverview(nextTimeOverview);
       setAbsences(nextAbsences);
@@ -290,6 +303,38 @@ export default function EmployeePortal() {
     }
   }
 
+  async function withdrawAbsence(absence: EmployeePortalAbsence) {
+    if (!window.confirm("Möchtest du diesen offenen Abwesenheitsantrag zurückziehen?")) return;
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      await withdrawEmployeePortalAbsence(absence.id);
+      setSuccess("Der Abwesenheitsantrag wurde nachvollziehbar zurückgezogen.");
+      await loadPortal();
+    } catch (reason) {
+      setError(messageFrom(reason, "Der Abwesenheitsantrag konnte nicht zurückgezogen werden."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function withdrawAvailability(item: EmployeePortalAvailabilityRequest) {
+    if (!window.confirm("Möchtest du diesen offenen Verfügbarkeitswunsch zurückziehen?")) return;
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      await withdrawEmployeePortalAvailabilityRequest(item.id);
+      setSuccess("Der Verfügbarkeitswunsch wurde nachvollziehbar zurückgezogen.");
+      await loadPortal();
+    } catch (reason) {
+      setError(messageFrom(reason, "Der Verfügbarkeitswunsch konnte nicht zurückgezogen werden."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="employee-portal">
       <div className="panel-heading employee-portal-heading">
@@ -391,6 +436,35 @@ export default function EmployeePortal() {
                         Als gelesen markieren
                       </button>
                     )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>}
+
+          {section === "documents" && <section className="panel portal-panel">
+            <div className="panel-heading">
+              <div><p className="eyebrow">PERSÖNLICHE DOKUMENTE</p><h2>{sectionTitles.documents}</h2></div>
+              <span className="result-count">{documents.length} Dokumente</span>
+            </div>
+            {documents.length === 0 ? (
+              <p className="empty">Es wurden keine Dokumente ausdrücklich für dein Konto freigegeben.</p>
+            ) : (
+              <ul className="portal-list">
+                {documents.map((document) => (
+                  <li key={document.grant_id}>
+                    <div>
+                      <strong>{document.qualification_name}</strong>
+                      <small>Version {document.version} · {document.file_name}</small>
+                      <small>Freigegeben am {formatDateTime(document.granted_at)} ·
+                        {" "}{Math.ceil(document.size_bytes / 1024)} KiB</small>
+                    </div>
+                    <a
+                      className="text-button"
+                      href={employeePortalDocumentUrl(document)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >Nachweis öffnen</a>
                   </li>
                 ))}
               </ul>
@@ -510,6 +584,8 @@ export default function EmployeePortal() {
                         <button className="text-button" onClick={() =>
                           setEditingAbsence(editingAbsence === absence.id ? null : absence.id)
                         }>Bearbeiten</button>
+                        <button className="text-button danger-text" disabled={busy}
+                          onClick={() => void withdrawAbsence(absence)}>Zurückziehen</button>
                       </div>}
                       {editingAbsence === absence.id && <form
                         className="portal-edit-form"
@@ -558,6 +634,8 @@ export default function EmployeePortal() {
                         <button className="text-button" onClick={() =>
                           setEditingAvailability(editingAvailability === item.id ? null : item.id)
                         }>Bearbeiten</button>
+                        <button className="text-button danger-text" disabled={busy}
+                          onClick={() => void withdrawAvailability(item)}>Zurückziehen</button>
                       </div>}
                       {editingAvailability === item.id && <form
                         className="portal-edit-form"

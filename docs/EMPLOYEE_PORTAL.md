@@ -1,12 +1,14 @@
 # Mitarbeiterportal
 
-Das Mitarbeiterportal stellt angemeldeten Mitarbeitenden eine getrennte Self-Service-Oberfläche unter `/employee-portal/me` bereit. Es verwendet die vorhandenen Personal-, Dienstplan-, Aufgaben-, Benachrichtigungs- und Zeiterfassungsdaten aus Migration-Head `0024_notification_outbox_worker`; eine zusätzliche Tabelle oder Migration ist nicht erforderlich.
+Das Mitarbeiterportal stellt angemeldeten Mitarbeitenden eine getrennte Self-Service-Oberfläche unter `/employee-portal/me` bereit. Diese Dokumentation beschreibt den Erweiterungsstand mit Migration `0032_employee_portal_requests_and_documents`, gestapelt auf `0031_safe_automations`; dieser Stand ist erst nach Merge der zugehörigen Pull Requests Teil von `main`.
 
 ## Zugriff und Datenschutz
 
-Jeder Portal-Endpunkt prüft serverseitig die Rolle `employee` und ermittelt den Datensatz über `Employee.user_id` des angemeldeten Kontos. Der Mitarbeiterdatensatz muss aktiv und nicht archiviert sein. Dienste und Arbeitszeiten sind zusätzlich auf dem Konto zugewiesene Objekte begrenzt. Eine vom Client gelieferte Mitarbeiter-ID wird weder als Scope verwendet noch in den Antragsdaten akzeptiert. Änderungen sind auf Anträge des serverseitig verknüpften Mitarbeitenden begrenzt; Status- und Eigentümerfelder können nicht übermittelt werden. Nicht angemeldete Konten erhalten `401`, Konten ohne Mitarbeiterrolle `403` und Konten ohne aktives verknüpftes Profil `404`.
+Jeder Portal-Endpunkt prüft serverseitig die Rolle `employee` und ermittelt den Datensatz über `Employee.user_id` des angemeldeten Kontos. Das Profil muss aktiv und nicht archiviert sein. Dienste und Arbeitszeiten sind zusätzlich auf das Konto zugewiesene Objekte begrenzt. Eine vom Client gelieferte Mitarbeiter-ID wird bei Anträgen nicht als Scope verwendet. Fremde Antrags- und Dokument-IDs liefern `404`; abgeschlossene Anträge können nicht geändert oder zurückgezogen werden und liefern `409`.
 
-Das Portal erteilt keine Berechtigung für die allgemeinen Personalendpunkte. Antworten enthalten keine Mitarbeiter-ID, Kontakt-/Adressdaten, Personalakte, Gehaltsdaten, Qualifikationsdateien, Objektadressen oder Sicherheitsdetails, Kundeninformationen, Aufgabenkommentare/-historien, interne Aufgabenbeschreibungen, Erledigungsnachweise oder Zeiterfassungs-Korrekturgründe.
+Das Mitarbeiterkonto erhält keine allgemeinen `documents.read`- oder `documents.download`-Berechtigungen. Ein Download über den bestehenden privaten Qualifikationsdatei-Endpunkt ist für ein Mitarbeiterkonto nur erlaubt, wenn Mitarbeiter, Qualifikation, Datei und aktives Konto zusammenpassen und eine nicht widerrufene Freigabe für genau dieses Konto vorliegt. Die Personalverwaltung benötigt für Freigaben weiterhin `employees.documents.manage`. Freigaben sind standardmäßig nicht vorhanden. Das Portal bietet keine Freigabe für allgemeine, untypisierte Personal- oder Vertragsdokumente, weil deren Kategorien keine sichere Klassifizierung erlauben.
+
+Portalantworten enthalten weiterhin keine Kontakt-/Adressdaten, Personalakte, Gehaltsdaten, Objektadressen oder Sicherheitsdetails, Kundeninformationen, Aufgabenkommentare/-historien, interne Aufgabenbeschreibungen, Erledigungsnachweise oder Zeiterfassungs-Korrekturgründe.
 
 ## Funktionen und Endpunkte
 
@@ -22,24 +24,31 @@ Das Portal erteilt keine Berechtigung für die allgemeinen Personalendpunkte. An
 | `GET /api/v1/employee-portal/me/time-entries` | Eigene Zeitübersicht, standardmäßig die 100 neuesten Einträge |
 | `GET /api/v1/employee-portal/me/absences` | Eigene Abwesenheitsanträge und deren Prüfstatus |
 | `POST /api/v1/employee-portal/me/absences` | Abwesenheit beantragen; der Server setzt den Status verbindlich auf `pending` |
-| `PATCH /api/v1/employee-portal/me/absences/{absence_id}` | Eigenen noch offenen Abwesenheitsantrag ändern; fremde IDs liefern `404`, entschiedene Anträge `409` |
+| `PATCH /api/v1/employee-portal/me/absences/{absence_id}` | Eigenen noch offenen Abwesenheitsantrag ändern |
+| `POST /api/v1/employee-portal/me/absences/{absence_id}/withdraw` | Eigenen offenen Abwesenheitsantrag nachvollziehbar zurückziehen |
 | `GET /api/v1/employee-portal/me/availability-requests` | Eigene Verfügbarkeitswünsche und deren Status |
 | `POST /api/v1/employee-portal/me/availability-requests` | Zeitraum als bevorzugt oder nicht verfügbar einreichen; der Server setzt den Status verbindlich auf `open` |
-| `PATCH /api/v1/employee-portal/me/availability-requests/{request_id}` | Eigenen noch offenen Verfügbarkeitsantrag ändern; fremde IDs liefern `404`, entschiedene Anträge `409` |
+| `PATCH /api/v1/employee-portal/me/availability-requests/{request_id}` | Eigenen noch offenen Verfügbarkeitsantrag ändern |
+| `POST /api/v1/employee-portal/me/availability-requests/{request_id}/withdraw` | Eigenen offenen Verfügbarkeitsantrag nachvollziehbar zurückziehen |
+| `GET /api/v1/employee-portal/me/documents` | Nur ausdrücklich freigegebene, nicht widerrufene Qualifikationsdateien des angemeldeten Kontos |
+| `GET /api/v1/employees/{employee_id}/qualifications/{qualification_id}/documents/{document_id}?download=true` | Bestehender privater Datei-Endpunkt; Mitarbeiterzugriff wird zusätzlich gegen die aktive Einzel-Freigabe geprüft und protokolliert |
+| `GET /api/v1/employee-portal/document-grants?employee_id=…` | Freigaben einer Mitarbeiterin oder eines Mitarbeiters für berechtigte Personalverwaltung anzeigen |
+| `POST /api/v1/employee-portal/document-grants` | Aktuelle Qualifikationsdatei ausdrücklich für das verknüpfte aktive Mitarbeiterkonto freigeben |
+| `DELETE /api/v1/employee-portal/document-grants/{grant_id}` | Freigabe widerrufen; Status bleibt erhalten und wird historisiert |
 
-Verfügbarkeitszeiten werden in der für die Dienstplanung konfigurierten IANA-Zeitzone erfasst (im Standard `Europe/Berlin`) und wie im bestehenden Dienstplan auf ungültige DST-Ortszeiten geprüft. Anträge werden dem verknüpften Mitarbeiterkonto zugeordnet und können über das Portal nicht selbst freigegeben werden. Die Prüfung und Entscheidung verbleibt bei den bestehenden Personal- beziehungsweise Dienstplan-Workflows. Im Portal wird der vorhandene Audit-Verlauf von Verfügbarkeitsanträgen mit Einreichung, Änderungen und vorhandener Entscheidung angezeigt; bei Abwesenheiten ist eine Entscheidung nur als aktueller Status erkennbar, da der bestehende Personal-Audit-Eintrag nicht mit der einzelnen Antrags-ID verknüpft ist. Rückfragen sind in den vorhandenen Antragsmodellen nicht speicherbar.
+Rücknahmen ändern ausschließlich den Status von `pending` beziehungsweise `open` auf `withdrawn`; Datensätze werden nicht gelöscht. Antrag-ID, Konto, Zeitpunkt und Statuswechsel werden im Audit-Verlauf festgehalten. Freigabe und Widerruf werden zusätzlich in einer append-only Historientabelle protokolliert. Eine Freigabe bleibt an das bei ihrer Erteilung verknüpfte Konto gebunden und wird bei einer späteren Kontoverknüpfung nicht übertragen.
 
-## Oberfläche und Grenzen des MVP
+Verfügbarkeitszeiten werden in der für die Dienstplanung konfigurierten IANA-Zeitzone erfasst (im Standard `Europe/Berlin`) und wie im bestehenden Dienstplan auf ungültige DST-Ortszeiten geprüft. Anträge werden dem verknüpften Mitarbeiterkonto zugeordnet und können über das Portal nicht selbst freigegeben werden. Die Prüfung und Entscheidung verbleibt bei den bestehenden Personal- beziehungsweise Dienstplan-Workflows. Rückfragen sind in den vorhandenen Antragsmodellen nicht speicherbar.
 
-Die deutsche Portalnavigation umfasst Dienste, Aufgaben, Benachrichtigungen, Qualifikationen, Arbeitszeiten sowie Abwesenheits- und Verfügbarkeitsanträge. Lade-, Fehler- und Leerzustände sind vorhanden. Kontosicherheit bleibt über die separate Navigation erreichbar.
+## Oberfläche und Grenzen
 
-Nicht enthalten sind die Bearbeitung von Stammdaten oder Qualifikationen, Dateiabruf/-upload, Einsicht in interne Aufgabenkommentare, Dienständerungen, Zeiterfassungs-Korrekturen, Dokumente/Verträge, Lohnabrechnungen sowie das Zurückziehen bereits eingereichter Anträge. Rücknahmen erfordern eine persistente Statusänderung statt physischer Löschung; die bestehenden Status-Constraints der Antragstabellen kennen keinen Rücknahmezustand. Dafür müssen die Constraints von `employee_absences` und `schedule_availability_requests` um `withdrawn` erweitert und die Statusänderung mit Antrag-ID, handelndem Konto und Zeit im vorhandenen `AuditLog` protokolliert werden.
+Die deutsche Portalnavigation umfasst Dienste, Aufgaben, Benachrichtigungen, Qualifikationen, freigegebene Dokumente, Arbeitszeiten sowie Abwesenheits- und Verfügbarkeitsanträge. Lade-, Fehler- und Leerzustände sind vorhanden. Kontosicherheit bleibt über die separate Navigation erreichbar.
 
-Die Migrationenkette ist für dieses PR nicht sicher erweiterbar: PR #43 basiert weiterhin auf `main` mit Head `0024_notification_outbox_worker`; PR #40 schlägt `0025_unique_incident_owks_event` vor, und das darauf gestapelte PR #42 führt mit `0026_customer_portal_access`, `0027_customer_document_grants` und `0028_customer_portal_requests` fort. Diese Revisionen sind nicht in `main`; PR-Base und Stack wurden nicht geändert. Eine Portal-Migration auf diesem Branch würde mit der offenen Kette kollidieren oder deren Übernahme voraussetzen. Daher gibt es hier keine Rücknahmefunktion und keine neue Migration. PR #42 ergänzt ausschließlich kundenbezogene Tabellen; es führt weder Mitarbeiter-Dokumentfreigaben noch Stammdatenänderungsanträge oder Mitarbeiter-Rückfragen ein. Für persönliche Dokumente fehlt weiterhin eine explizite Mitarbeiterfreigabe, für Stammdatenänderungen ein geeignetes Antragsmodell. Die Zeitübersicht ist keine Abrechnung und zeigt keine Zuschläge oder Geldbeträge. Die Oberfläche zeigt bis zu 100 neueste Zeit- und Benachrichtigungseinträge.
+Nicht enthalten sind strukturierte Stammdatenänderungsanträge, das Bearbeiten von Qualifikationen, Datei-Upload, Einsicht in interne Aufgabenkommentare, Dienständerungen, Zeiterfassungs-Korrekturen, allgemeine Personal- und Vertragsdokumente sowie Lohnabrechnungen. Das vorhandene Modell speichert Mitarbeiter-Stammdatenänderungen nicht als prüfbare Anträge; daher werden Änderungen nicht automatisch angewandt oder selbst genehmigt. Die Zeitübersicht ist keine Abrechnung und zeigt keine Zuschläge oder Geldbeträge. Die Oberfläche zeigt bis zu 100 neueste Zeit- und Benachrichtigungseinträge.
 
 ## Verifikation
 
-Die Backendtests unter `backend/tests/test_employee_portal.py` decken fehlende Anmeldung, Rolle und aktiven Link, Objekt-/Employee-IDOR, fremde Benachrichtigungen, veröffentlichte Schichten, reduzierte Datenantworten sowie ausschließlich eigene und noch offene Anträge einschließlich Bearbeitung und Verlauf ab. Lokal prüfen:
+Die Backendtests unter `backend/tests/test_employee_portal.py` decken Authentifizierung, Rollen, aktive Kontoverknüpfungen, Objekt-/Employee-IDOR, Antragsrücknahmen und -verläufe, explizite Dokumentfreigaben, Widerruf, Konto-Neuverknüpfung sowie nicht freigegebene/fremde Downloads ab. Die PostgreSQL-CI prüft die Migration einschließlich vorhandener Daten und Append-only-Trigger. Lokal prüfen:
 
 ```sh
 cd backend

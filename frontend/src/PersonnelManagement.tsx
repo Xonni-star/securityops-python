@@ -15,12 +15,15 @@ import {
   getEmployeeObjectAssignments,
   getEmployeeAbsences,
   getEmployeeHistory,
+  getEmployeePortalDocumentGrants,
   getEmployeeQualificationDocuments,
   getEmployeeQualifications,
   getEmployees,
   getEmployeeSensitiveDetails,
   getExpiringEmployeeQualifications,
+  grantEmployeePortalDocument,
   reactivateEmployee,
+  revokeEmployeePortalDocument,
   updateEmployee,
   updateEmployeeAbsence,
   updateEmployeeSensitiveDetails,
@@ -31,6 +34,7 @@ import type {
   Employee,
   EmployeeAccountCandidate,
   EmployeeAbsence,
+  EmployeeAbsenceManagedStatus,
   EmployeeAbsenceStatus,
   EmployeeAbsenceType,
   EmployeeHistory,
@@ -39,6 +43,7 @@ import type {
   EmployeeObjectCandidate,
   EmployeeQualification,
   EmployeeQualificationDocument,
+  EmployeePortalDocumentGrant,
   EmployeeSensitiveDetails,
   EmployeeStatus,
 } from "./types";
@@ -62,6 +67,7 @@ const absenceStatuses: Record<EmployeeAbsenceStatus, string> = {
   pending: "Offen",
   approved: "Genehmigt",
   rejected: "Abgelehnt",
+  withdrawn: "Zurückgezogen",
 };
 
 const historyActions: Record<string, string> = {
@@ -121,6 +127,8 @@ export default function PersonnelManagement({
   const [qualifications, setQualifications] = useState<EmployeeQualification[]>([]);
   const [qualificationDocuments, setQualificationDocuments] =
     useState<EmployeeQualificationDocument[]>([]);
+  const [portalDocumentGrants, setPortalDocumentGrants] =
+    useState<EmployeePortalDocumentGrant[]>([]);
   const [accountCandidates, setAccountCandidates] = useState<EmployeeAccountCandidate[]>([]);
   const [objectAssignments, setObjectAssignments] = useState<EmployeeObjectAssignment[]>([]);
   const [objectAssignmentHistory, setObjectAssignmentHistory] =
@@ -195,6 +203,7 @@ export default function PersonnelManagement({
       objectRows,
       objectHistoryRows,
       documentRows,
+      portalGrantRows,
       linkedAccounts,
       availableObjects,
     ] = await Promise.all([
@@ -205,7 +214,10 @@ export default function PersonnelManagement({
       canReadSensitive ? getEmployeeSensitiveDetails(employeeId) : Promise.resolve(null),
       getEmployeeObjectAssignments(employeeId),
       getEmployeeObjectAssignmentHistory(employeeId),
-      canReadDocuments ? getEmployeeQualificationDocuments(employeeId) : Promise.resolve([]),
+      canReadDocuments || canManageDocuments
+        ? getEmployeeQualificationDocuments(employeeId)
+        : Promise.resolve([]),
+      canManageDocuments ? getEmployeePortalDocumentGrants(employeeId) : Promise.resolve([]),
       canManage ? getEmployeeLinkedUserCandidates(employeeId) : Promise.resolve([]),
       canManageObjectAssignments
         ? getEmployeeObjectAssignmentCandidates()
@@ -214,6 +226,7 @@ export default function PersonnelManagement({
     setSelected(employee);
     setQualifications(qualificationRows);
     setQualificationDocuments(documentRows);
+    setPortalDocumentGrants(portalGrantRows);
     setAccountCandidates(linkedAccounts);
     setAbsences(absenceRows);
     setHistory(historyRows);
@@ -229,6 +242,7 @@ export default function PersonnelManagement({
     });
   }, [
     canManage,
+    canManageDocuments,
     canManageObjectAssignments,
     canReadAbsences,
     canReadDocuments,
@@ -393,7 +407,10 @@ export default function PersonnelManagement({
     }
   }
 
-  async function changeAbsenceStatus(absence: EmployeeAbsence, nextStatus: EmployeeAbsenceStatus) {
+  async function changeAbsenceStatus(
+    absence: EmployeeAbsence,
+    nextStatus: EmployeeAbsenceManagedStatus,
+  ) {
     if (!selected) return;
     setBusy(true);
     try {
@@ -466,6 +483,34 @@ export default function PersonnelManagement({
       await getEmployeeHistory(selected.id).then(setHistory);
     } catch (reason) {
       setError(messageFrom(reason, "Qualifikationsdatei konnte nicht gespeichert werden."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changePortalDocumentGrant(
+    document: EmployeeQualificationDocument,
+    grant: EmployeePortalDocumentGrant | null,
+  ) {
+    if (!selected) return;
+    const confirmation = grant
+      ? "Diese Freigabe für das verknüpfte Mitarbeiterkonto widerrufen?"
+      : `„${document.file_name}“ ausdrücklich für das verknüpfte Mitarbeiterkonto freigeben?`;
+    if (!window.confirm(confirmation)) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (grant) {
+        await revokeEmployeePortalDocument(grant.id);
+      } else {
+        await grantEmployeePortalDocument(selected.id, document.id);
+      }
+      await refreshSelected(selected.id);
+    } catch (reason) {
+      setError(messageFrom(
+        reason,
+        grant ? "Dokumentfreigabe konnte nicht widerrufen werden." : "Dokument konnte nicht freigegeben werden.",
+      ));
     } finally {
       setBusy(false);
     }
@@ -708,28 +753,70 @@ export default function PersonnelManagement({
               {canManage && !selected.archived_at && !qualification.archived_at
                 && <button className="text-button danger-text" disabled={busy}
                   onClick={() => void archiveQualification(qualification)}>Archivieren</button>}
-              {canReadDocuments && qualificationDocuments
+              {(canReadDocuments || canManageDocuments) && qualificationDocuments
                 .filter((document) => document.qualification_id === qualification.id)
-                .map((document) => <div className="document-version" key={document.id}>
-                  <small>Version {document.version}: {document.file_name} ·
-                    {" "}{Math.ceil(document.size_bytes / 1024)} KiB</small>
-                  <a
-                    href={employeeQualificationDocumentUrl(
+                .map((document) => {
+                  const documentGrants = portalDocumentGrants.filter(
+                    (grant) => grant.qualification_document_id === document.id,
+                  );
+                  const currentGrant = documentGrants.find(
+                    (grant) => !grant.revoked_at && grant.user_id === selected.user_id,
+                  ) ?? null;
+                  const latestVersion = Math.max(
+                    ...qualificationDocuments
+                      .filter((item) => item.qualification_id === qualification.id)
+                      .map((item) => item.version),
+                  );
+                  return <div className="document-version" key={document.id}>
+                    <small>Version {document.version}: {document.file_name} ·
+                      {" "}{Math.ceil(document.size_bytes / 1024)} KiB</small>
+                    <a
+                      href={employeeQualificationDocumentUrl(
+                        selected.id,
+                        qualification.id,
+                        document.id,
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                    >Ansehen</a>
+                    {" · "}
+                    <a href={employeeQualificationDocumentUrl(
                       selected.id,
                       qualification.id,
                       document.id,
-                    )}
-                    target="_blank"
-                    rel="noreferrer"
-                  >Ansehen</a>
-                  {" · "}
-                  <a href={employeeQualificationDocumentUrl(
-                    selected.id,
-                    qualification.id,
-                    document.id,
-                    true,
-                  )}>Herunterladen</a>
-                </div>)}
+                      true,
+                    )}>Herunterladen</a>
+                    {canManageDocuments && <div className="portal-document-grants">
+                      {documentGrants.filter(
+                        (grant) => !grant.revoked_at && grant.user_id !== selected.user_id,
+                      ).map((grant) => <p key={grant.id} className="muted">
+                        Noch freigegeben für das frühere Konto {grant.user_id}.
+                        <button className="text-button danger-text" disabled={busy}
+                          onClick={() => void changePortalDocumentGrant(document, grant)}>
+                          Widerrufen
+                        </button>
+                      </p>)}
+                      {currentGrant ? <p>
+                        Für das verknüpfte Mitarbeiterkonto freigegeben.
+                        <button className="text-button danger-text" disabled={busy}
+                          onClick={() => void changePortalDocumentGrant(document, currentGrant)}>
+                          Widerrufen
+                        </button>
+                      </p> : selected.user_id
+                        && selected.employment_status === "active"
+                        && !selected.archived_at
+                        && document.version === latestVersion
+                        && <button className="text-button" disabled={busy}
+                          onClick={() => void changePortalDocumentGrant(document, null)}>
+                          Für Mitarbeiterportal freigeben
+                        </button>}
+                    </div>}
+                  </div>;
+                })}
+              {canManageDocuments && <p className="muted">
+                Im Portal freigabefähig sind nur Dateien zu Qualifikationsnachweisen. Allgemeine Personal-,
+                Vertrags- und sonstige Dokumente bleiben ausgeschlossen.
+              </p>}
               {canManageDocuments && !selected.archived_at && !qualification.archived_at
                 && <form className="document-upload" onSubmit={(event) =>
                   void uploadQualificationDocument(event, qualification)}>
