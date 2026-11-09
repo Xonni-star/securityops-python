@@ -721,10 +721,10 @@ def test_object_qualification_requirement_migration_is_registered() -> None:
     import importlib
 
     migration = importlib.import_module(
-        "migrations.versions.0036_object_qualification_requirements"
+        "migrations.versions.0037_object_qualification_requirements"
     )
-    assert migration.revision == "0036_object_qualification_requirements"
-    assert migration.down_revision == "0035_worker_monitoring"
+    assert migration.revision == "0037_object_qualification_requirements"
+    assert migration.down_revision == "0036_billing_approval_automation"
 
 
 @pytest.mark.skipif(
@@ -749,7 +749,7 @@ def test_postgresql_object_qualification_requirements_migration_preserves_data(
     assert saved.status_code == 200, saved.text
 
     migration = importlib.import_module(
-        "migrations.versions.0036_object_qualification_requirements"
+        "migrations.versions.0037_object_qualification_requirements"
     )
     with test_engine.connect() as connection:
         context = MigrationContext.configure(connection)

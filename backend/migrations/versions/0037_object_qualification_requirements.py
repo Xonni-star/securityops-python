@@ -6,8 +6,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0036_object_qualification_requirements"
-down_revision: str | None = "0035_worker_monitoring"
+revision: str = "0037_object_qualification_requirements"
+down_revision: str | None = "0036_billing_approval_automation"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
