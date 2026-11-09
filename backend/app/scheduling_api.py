@@ -259,12 +259,16 @@ def check_conflicts(
             )
         )
 
-    if employee.user_id is None or db.scalar(
-        select(ObjectAssignment.id).where(
-            ObjectAssignment.object_id == obj.id,
-            ObjectAssignment.user_id == employee.user_id,
+    if (
+        employee.user_id is None
+        or db.scalar(
+            select(ObjectAssignment.id).where(
+                ObjectAssignment.object_id == obj.id,
+                ObjectAssignment.user_id == employee.user_id,
+            )
         )
-    ) is None:
+        is None
+    ):
         conflicts.append(
             ScheduleConflictRead(
                 code="object_assignment",

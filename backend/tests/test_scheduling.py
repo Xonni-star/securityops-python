@@ -440,7 +440,10 @@ def test_shift_replacement_is_validated_and_audited(client: TestClient) -> None:
     )
     assert unavailable_candidate["is_eligible"] is False
     assert unavailable_candidate["eligibility_reasons"] == []
-    assert any("bereits für einen Dienst eingeplant" in reason for reason in unavailable_candidate["exclusion_reasons"])
+    assert any(
+        "bereits für einen Dienst eingeplant" in reason
+        for reason in unavailable_candidate["exclusion_reasons"]
+    )
     conflict = client.post(
         f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement",
         headers={"X-CSRF-Token": csrf},
@@ -463,8 +466,13 @@ def test_shift_replacement_is_validated_and_audited(client: TestClient) -> None:
     )
     assert eligible_candidate["is_eligible"] is True
     assert eligible_candidate["exclusion_reasons"] == []
-    assert any("Objekt aktuell zugewiesen" in reason for reason in eligible_candidate["eligibility_reasons"])
-    assert any("Dienstüberschneidung" in reason for reason in eligible_candidate["eligibility_reasons"])
+    assert any(
+        "Objekt aktuell zugewiesen" in reason
+        for reason in eligible_candidate["eligibility_reasons"]
+    )
+    assert any(
+        "Dienstüberschneidung" in reason for reason in eligible_candidate["eligibility_reasons"]
+    )
 
     stale_conflict = client.post(
         "/api/v1/scheduling/shifts",
@@ -484,13 +492,15 @@ def test_shift_replacement_is_validated_and_audited(client: TestClient) -> None:
     )
     assert stale_replacement.status_code == 409
     assert any(
-        item["code"] == "time_overlap"
-        for item in stale_replacement.json()["detail"]["conflicts"]
+        item["code"] == "time_overlap" for item in stale_replacement.json()["detail"]["conflicts"]
     )
-    assert client.post(
-        f"/api/v1/scheduling/shifts/{stale_conflict.json()['id']}/cancel",
-        headers={"X-CSRF-Token": csrf},
-    ).status_code == 200
+    assert (
+        client.post(
+            f"/api/v1/scheduling/shifts/{stale_conflict.json()['id']}/cancel",
+            headers={"X-CSRF-Token": csrf},
+        ).status_code
+        == 200
+    )
 
     replaced = client.post(
         f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement",
@@ -563,10 +573,15 @@ def test_replacement_candidates_explain_absence_availability_and_inactive_employ
     assert any("Abwesenheit" in reason for reason in absence_candidate["exclusion_reasons"])
     inactive_candidate = by_id[inactive["id"]]
     assert inactive_candidate["is_eligible"] is False
-    assert any("nicht aktiv beschäftigt" in reason for reason in inactive_candidate["exclusion_reasons"])
+    assert any(
+        "nicht aktiv beschäftigt" in reason for reason in inactive_candidate["exclusion_reasons"]
+    )
     unavailable_candidate = by_id[unavailable["id"]]
     assert unavailable_candidate["is_eligible"] is False
-    assert any("außerhalb der regelmäßigen Verfügbarkeit" in reason for reason in unavailable_candidate["exclusion_reasons"])
+    assert any(
+        "außerhalb der regelmäßigen Verfügbarkeit" in reason
+        for reason in unavailable_candidate["exclusion_reasons"]
+    )
 
     rejected = client.post(
         f"/api/v1/scheduling/shifts/{original.json()['id']}/replacement",
@@ -575,8 +590,7 @@ def test_replacement_candidates_explain_absence_availability_and_inactive_employ
     )
     assert rejected.status_code == 409
     assert any(
-        item["code"] == "employee_absence"
-        for item in rejected.json()["detail"]["conflicts"]
+        item["code"] == "employee_absence" for item in rejected.json()["detail"]["conflicts"]
     )
 
 
@@ -614,9 +628,7 @@ def test_replacement_candidates_respect_object_scope(client: TestClient) -> None
         db.commit()
 
     sign_in(client, "scoped-scheduling-manager", ADMIN_PASSWORD)
-    response = client.get(
-        f"/api/v1/scheduling/shifts/{shift.json()['id']}/replacement-candidates"
-    )
+    response = client.get(f"/api/v1/scheduling/shifts/{shift.json()['id']}/replacement-candidates")
     assert response.status_code == 404
 
 
@@ -855,8 +867,7 @@ def test_object_qualification_requirements_cover_all_shift_assignment_paths(
     assert [item["employee_id"] for item in candidates.json()] == [substitute["id"]]
     assert candidates.json()[0]["is_eligible"] is True
     assert any(
-        "Brandschutzhelfer" in reason
-        for reason in candidates.json()[0]["eligibility_reasons"]
+        "Brandschutzhelfer" in reason for reason in candidates.json()[0]["eligibility_reasons"]
     )
     replacement = client.post(
         f"/api/v1/scheduling/shifts/{draft.json()['id']}/replacement",
