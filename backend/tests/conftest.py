@@ -250,6 +250,7 @@ def client() -> Generator[TestClient, None, None]:
                 "owks_event_statuses",
                 "owks_attachments",
                 "key_movements",
+                "inventory_events",
                 "notification_outbox_attempts",
                 "customer_portal_link_history",
                 "customer_portal_document_grant_history",
