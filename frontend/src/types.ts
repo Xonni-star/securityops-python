@@ -1428,6 +1428,9 @@ export interface ScheduleReplacementCandidate {
   employee_id: string;
   employee_number: string;
   employee_name: string;
+  is_eligible: boolean;
+  eligibility_reasons: string[];
+  exclusion_reasons: string[];
 }
 
 export interface TimeEntrySegment {

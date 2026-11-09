@@ -260,8 +260,8 @@ def check_conflicts(
         )
 
     if (
-        employee.user_id is not None
-        and db.scalar(
+        employee.user_id is None
+        or db.scalar(
             select(ObjectAssignment.id).where(
                 ObjectAssignment.object_id == obj.id,
                 ObjectAssignment.user_id == employee.user_id,
@@ -1206,7 +1206,6 @@ def list_schedule_shift_replacement_candidates(
     employee_query = select(Employee).where(
         Employee.id != shift.employee_id,
         Employee.archived_at.is_(None),
-        Employee.employment_status == "active",
         Employee.user_id.is_not(None),
         Employee.user_id.in_(
             select(ObjectAssignment.user_id).where(
@@ -1216,14 +1215,17 @@ def list_schedule_shift_replacement_candidates(
     )
     candidates = db.scalars(employee_query.order_by(Employee.full_name, Employee.id)).all()
     obj = get_assignable_object(db, shift.object_id, principal)
-    return [
-        ScheduleReplacementCandidateRead(
-            employee_id=employee.id,
-            employee_number=employee.employee_number,
-            employee_name=employee.full_name,
+    required_qualifications: dict[str, str] = {}
+    if shift.required_qualification:
+        required_qualifications[shift.required_qualification.casefold()] = (
+            shift.required_qualification
         )
-        for employee in candidates
-        if not check_conflicts(
+    for requirement in obj.qualification_requirements:
+        required_qualifications.setdefault(requirement.casefold(), requirement)
+    requirements = list(required_qualifications.values())
+    results = []
+    for employee in candidates:
+        conflicts = check_conflicts(
             db,
             employee=employee,
             obj=obj,
@@ -1234,7 +1236,38 @@ def list_schedule_shift_replacement_candidates(
             minimum_rest_hours=settings.minimum_rest_hours,
             exclude_shift_id=shift.id,
         )
-    ]
+        is_eligible = not conflicts
+        results.append(
+            ScheduleReplacementCandidateRead(
+                employee_id=employee.id,
+                employee_number=employee.employee_number,
+                employee_name=employee.full_name,
+                is_eligible=is_eligible,
+                eligibility_reasons=(
+                    [
+                        "Das Beschäftigungsverhältnis umfasst den gesamten Dienstzeitraum.",
+                        "Die Person ist dem Objekt aktuell zugewiesen.",
+                        (
+                            "Gültige Qualifikationsnachweise für den gesamten Dienstzeitraum: "
+                            + ", ".join(requirements)
+                            + "."
+                            if requirements
+                            else "Für Objekt und Dienst sind keine zusätzlichen Qualifikationen hinterlegt."
+                        ),
+                        "Es liegt keine offene oder genehmigte Abwesenheit und keine offene oder bestätigte Sperrzeit im Dienstzeitraum vor.",
+                        "Die regelmäßige Verfügbarkeit deckt den Dienst vollständig ab.",
+                        (
+                            "Es gibt keine Dienstüberschneidung; der konfigurierte Mindestabstand "
+                            f"von {settings.minimum_rest_hours} Stunden wird eingehalten."
+                        ),
+                    ]
+                    if is_eligible
+                    else []
+                ),
+                exclusion_reasons=[conflict.message for conflict in conflicts],
+            )
+        )
+    return results
 
 
 @router.post("/scheduling/shifts/{shift_id}/publish", response_model=ScheduleShiftRead)
