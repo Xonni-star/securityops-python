@@ -707,7 +707,8 @@ export type AutomationTrigger =
   | "task.status_changed"
   | "owks.missed_control"
   | "owks.deviation_reported"
-  | "owks.offline_event_synced";
+  | "owks.offline_event_synced"
+  | "billing.invoice_approved";
 export type AutomationTaskStatus = TaskStatus;
 
 export interface AutomationRule {
@@ -1008,6 +1009,7 @@ export interface NotificationItem {
   id: string;
   task_id: string | null;
   object_id: string | null;
+  invoice_id: string | null;
   event_type: NotificationEventType;
   title: string;
   body: string;

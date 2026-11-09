@@ -320,7 +320,7 @@ Wöchentliche Verfügbarkeitsfenster werden als lokale Wochentage/-zeiten gespei
 | `GET /api/v1/billing/invoices` | `billing.invoices.read` | `customer_id`, `invoice_status` (`draft`, `approved`, `archived`); max. 500 | `200 InvoiceRead[]` | `401`, `403`, `422` |
 | `POST /api/v1/billing/invoices` | `billing.invoices.create` + CSRF | `InvoiceCreate` | `201 InvoiceRead`; Idempotenzschlüssel | `401`, `403`, `404`, `409` Schlüssel/Integrität/Zeitbuchung bereits abgerechnet, `422` |
 | `POST /api/v1/billing/invoices/{invoice_id}/corrections` | `billing.invoices.create` + CSRF | Pfad `invoice_id`, `InvoiceCorrectionCreate` | `201 InvoiceRead`; neuer Storno-/Korrekturbeleg, Original bleibt unverändert | `401`, `403`, `404`, `409` Original nicht freigegeben/Schlüsselkonflikt, `422` |
-| `POST /api/v1/billing/invoices/{invoice_id}/approve` | `billing.invoices.approve` + CSRF | Pfad `invoice_id` | `200 InvoiceRead` | `401`, `403`, `404`, `409` kein Entwurf, `422` |
+| `POST /api/v1/billing/invoices/{invoice_id}/approve` | `billing.invoices.approve` + CSRF | Pfad `invoice_id` | `200 InvoiceRead`; Freigabe, Audit und `billing.invoice_approved`-Outbox-Trigger transaktional | `401`, `403`, `404`, `409` kein Entwurf, `422` |
 | `POST /api/v1/billing/invoices/{invoice_id}/archive` | `billing.invoices.archive` + CSRF | Pfad `invoice_id`, `ArchiveInvoice` | `200 InvoiceRead` | `401`, `403`, `404`, `409` nicht freigegeben, `422` |
 | `GET /api/v1/billing/invoices/{invoice_id}/payments` | `billing.invoices.read` | Pfad `invoice_id` | `200 BillingPaymentRead[]` | `401`, `403`, `404` |
 | `POST /api/v1/billing/invoices/{invoice_id}/payments` | `billing.payments.manage` + CSRF | Pfad `invoice_id`, `PaymentCreate` | `201 BillingPaymentRead`; Zahlung und Zahlungsstatus | `401`, `403`, `404`, `409` Status-/Idempotenzkonflikt, `422` Betrag/Validierung |
@@ -329,6 +329,8 @@ Wöchentliche Verfügbarkeitsfenster werden als lokale Wochentage/-zeiten gespei
 | `GET /api/v1/billing/invoices/{invoice_id}/pdf` | `billing.invoices.read` | Pfad `invoice_id` | `200 application/pdf`, `private, no-store` | `401`, `403`, `404`, `409` Rechnung nicht freigegeben |
 
 Die Preis- und Steuerwerte sind konfigurierte Eingaben. Beträge werden mit `Decimal`/`NUMERIC` gerechnet; Positionsrundung und Summenbildung folgen dem Implementierungsstand, ersetzen aber weder fachliche Freigabe noch Steuer-/Buchhaltungsprüfung. Ein Export ist keine zertifizierte Buchhaltungsintegration.
+
+`billing.invoice_approved` wird ausschließlich nach der manuellen Freigabe durch den berechtigten Endpoint erzeugt. Eine aktivierte Regel kann nur eine neutrale In-App-Benachrichtigung für aktive Konten mit `billing.invoices.read` und `notifications.read_own` auslösen; die Rechte werden bei Worker-Zustellung erneut geprüft. Das versionierte Ereignis kopiert keine Rechnungsbeträge, Positionen, Kundentexte oder Rechnungsnummer und ändert keinen Rechnungs-, Zahlungs- oder Mahnstatus. Details: [`AUTOMATIONS.md`](AUTOMATIONS.md).
 
 ## Zeiterfassung
 
