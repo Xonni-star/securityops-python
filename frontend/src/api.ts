@@ -15,6 +15,14 @@ import type {
   EmployeeAbsence,
   EmployeeAbsenceStatus,
   EmployeeAbsenceType,
+  EmployeePortalAbsence,
+  EmployeePortalAvailabilityRequest,
+  EmployeePortalNotification,
+  EmployeePortalProfile,
+  EmployeePortalQualification,
+  EmployeePortalShift,
+  EmployeePortalTask,
+  EmployeePortalTimeOverview,
   EmployeeAvailabilityWindow,
   EmployeeHistory,
   EmployeeObjectAssignment,
@@ -46,6 +54,7 @@ import type {
   ScheduleReplacementReason,
   ScheduleShift,
   ScheduleShiftHistory,
+  ScheduleReplacementCandidate,
   TimeEntry,
   TimeEntryCorrection,
   TimeEntrySummary,
@@ -917,6 +926,97 @@ export const updateEmployeeAbsence = (
     body: JSON.stringify(data),
   });
 
+export const getEmployeePortalProfile = () =>
+  request<EmployeePortalProfile>("/employee-portal/me");
+
+export const getEmployeePortalShifts = () =>
+  request<EmployeePortalShift[]>("/employee-portal/me/shifts");
+
+export const getEmployeePortalShift = (shiftId: string) =>
+  request<EmployeePortalShift>(`/employee-portal/me/shifts/${shiftId}`);
+
+export const getEmployeePortalTasks = () =>
+  request<EmployeePortalTask[]>("/employee-portal/me/tasks");
+
+export const getEmployeePortalNotifications = () =>
+  request<EmployeePortalNotification[]>("/employee-portal/me/notifications");
+
+export const markEmployeePortalNotificationRead = (notificationId: string) =>
+  request<EmployeePortalNotification>(
+    `/employee-portal/me/notifications/${notificationId}/read`,
+    { method: "PATCH" },
+  );
+
+export const getEmployeePortalQualifications = () =>
+  request<EmployeePortalQualification[]>("/employee-portal/me/qualifications");
+
+export const getEmployeePortalTimeOverview = (filters: { limit?: number; offset?: number } = {}) => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined) params.set(key, String(value));
+  }
+  return request<EmployeePortalTimeOverview>(`/employee-portal/me/time-entries?${params.toString()}`);
+};
+
+export const getEmployeePortalAbsences = () =>
+  request<EmployeePortalAbsence[]>("/employee-portal/me/absences");
+
+export const createEmployeePortalAbsence = (data: {
+  absence_type: EmployeeAbsenceType;
+  starts_on: string;
+  ends_on: string;
+}) =>
+  request<EmployeePortalAbsence>("/employee-portal/me/absences", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const updateEmployeePortalAbsence = (
+  absenceId: string,
+  data: {
+    absence_type?: EmployeeAbsenceType;
+    starts_on?: string;
+    ends_on?: string;
+  },
+) =>
+  request<EmployeePortalAbsence>(`/employee-portal/me/absences/${absenceId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+export const getEmployeePortalAvailabilityRequests = () =>
+  request<EmployeePortalAvailabilityRequest[]>("/employee-portal/me/availability-requests");
+
+export const createEmployeePortalAvailabilityRequest = (data: {
+  kind: ScheduleAvailabilityRequestKind;
+  starts_at_local: string;
+  ends_at_local: string;
+  starts_at_fold?: 0 | 1;
+  ends_at_fold?: 0 | 1;
+}) =>
+  request<EmployeePortalAvailabilityRequest>("/employee-portal/me/availability-requests", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const updateEmployeePortalAvailabilityRequest = (
+  requestId: string,
+  data: {
+    kind?: ScheduleAvailabilityRequestKind;
+    starts_at_local?: string;
+    ends_at_local?: string;
+    starts_at_fold?: 0 | 1;
+    ends_at_fold?: 0 | 1;
+  },
+) =>
+  request<EmployeePortalAvailabilityRequest>(
+    `/employee-portal/me/availability-requests/${requestId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
+
 export const getEmployeeSensitiveDetails = (id: string) =>
   request<EmployeeSensitiveDetails>(`/employees/${id}/sensitive`);
 
@@ -1313,6 +1413,11 @@ export const cancelScheduleShift = (id: string) =>
 
 export const getScheduleShiftHistory = (id: string) =>
   request<ScheduleShiftHistory[]>(`/scheduling/shifts/${id}/history?limit=100`);
+
+export const getScheduleShiftReplacementCandidates = (id: string) =>
+  request<ScheduleReplacementCandidate[]>(
+    `/scheduling/shifts/${id}/replacement-candidates`,
+  );
 
 export const replaceScheduleShiftEmployee = (
   id: string,

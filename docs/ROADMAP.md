@@ -1,18 +1,26 @@
 # Roadmap
 
-Die priorisierte und mit Status versehene Umsetzungsliste steht in [`IMPLEMENTATION_ROADMAP.md`](IMPLEMENTATION_ROADMAP.md). Die Phasen unten sind langfristige Zielbereiche, keine Behauptung, dass diese Funktionen bereits existieren.
+Die verbindliche Priorisierung, Abhängigkeiten und der aktuelle `main`-/PR-Status stehen in [`IMPLEMENTATION_ROADMAP.md`](IMPLEMENTATION_ROADMAP.md) und [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
-PR #18 ist in `main` gemergt (Merge-Commit `c8d4fbe203d179b7c4b620d604409c7217478033`); Backend/PostgreSQL, Frontend einschließlich Vitest und Docker CI waren grün, Issue #6 ist geschlossen. Issue #2 bleibt bis zur formalen Abnahme offen. PR #19s Dienstplanung ist in `main`; dieser Feature-Branch ergänzt für Issue #10 regelmäßige Verfügbarkeiten, Wunsch-/Sperrzeiten und nachvollziehbare Vertretungen. PostgreSQL-CI, Docker-Build und fachliche Abnahme stehen noch aus; Issue #10 bleibt offen. Issues werden nicht vor geprüfter Akzeptanz geschlossen, und Produktions-/Rechtsprüfungen bleiben separat.
+## Reihenfolge nach fachlichen Abhängigkeiten
 
-1. **Phase 1 – Sicherheit und Grundlagen:** RBAC-Rechteausweitung schließen, sichere Cookie-Standards, vollständiger Ist-Audit und Dokumentation; PostgreSQL-/Betriebsprüfungen [#9](https://github.com/Xonni-star/securityops-python/issues/9).
-2. **Phase 2 – Kunden:** Anschriften, Ansprechpartner, Archivierung, Historie, Filter, Sortierung und vollständige Oberfläche sind in `main`; Issue #6 ist nach PR #18 geschlossen.
-3. **Phase 3 – Objekte:** Backend, API und Frontend für kundenbezogene Objekte, Anschriften, Kontakte, Archivierung, Historie, Zuweisungen und separate Sicherheitsdaten sind in `main`. Issue #2 bleibt bis zur formalen Abnahme der Akzeptanzkriterien offen.
-4. **Phase 4 – Personal:** Stammdaten, Qualifikationen, Ablaufwarnungen, Abwesenheiten und sensible Berechtigungsgrenzen sind in `main`; Issue #5 ist geschlossen.
-5. **Phase 5 – Dienstplanung:** PR #19 hat Ansichten, Besetzung, Konfliktprüfung, Qualifikationen, konfigurierbare Zeitzonen/Ruhezeit und Änderungshistorie in `main` ergänzt. Dieser Feature-Branch modelliert noch fehlende regelmäßige Verfügbarkeiten, Wunsch-/Sperrzeiträume und nachvollziehbare Vertretungen; CI, Review und fachliche Abnahme sind noch erforderlich.
-6. **Phase 6 – Zeiterfassung:** Buchungen, Pausen, Korrekturfreigaben und konfigurierbare Zuschläge [#4](https://github.com/Xonni-star/securityops-python/issues/4).
-7. **Phase 7 – OWKS:** Wachbuch, Kontrollen, QR/NFC, Anhänge, Offline-Warteschlange und Konfliktbehandlung [#3](https://github.com/Xonni-star/securityops-python/issues/3).
-8. **Phase 8 – Dokumente/Verträge:** geschützter Dateispeicher, Versionierung, Ablaufüberwachung und Freigaben [#8](https://github.com/Xonni-star/securityops-python/issues/8).
-9. **Phase 9 – Abrechnung:** Verträge, Rechnungskalkulation, unveränderbare Freigabe/Archivierung und Buchhaltungsexport [#7](https://github.com/Xonni-star/securityops-python/issues/7).
-10. **Phase 10/11 – Dashboard und Qualität:** echte fachliche Kennzahlen, PostgreSQL-/E2E-/Sicherheitstests, Produktionsdeployment, Backup/Restore und Betriebsabnahme [#9](https://github.com/Xonni-star/securityops-python/issues/9).
+1. Sicherheits- und Betriebsgrundlagen: Authentifizierung/RBAC prüfen und ausbauen, Backup/Restore, TLS/Reverse Proxy, Monitoring, Auditgrenzen und Datenschutz.
+2. Fachliche Abnahme der in `main` implementierten Module und Nachverfolgung offener Akzeptanzthemen (Issues #7–#10 offen; Issue #8 laut aktueller GitHub-Abfrage OPEN).
+3. OWKS (gemergter PR #23, Issue #3 geschlossen) auf Objekten, Personal und Zuweisungen fachlich weiter prüfen; statische QR/NFC-Kennungen sind kein physischer Präsenznachweis.
+4. Dokumenten-/Vertragsverwaltung (gemergter PR #24) sowie geschützte Dateiablage/Vertragsregeln anhand fachlicher Akzeptanz prüfen.
+5. Rechnungswesen (Issue #7, PR #27 gemergt) auf fachlich freigegebenen Verträgen und Leistungsnachweisen fachlich abnehmen; Steuer-/Buchhaltungsrichtigkeit ist nicht belegt.
+6. E2E-/Last-/Sicherheits-/Restoretests und eine eigenständige Betriebsabnahme.
 
-Gesetzliche Arbeitszeit- und Steuerregeln dürfen nicht als automatische Rechtsfreigabe ausgewiesen werden; Konfiguration und fachliche Prüfung sind erforderlich.
+PR #26 ist gemergt und hat wöchentliche Verfügbarkeiten, Dienstwünsche/Sperrzeiten und Vertretungen in `main` ergänzt; Issue #10 bleibt für fachliche Abnahme offen. PR #27 ist gemergt; Migration `0017_billing` folgt auf `0016_scheduling_availability` und Rechnungswesen ist in `main`. Issue #7 bleibt trotz Merge offen, bis die fachlichen Kriterien abgeglichen sind.
+
+PR #28 ist gemergt und hat Produktions-Compose, Redis-Rate-Limiting, separate Release-Migrationen, verschlüsselte Backup-/Restorewerkzeuge und Security-Scanning ergänzt. PR #31 ist ebenfalls gemergt und ergänzt optionales TOTP-MFA, Recovery-Codes, Sitzungsliste/-widerruf und administrativen Passwortreset. PR #33 ergänzt fail-closed ClamAV-Scans für neue Dokument-/Vertragsdateien, Versionen, OWKS-Anhänge und Personal-Qualifikationsdateien; bestehende Dateien werden nicht rückwirkend geprüft. PR #34 ergänzt Aufgaben mit Revision `0019_tasks`; der Kern ist nicht automatisch mit Fachmodulen verknüpft. Issue #9 bleibt offen. CI- und synthetische Restoreprüfungen sind keine produktive Betriebsabnahme oder regelmäßige Restoreübung; MFA und Uploadscan sind keine unabhängige Sicherheitsabnahme.
+
+PR #35 ist in `main` gemergt und `0020_notifications` ergänzt In-App-Benachrichtigungen bei Aufgaben-Neuzuweisung und Statuswechsel. PR #39 ist mit `0024_notification_outbox_worker` ebenfalls in `main` integriert: ein separater Worker verarbeitet diese Task-Ereignisse mit Lease, Retry/Backoff, Dead-Letter-Status und Attempt-Historie und führt den OWKS-Prüfzyklus aus. E-Mail-/Push-Versand, Task-Erinnerungen/Eskalationen und Ereignisse aus anderen Modulen sind nicht enthalten. PR #38 ist gemergt; PR #25 ist gemergt und PR #40 bleibt offen und nicht Bestandteil von `main` (siehe [`PROJECT_STATUS.md`](PROJECT_STATUS.md)).
+
+PR #36 ist mit `0021_key_management` ebenfalls in `main` gemergt. Das objektgebundene Register protokolliert Schlüsselbewegungen append-only und verlangt bei Ausgabe eine aktive, dem Objekt zugewiesene Person sowie Quittierung. Die digitale Quittierung ist keine qualifizierte elektronische Signatur oder ein Nachweis physischer Verwahrung; Freitext-Zutrittsangaben werden nicht migriert.
+
+PR #37 ist mit `0022_incident_management` in `main` gemergt. Das Incident-Modul ist objektgebunden, trennt Vorfall-/Schreibrechte von Sensitivitätsrechten für Hergang, Abschlussbericht, Beteiligte und Dateien und prüft diesen Scope serverseitig. PDF-/Bildanhänge werden vor Ablage fail-closed mit ClamAV geprüft, privat gespeichert und nur autorisiert ausgeliefert; History, Personen- und Dateireferenzen haben Append-only-Trigger. Es gibt keine automatische Aufgaben-/Benachrichtigungsintegration, Fristerinnerung oder Eskalationsregel.
+
+PR #38 wurde mit Migration `0023_control_room_permission` in `main` integriert. Die Leitstellenübersicht berechnet eine Momentaufnahme aus bestehenden Quellen, begrenzt Listen auf 100 Elemente und prüft das neue Recht `control_room.read` sowie Objekt- und Fachbereichsrechte. Es werden keine neuen Fachdatentabellen angelegt, keine Alarmmeldungen simuliert und keine sensiblen Vorfalldetails/Anhänge ausgegeben. Revision `0024_notification_outbox_worker` ist aktueller Head; Issue #9 und die fachlichen Akzeptanzfragen bleiben davon getrennt.
+
+Reihenfolge stellt keinen Implementierungs- oder Rechtsstatus dar. Keine Produktions-, Rechts- oder Steuerfreigabe wird behauptet.

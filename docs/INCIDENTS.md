@@ -22,6 +22,6 @@ Nicht erreichbare Vorfälle werden wie nicht vorhandene Vorgänge beantwortet. O
 
 Anhänge sind auf PDF und PNG/JPEG bis maximal 10 MiB begrenzt. Sie verwenden die bestehende MIME-/Signaturvalidierung, den fail-closed Malware-Scan und den privaten Dokumentenspeicher; Upload und Download erfordern die jeweiligen Vorfall- und Sensitivitätsrechte. Eine Datei wird bei fehlgeschlagener Datenbanktransaktion entfernt.
 
-OWKS wird nur referenziert, nicht dupliziert oder verändert. Aufgaben und Benachrichtigungen werden nicht automatisch erzeugt: Der vorhandene Aufgaben-Outbox-Pfad besitzt derzeit keinen Background-Worker, und eine automatische Aufgabenanlage wäre keine nachgewiesene Maßnahme. Fristerinnerungen, automatische Eskalationsregeln und Aufgaben-/Benachrichtigungsverknüpfungen bleiben Folgefunktionen.
+OWKS wird nur referenziert, nicht dupliziert oder verändert. Vorfälle erzeugen keine automatischen Aufgaben oder Benachrichtigungen. Der separate Aufgaben-Outbox-Worker verarbeitet lediglich bereits erzeugte Ereignisse für Aufgaben-Neuzuweisung und Statuswechsel; er integriert keine Fachmodule. Fristerinnerungen, automatische Eskalationsregeln und Aufgaben-/Benachrichtigungsverknüpfungen bleiben Folgefunktionen.
 
 Die Alembic-Migration `0022_incident_management` baut linear auf `0021_key_management` auf. Ein Downgrade wird bei Vorfällen, Maßnahmen, Verlauf, sensiblen Details, Personen-/Dateibezügen oder benutzerdefinierten Rollenberechtigungen abgelehnt.

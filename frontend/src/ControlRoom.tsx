@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { getControlRoom } from "./api";
-import type { ControlRoom as ControlRoomData } from "./types";
+import { getControlRoom, getSession } from "./api";
+import ControlRoomActions from "./ControlRoomActions";
+import type { AuthUser, ControlRoom as ControlRoomData } from "./types";
 
 type StatusFilter =
   | ""
@@ -78,14 +79,32 @@ function statusName(value: string) {
 
 export default function ControlRoom() {
   const [data, setData] = useState<ControlRoomData | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [objectId, setObjectId] = useState("");
   const [fromDate, setFromDate] = useState(initialFromDate);
   const [toDate, setToDate] = useState(initialToDate);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [userError, setUserError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const requestId = useRef(0);
+
+  useEffect(() => {
+    getSession()
+      .then((session) => {
+        setUser(session.user);
+        setUserError("");
+      })
+      .catch((reason: unknown) => {
+        setUser(null);
+        setUserError(
+          reason instanceof Error
+            ? reason.message
+            : "Berechtigungen für Leitstellenaktionen konnten nicht geladen werden.",
+        );
+      });
+  }, []);
 
   useEffect(() => {
     const currentRequest = ++requestId.current;
@@ -185,6 +204,7 @@ export default function ControlRoom() {
 
       {loading && <p className="muted" role="status">Leitstellendaten werden geladen …</p>}
       {error && <p className="alert page-alert" role="alert">{error}</p>}
+      {userError && <p className="alert page-alert" role="alert">{userError}</p>}
       {!loading && !error && data && <>
         <p className="control-room-updated">
           Erstellt am {dateTime(data.generated_at)} · Zeitraum {date(data.range_start)} bis {date(data.range_end)} (UTC)
@@ -283,6 +303,7 @@ export default function ControlRoom() {
           </article>}
         </div>
       </>}
+      {user && <ControlRoomActions user={user} />}
     </section>
   );
 }

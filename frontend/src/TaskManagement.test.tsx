@@ -89,6 +89,7 @@ describe("Aufgabenverwaltung", () => {
         object_id: undefined,
       });
     });
+    expect(await screen.findByText("Aufgabe wurde angelegt.")).toBeTruthy();
   });
 
   it("weist Aufgaben ohne Einträge mit einem Leerzustand aus", async () => {

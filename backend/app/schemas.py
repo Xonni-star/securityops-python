@@ -1467,6 +1467,12 @@ class ScheduleShiftRead(BaseModel):
     updated_at: datetime
 
 
+class ScheduleReplacementCandidateRead(BaseModel):
+    employee_id: UUID
+    employee_number: str
+    employee_name: str
+
+
 class ScheduleConflictRead(BaseModel):
     code: str
     message: str

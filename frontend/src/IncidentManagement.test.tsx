@@ -108,6 +108,7 @@ describe("Vorfallmanagement", () => {
     await waitFor(() => {
       expect(api.updateIncidentStatus).toHaveBeenCalledWith("incident-1", "investigating");
     });
+    expect(await screen.findByText("Vorfallstatus wurde geändert.")).toBeTruthy();
   });
 
   it("sendet eine neue Meldung mit Objekt und Schweregrad an die API", async () => {

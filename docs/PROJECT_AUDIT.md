@@ -1,84 +1,48 @@
-# SecurityOps – Repository-Audit
+# Repository-Audit
 
-Grundlage ist `main` nach dem Merge von PR #16 sowie der Feature-Branch `feature/personnel-management` mit Draft-PR #17. Die Objektverwaltung ist in `main`; Personaländerungen wurden durch CI mit PostgreSQL-Migrationen/-Tests sowie Frontend- und Docker-Builds geprüft.
+## Umfang und Stand
 
-## Bestand
+Historische direkte Bestandsaufnahme des damaligen `main`-Quellcodes `a8cc63b3eeef9cbcdc033e4156ca046c14e8c99a` am 09.11.2026 (vor Eröffnung von PR #40 um 08:09 UTC und vor Merge von PR #25 um 08:13 UTC): Routerregistrierung, Models, 24 Alembic-Revisionen, Tests, Compose, Containerdefinitionen und Workflow. Das generierte OpenAPI-Schema enthält 190 `/api/v1`-Operationen; das Modellinventar enthält 74 Tabellen. GitHub-PR-/Issue-/CI-Status stehen in [`PROJECT_STATUS.md`](PROJECT_STATUS.md). PRs #23, #24, #26, #27, #28, #29, #31, #33, #34, #35, #36, #37, #38 und #39 waren Teil des untersuchten Stands; PR #25 war damals offen und nicht Teil von `main`.
 
-| Bereich/Funktion | Status | Tatsächlicher Stand |
+## Module und Implementierungsstand
+
+| Bereich | Ist-Stand auf `main` | Grenzen / Abnahme |
 |---|---|---|
-| Backend-Struktur | TEILWEISE | Ein FastAPI-Monolith mit `api.py`, `identity_api.py`, `auth.py`, zentralen SQLAlchemy-Modellen und Konfiguration. Noch keine fachlichen Modulgrenzen für Objekte, Personal, Planung, OWKS, Dokumente oder Abrechnung. |
-| Frontend | TEILWEISE | React-Anmeldung, Kunden- und Objektverwaltung sowie Personaloberfläche mit Navigation, Listen, Suche, Filtern, Details und Formularen. Personal-Frontend-Produktionsbuild bestanden; keine E2E- oder Komponententests. |
-| PostgreSQL/ORM | TEILWEISE | SQLAlchemy-Modelle und neun Migrationen. Migrationen 0005–0007 ergänzen Objekte; 0008 Personal/Qualifikationen; 0009 Zuweisungsverlauf und versionierte Qualifikationsdateien. Lokale API-Tests laufen auf SQLite; PostgreSQL-CI muss die aktuelle Revision 0009 noch prüfen. |
-| Alembic | TEILWEISE | Explizite Migrationen vorhanden. Upgrade bis 0009 und Downgrade 0009→0008 lokal offline gerendert; ein echter PostgreSQL-Lauf für die aktuellen Änderungen steht aus. |
-| Anmeldung | TEILWEISE | Benutzername/Passwort, Argon2id, serverseitig widerrufbare opaque Sitzung, generische Fehlermeldung. MFA und Passwortzurücksetzung fehlen. |
-| Sitzungen/CSRF | TEILWEISE | HttpOnly-Sitzungscookie, CSRF-Cookie/Header-Abgleich, SameSite=Strict, Idle-/Absolute-Timeout, Logout und Widerruf beim Passwortwechsel. Keine Sitzungsübersicht oder gezielte Einzelwiderruf-UI. |
-| Rate-Limit | TEILWEISE | Login ist auf 5 Versuche pro Minute begrenzt. Speicherung ist im Prozessspeicher, nicht instanzübergreifend; Proxy-Client-IP-Konfiguration ist nicht eingerichtet. |
-| RBAC | TEILWEISE | Backend prüft Modulrechte sowie Objektzuweisung oder globale Objektberechtigungen. Sensitive Objekt- und Personaldaten sowie Abwesenheiten haben eigene Rechte. Kein Rolleneditor. Administratorrollenvergabe bleibt auf `users.manage_admin` beschränkt. |
-| Benutzerverwaltung | TEILWEISE | Benutzer anlegen/listen/aktivieren/deaktivieren, Rollen zuweisen. Kein Rollen-/Rechteeditor, Einladungs- oder Passwortzurücksetzungsablauf. |
-| Audit | TEILWEISE | Anmeldung, fehlgeschlagene Anmeldung, Passwortwechsel, Benutzer- und Kundenänderungen werden geloggt. Keine Änderungen/Löschungen über die Anwendungs-API; kein Schutz vor direkten privilegierten Datenbankänderungen, keine Vollständigkeit über noch nicht implementierte Module. |
-| Kunden | TEILWEISE | Anlage, Suche, Filter/Sortierung, UUID-Detailabruf/-änderung, Geschäfts-/Rechnungsanschriften, Ansprechpartner mit Primärkontakt, Archivierung/Reaktivierung und Historie sind implementiert. Die Objektbeziehung ist vorhanden; Vertrags- und Dokumentzuordnung fehlen. Kunden werden archiviert statt physisch gelöscht. |
-| Objekte | TEILWEISE / BRANCH | Backend, API, React-Oberfläche und Migrationen 0005–0007: Kunde-FK, Suche/Filter/Sortierung/Paginierung, Detailbearbeitung, Adresse, mehrere einzelne Ansprechpartner, Archivierung, Historie, Zuweisungen sowie separate Sicherheitsdaten. Zugriff wird serverseitig kontrolliert. Zuweisungen binden an aktive Konten mit Mitarbeiter-/Objektleitungsrolle, nicht an Personalakten. PostgreSQL-CI, Docker-Builds und Review dieses Branches ausstehend. |
-| Personal | TEILWEISE / BRANCH | Migrationen 0008–0009, Personalakten, Qualifikationen und Ablaufübersicht, Abwesenheiten, getrennte sensible Daten, Historie, Zuweisungen über bestehende Benutzerkonten, versionierte Qualifikationsdateien, API und React-Oberfläche sind implementiert. Dateiinhalte liegen in PostgreSQL; PostgreSQL-CI und Review der aktuellen Änderungen stehen aus. |
-| Dienstplanung | FEHLT | Keine Dienste, Zuweisungen, Konflikt- oder Arbeitszeitprüfung. |
-| Zeiterfassung | FEHLT | Keine Zeitbuchungen, Korrekturfreigaben oder Abrechnungsschnittstelle. |
-| OWKS/Kontrollen | FEHLT | Keine Wachbucheinträge, Kontrollpunkte, QR-/NFC-Validierung oder Offline-Warteschlange. |
-| Dokumente/Verträge/Rechnungen | FEHLT | Kein Dateiablage-, Vertrags- oder Rechnungsmodell. |
-| Dashboard | TEILWEISE | Kundenanzahl, aktive Kunden und Interessenten werden aus der Datenbank gezählt; operative Kennzahlen fehlen. |
-| Docker/Deployment | TEILWEISE | Compose startet PostgreSQL, API und Vite-Entwicklungsserver. Es gibt keinen produktionsfähigen React-Static-Build, Reverse Proxy, TLS- oder Backup-Aufbau. Docker wurde in der Umgebung nicht ausgeführt. |
-| Tests | TEILWEISE | 21 Backendtests bestanden lokal auf SQLite; Ruff-Lint/Format sowie Frontend-TypeScript/Produktionsbuild bestanden. Frühere CI bestätigt PostgreSQL-Migrationen/-Tests und Docker-Builds für den vorherigen PR-Commit; neueste Negativtests benötigen einen erneuten CI-Lauf. Keine E2E-, Last-, Backup-/Restore- oder Frontend-Komponententests. |
+| Identity / Rollen | Argon2id-Login, optionales TOTP-MFA, verschlüsselte Secrets, gehashte einmalige Recovery-Codes, Session-/CSRF-Schutz, Sitzungsliste/-widerruf und administrativer Passwortreset; Rollen, Berechtigungen und Audit-Lese-API | Kein E-Mail-Selbstreset/Versanddienst; Audit nicht gegen privilegierte DB-Änderungen geschützt. MFA ist optional und nicht unabhängig sicherheitsabgenommen. |
+| Kunden | Kundenstammdaten, Suche/Filter, Anschriften, Kontakte, Archivierung, Historie, Website und Vertragsstatus-Feld | Vertragsverwaltung/Dokumente sind separate Funktionen; Issue #6 geschlossen. |
+| Objekte | Kundenbeziehung, Suche/Filter, Adressen/Kontakte, Archivierung/Historie, Zuweisungen und getrennte Sicherheitsdaten | Implementiert; Issue #2 geschlossen. |
+| Personal | Personalakten, Beschäftigungsstatus, Qualifikationen, Ablaufübersicht, Abwesenheiten, sensible Daten, Zuweisungsverlauf und versionierte Qualifikationsnachweise | Dateien liegen als `BYTEA` in PostgreSQL. Neue Uploads fail-closed mit ClamAV geprüft, Bestand nicht rückwirkend; keine Anwendungsebene-Verschlüsselung. Issue #5 geschlossen. |
+| Dienstplanung | Schichten, Ansichten/Filter, Veröffentlichung/Absage, IANA-Zeitzone, Ruhezeit, Qualifikation-/Abwesenheits-/Scope-/Konfliktprüfung, wöchentliche Verfügbarkeiten, Dienstwünsche/Sperrzeiten, Vertretungen und Verlauf | In `main` implementiert; Issue #10 bleibt für fachliche Abnahme offen. Kein Nachweis rechtlicher Konformität. |
+| Zeiterfassung | Arbeits-/Pausensegmente, Korrekturen/Freigaben, Historie, Berichte/CSV, Zuschlagszeitregeln, Snapshots und Periodensperren | Keine Geldbetrags-/Payrollberechnung; fehlende fachliche Rechenkonvention. Issue #4 geschlossen. |
+| OWKS | Kontrollpunkte/-routen, Ereignisse/Status/Korrekturen/Anhänge, Offline-Sync, Challenge-basierte Scans und Hintergrundmonitoring | Issue #3 geschlossen. Statische QR/NFC-Kennung ist kein physischer Präsenznachweis; neue Uploads fail-closed gescannt, kein Bestandsscan. |
+| Dokumente/Verträge | Geschützte Dokumentmetadaten und Versionen, privater Dateispeicher, Freigaben/Lesebestätigungen, Verträge und manuell generierbare Erinnerungen | Migration 0015 in `main`; Issue #8 bleibt laut frischer GitHub-Abfrage offen. Neue Uploads fail-closed gescannt; keine automatische Erinnerungszustellung. |
+| Rechnungswesen | Preise, Rechnungen/Positionen und Snapshots, Freigabe/Archivierung, Folge-Korrekturbelege, Zahlungen/Mahnstatus, PDFs und versionierter JSON-Export sind in `main` (PR #27, Migration `0017_billing`) | Issue #7 bleibt offen zur fachlichen Abnahme. `Decimal`/`NUMERIC` ist implementiert, aber Steuer-/Buchhaltungsregeln sind nicht unabhängig geprüft. |
+| Aufgaben und Benachrichtigungen | Generischer Aufgaben-Kern mit Bereichsprüfung, Zuständigkeit, Fälligkeit, Status/Priorität, Abschlussnachweis, Kommentaren, Verlauf und Audit; In-App-Inbox für Aufgaben-Neuzuweisung und Statuswechsel (PR #34/#35/#39, Migrationen `0019_tasks`/`0020_notifications`/`0024_notification_outbox_worker`) | Aufgaben: drei Tabellen und sieben API-Operationen; Benachrichtigungen/Outbox: drei Tabellen und zwei API-Operationen. Der separate Worker verwendet Claims/Lease, Retry/Backoff, Dead-Letter und append-only Attempt-Historie; er führt auch den OWKS-Prüfzyklus aus. E-Mail/Push, Task-Erinnerungen/Eskalationen und Ereignisse aus anderen Modulen sind nicht enthalten. |
+| Schlüsselverwaltung | Objektgebundenes Register für physische Schlüssel, Ausgabe/Rückgabe/Verlust/Defekt/Inventur, Quittierung und append-only Historie (PR #36, Migration `0021_key_management`) | Zwei Tabellen und acht API-Operationen; Objektzugriff und aktive Mitarbeiterzuweisung werden serverseitig geprüft. Digitale Quittierung ist keine qualifizierte elektronische Signatur oder ein Nachweis physischer Verwahrung; bestehende Freitext-Zutrittsangaben werden nicht übernommen. |
+| Vorfälle und Beschwerden | Objektbezogene Vorgänge mit Fristen, Verantwortlichkeit, Status, Maßnahmen, Abschluss und optionalem OWKS-Verweis (PR #37, Migration `0022_incident_management`) | Sechs Tabellen und zwölf API-Operationen; sieben `incidents.*`-Rechte mit Objekt-Scope und separatem Schutz sensibler Details/Personen/Dateien. Anhänge werden fail-closed gescannt, privat gespeichert und nur autorisiert ausgeliefert; Verlauf/Personen-/Dateireferenzen append-only. Keine automatische Task-/Benachrichtigungsintegration, Fristerinnerung oder Eskalationsregeln. |
+| Leitstellenübersicht | Serverberechnete Kennzahlen und Listen aus Planung, OWKS, Vorfällen, Aufgaben, Personal und Rechnungswesen; Migration `0023_control_room_permission` (PR #38) | Eine neue API-Operation, keine neue Fachdatentabelle. Recht `control_room.read`, zusätzlich `objects.read` sowie Fachrechte und Scope-Prüfungen; Listen auf 100 Elemente begrenzt. Keine simulierten Warnungen, sensiblen Vorfalldetails/Anhänge oder automatische Aktualisierung. |
+| Frontend | React/TypeScript/Vite, gemeinsame App; zusätzlich Leitstellenübersicht mit Objekt-/Zeitraumfilter und quellabhängigen Listen | Vite-Devserver in Compose; Produktionsauslieferung und UI-Komponententests jenseits der App-Testdateien fehlen. |
+| Datenbank | PostgreSQL, 24 lineare Alembic-Migrationen bis `0024_notification_outbox_worker`, 74 SQLAlchemy-Tabellen | Migration `0024_notification_outbox_worker` ergänzt eine Attempt-Tabelle, Claim-Felder und Indizes. Separater Release-Migrationsdienst und PostgreSQL-CI vorhanden; keine produktive Migration oder Restoreübung unabhängig nachgewiesen. |
+| Tests / CI | Backendtests und Ruff; PostgreSQL 17-Migration/Testjob; Frontend-Build/Tests; Docker-Image-Builds, Security-Analyse und isolierter verschlüsselter Restoretest | Keine E2E-, Last-, externe Penetrations- oder produktive Restoretests; Malware-Scanner verwenden Mocks und keine echten Malware-Proben. CI ist kein Produktivitätsnachweis. |
+| Betrieb | Produktions-Compose mit Nginx-Frontend, nicht privilegiertem API-Prozess, Redis-Rate-Limit und separatem Migrationdienst; Entwicklungs-Override mit Vite | TLS-Reverse-Proxy, Secret-/Rollenbetrieb, Monitoring, Incident-Prozess und regelmäßige Restoreübung müssen für die Umgebung umgesetzt und belegt werden. |
 
-## Fehler und Risiken
+## Dateien, auf denen die Bestandsaufnahme beruht
 
-### Behoben in der aktuellen Phase
+- Router, Worker und Berechtigungen: `backend/app/main.py`, `api.py`, `identity_api.py`, `personnel_api.py`, `scheduling_api.py`, `time_tracking_api.py`, `time_tracking_surcharges.py`, `owks_api.py`, `documents_contracts_api.py`, `billing_api.py`, `tasks_api.py`, `notifications_api.py`, `notification_worker.py`, `key_management_api.py`, `incidents_api.py`, `control_room_api.py`, `auth.py`; OpenAPI enthält 190 `/api/v1`-Operationen plus zwei Health-Operationen. Der Worker stellt keine HTTP-Operationen bereit.
+- Datenbank: `backend/app/models.py` und `backend/migrations/versions/0001_customers.py` bis `0024_notification_outbox_worker.py`.
+- Tests: Backendtests für Konfiguration, Kunden, Identität, Objekte, Personal, Planung, Zeiterfassung, OWKS, Dokumente/Verträge, Billing, ClamAV, Aufgaben, Benachrichtigungen und Notification-Worker, Schlüssel, Vorfälle und Leitstelle; Frontendtests sowie CI-PostgreSQL-Prüfungen.
+- Betrieb/CI: `.github/workflows/ci.yml`, `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`, `.env.example`, Package-/Python-Manifeste.
+- PR #26 ist gemergt: Mitarbeiter-Verfügbarkeitsfenster, Dienstwünsche/Sperrzeiten und Schichtvertretungen sowie Migration `0016_scheduling_availability` sind Teil von `main`; Issue #10 bleibt offen zur fachlichen Abnahme.
+- PR #28 ist gemergt: Produktions-Compose, Redis-Rate-Limit, separater Alembic-Release-Schritt, verschlüsselte Backups/Restore und SCA/SAST-CI sind implementiert. CI- und Restoreprüfungen sind kein Produktionsnachweis; Issue #9 bleibt offen.
+- PR #29 ist gemergt und beschränkt Mitarbeiter-Objektzuweisungen auf den autorisierten Objektzugriff. PR #27 ist gemergt; Migration `0017_billing` folgt auf `0016_scheduling_availability`. PR #31 ist gemergt und ergänzt mit `0018_identity_security` TOTP-MFA, Recovery-Codes, Sitzungsverwaltung und administrativen Passwortreset.
+- PR #33 ist gemergt und scannt neue Dokument-/Vertragsdateien, Versionen, OWKS-Anhänge und Personal-Qualifikationsdateien vor Speicherung fail-closed. Es gibt keinen rückwirkenden Bestandsscan; Scanner-Mocks in Tests sind kein Produktionsnachweis. PR #34 ist gemergt; `0019_tasks` ergänzt den generischen Aufgaben-Kern ohne automatische Fachmodul-Kopplung.
+- PR #35 ist gemergt und ergänzt mit `0020_notifications` eine transaktionale In-App-Inbox und persistente Outbox für Aufgaben-Neuzuweisungen und Statuswechsel. PR #39 wurde anschließend gemergt und ergänzt mit `0024_notification_outbox_worker` einen separaten Worker für diese beiden Ereignisse mit `SKIP LOCKED`-Claims, Lease/Wiederaufnahme, Retry/Backoff, Dead-Letter-Status und append-only Attempt-Historie. Der Worker führt ebenfalls den OWKS-Prüfzyklus aus. E-Mail/Push, Task-Erinnerungen/Eskalationen und Ereignisse anderer Module sind ausgeschlossen.
+- PR #36 ist mit Merge-Commit `744eff7c4c747d089a2fa6da2aeadab4840c5ef8` gemergt. Migration `0021_key_management` fügt `physical_keys` und `key_movements`, drei `keys.*`-Rechte, Objekt-/Mitarbeiterbereichsprüfungen, Zustandschecks und einen Append-only-Trigger für Bewegungszeilen hinzu. Ausgabe erfordert eine aktive, dem Objekt zugewiesene Person und Quittierungsbestätigung; diese ist weder qualifizierte elektronische Signatur noch Nachweis physischer Verwahrung. Der bestehende Freitext in Zutrittsangaben bleibt unberührt. Laut PR-CI waren alle acht GitHub-Checks erfolgreich; der PR meldete außerdem 78 Backendtests bestanden/12 übersprungen, 36 Frontendtests, Ruff-Check/Format und Alembic-Head erfolgreich. Das ist keine fachliche oder produktive Abnahme.
+- PR #37 wurde mit Merge-Commit `ac31bae99ee9f70026057483f303e86c69159e38` gemergt. Migration `0022_incident_management` ergänzt sechs Incident-Tabellen, zwölf API-Operationen und sieben granular vergebene `incidents.*`-Rechte. Objekt-Scope wird serverseitig geprüft; Sensitivitätsrechte separieren narrative Details, Abschlussbericht, Beteiligte/Zeugen und Dateizugriff. Anhänge werden mit fail-closed ClamAV-Scan vor Speicherung im privaten Dokumentenspeicher geprüft; Abruf ist autorisiert. Verlauf, Beteiligtenbezüge und Dateireferenzen sind append-only per Trigger. Es gibt keine automatische Aufgaben-/Benachrichtigungsintegration, Fristerinnerung oder Eskalation. Merge-PR-CI war in allen acht Checks erfolgreich; PR-Text meldet 82 Backendtests bestanden/13 übersprungen, 39 Frontendtests, Ruff/Format und Alembic-Head erfolgreich. Das ist keine fachliche, rechtliche oder produktive Abnahme.
+- PR #38 ist mit Merge-Commit `b275b5a0eb4a82a480e3c15ee09a0a5c85453a6d` gemergt. `0023_control_room_permission` ergänzt `control_room.read` für vier Standardrollen, ohne Tabellen hinzuzufügen; `GET /api/v1/control-room` ergänzt eine API-Operation. Die Leitstelle beschränkt Ergebnisse nach aktivem Objektzugriff und vorhandenen Fachrechten, auf höchstens 100 Zeilen je Liste; sensible Vorfalldetails und Anhänge sind ausgeschlossen. Alle acht Merge-PR-Checks waren erfolgreich; der PR-Text meldet 85 Backendtests bestanden/13 übersprungen und 42 Frontendtests bestanden, Ruff-Check/Format sowie Migration-Kopf und Offline-SQL geprüft. Das ist keine unabhängige fachliche oder produktive Abnahme.
+- Die damalige GitHub-Abfrage vor Eröffnung von PR #40 zeigte PR #25 als einzige offene PR; Issues #7–#10 blieben offen, #2–#6 geschlossen. PR #39 und Revision 0024 gehörten zum `main`-Bestand. Auf PR-#39-Merge-Head `b78c96a` waren alle acht GitHub-Checks erfolgreich; das ist weder Betriebs- noch fachlicher Abnahmenachweis.
+- Die vollständige Tabellen-/FK-/Constraint-/Indexreferenz ist in [`DATABASE.md`](DATABASE.md), alle registrierten API-Routen in [`API.md`](API.md).
 
-- **HOCH – fehlende Objektzuweisungsprüfung:** Vorherige Prüfung ergab, dass Endpunkte mit Modulrechten fremde Objekte hätten lesen oder ändern können. PR #16 ergänzt serverseitige Zuweisungsprüfungen und Negativtests für Listen, Details, Historie und Änderungen; CI für PR #16 war erfolgreich.
-- **HOCH – sensible Zutrittsdaten in normalen Objektantworten:** Sicherheits-, Zutritts- und Notfallangaben werden aus Standardlisten/-details entfernt, in eigene Tabelle migriert und über gesonderte Rechte/Endpunkte geschützt. Negativtests prüfen Trennung und Verlauf ohne Werte; PR #16 wurde mit erfolgreicher CI gemergt.
-- **FEHLERHAFT – Rechteausweitung über Benutzerverwaltung:** Die Geschäftsführungsrolle hatte `users.manage`, und die Benutzeranlage nahm beliebige vorhandene Rollen an. Damit hätte sie Administratorrechte vergeben können. Die neue additive Migration trennt `users.manage_admin` ab; Create und Update kontrollieren dieses Recht serverseitig. Ein Regressionstest deckt die Ablehnung ab.
-- **SICHERHEIT – unsichere implizite Cookie-Standardeinstellung:** Compose setzte `SESSION_COOKIE_SECURE` standardmäßig auf `false`. Jetzt ist der Compose-Fallback `true`; die lokale `.env.example` setzt für lokales HTTP ausdrücklich `false`.
-- **SICHERHEIT – implizites Datenbankpasswort:** Anwendungskonfiguration verlangte kein explizit gesetztes Datenbankpasswort. Sie verlangt jetzt `POSTGRES_PASSWORD`; der Testaufbau setzt einen ausschließlich für Tests bestimmten Wert.
+## Offene Sicherheits- und Qualitätsrisiken
 
-### Offen
-
-- **Sicherheits-/Betriebsrisiko:** Der In-Memory-Rate-Limiter kann zwischen Instanzen nicht teilen und wird nach Prozessneustart zurückgesetzt. Mehrere Worker benötigen gemeinsamen Speicher und eine vertrauenswürdige Proxy-IP-Konfiguration.
-- **Sicherheits-/Betriebsrisiko:** Compose startet im Frontend `vite --host`; es ist ein Entwicklungsserver, kein gehärteter Produktions-Webserver. HTTPS/Reverse Proxy fehlt.
-- **Sicherheits-/Betriebsrisiko:** Der Audit-Datensatz ist nur über die App-API schreibgeschützt. Datenbankbesitzer oder Administratoren können die Tabelle ändern; Append-only-Berechtigungen/externes unveränderliches Archiv fehlen.
-- **Datenbank-/Betriebsrisiko:** Der API-Container führt `alembic upgrade head` bei jedem Start aus. Das ist bei mehreren parallel startenden API-Replikaten zu koordinieren; es gibt kein separates Deployment-Migrationsverfahren.
-- **Datenbanklücke:** Kundenstammdaten sind erweitert; die Kundennummer bleibt ein eindeutiger zufälliger UUID-basierter Identifikator statt einer fortlaufenden Nummer. Kunden- und Objekthistorien enthalten nur geänderte Feldnamen, keine Vorher-/Nachher-Werte.
-- **RBAC-Lücke:** Standardrollen und Rechte werden derzeit nur durch Migration initialisiert. Rollenverwaltung in der Oberfläche/API fehlt; Administratorzuweisungen werden durch die laufende Phase separat geschützt.
-- **Integrationslücke:** Lokale Tests verwenden SQLite. Gehostete CI deckt Migrationen und API-Tests gegen PostgreSQL ab; systematische Schema-Differenzprüfung und weitere Datenbanktests bleiben offen.
-- **Qualitätssicherung:** GitHub Actions prüft Backend, Migrationen gegen temporäres PostgreSQL, Frontend- und Docker-Build. SCA/SAST sind noch nicht eingerichtet.
-- **Dokumentationslücke:** Vor dieser Phase waren nur README und ein kurzer Projektstatus vorhanden; Betriebs-, Datenbank-, Sicherheits- und API-Dokumentation fehlten.
-
-## Datenbankbeobachtungen
-
-- UUID-Primärschlüssel, Fremdschlüssel, Status-Constraints und Zeitstempel sind in Grundtabellen vorhanden.
-- Benutzerrollen und Rollenberechtigungen sind Many-to-many verknüpft; Löschregeln sind überwiegend `CASCADE`. Kunden werden derzeit nicht physisch über eine API gelöscht.
-- `UserSession.token_hash` ist eindeutig; absolute und gleitende Fristen sind gespeichert.
-- `AuditLog.details` ist JSON; es gibt keine Datenbankregel, die Updates/Deletes für die Laufzeitrolle verhindert.
-- Modell- und Migrationsdefinitionen müssen weiter gegen echte PostgreSQL-Instanzen geprüft werden.
-
-## Architekturbeobachtungen
-
-- Ein modularer Monolith ist für den aktuellen Umfang angemessen.
-- Fachmodule sind noch nicht aus dem API-/Modellkern extrahiert; beim Wachstum sollten Domänen und Zugriffsgrenzen getrennt werden.
-- Die Oberfläche ruft die API zentral über `api.ts` auf, hat aber noch kein Router-/Feature-Modul-Layout.
-- Produktive Frontend-Auslieferung, Reverse Proxy, zentrale Secrets-/Rate-Limit-Verwaltung und Monitoring fehlen.
-
-## Empfohlene Entwicklungsreihenfolge
-
-1. Phase 1 abschließen: PostgreSQL-Integrationslauf und reproduzierbare Deployment-Prüfung ([#9](https://github.com/Xonni-star/securityops-python/issues/9)).
-2. Kundenverwaltung fachlich prüfen und Vertrags-/Dokumentzuordnung planen ([#6](https://github.com/Xonni-star/securityops-python/issues/6)).
-3. Personalverwaltungs-Branch gegen PostgreSQL, Docker und CI prüfen und danach Issue #5 anhand aller Akzeptanzkriterien bewerten.
-4. Die neue Personalzuweisungs- und Dokumentfunktion gegen PostgreSQL prüfen und Issue #5 anhand aller Akzeptanzkriterien bewerten ([#5](https://github.com/Xonni-star/securityops-python/issues/5)).
-5. Dienstplanung mit Konflikt-/Qualifikationsprüfungen ([#10](https://github.com/Xonni-star/securityops-python/issues/10)), danach Zeiterfassung/Freigaben ([#4](https://github.com/Xonni-star/securityops-python/issues/4)).
-6. OWKS und manipulationsnachweisbare Kontrollereignisse ([#3](https://github.com/Xonni-star/securityops-python/issues/3)).
-7. Dokumente, Verträge und Fristüberwachung ([#8](https://github.com/Xonni-star/securityops-python/issues/8)).
-8. Rechnungswesen mit versionierten, nach Freigabe nicht überschreibbaren Rechnungen ([#7](https://github.com/Xonni-star/securityops-python/issues/7)).
-9. Dashboard, E2E-/PostgreSQL-/Backup-Tests, Härtung und produktionsfähiges Deployment ([#9](https://github.com/Xonni-star/securityops-python/issues/9)).
-
-## Prüfbelege
-
-- Objektverwaltung PR #16: in `main` gemergt; die CI nach den Korrekturen war erfolgreich.
-- Personalverwaltungs-Branch: 18 Backendtests, Ruff-Lint/Format und Frontend-TypeScript-/Produktionsbuild lokal bestanden; PR #17 CI bestätigt PostgreSQL-Migrationen/-Tests und Docker-Builds.
-- Lokales PostgreSQL und Docker waren in der Entwicklungsumgebung nicht verfügbar; gehostete CI für den aktuellen Branch ist erfolgreich.
-- Der GitHub-Actions-Lauf mit kurzlebigem PostgreSQL, Frontend-Build und Docker-Images war nach Behebung der Test-Fixture erfolgreich.
+Redis-gestütztes Rate-Limiting, fail-closed ClamAV-Prüfung neuer Uploads und Backup-/Restorewerkzeuge sind im Repository implementiert; produktiver Betrieb, Bestandsscan und regelmäßige Wiederherstellungsübungen sind nicht nachgewiesen. Offen bleiben unter anderem E-Mail-basierte Selbstwiederherstellung, Schutz vor privilegierter Auditänderung, Datenschutz-/Aufbewahrungsregeln, Monitoring, Incident-Abläufe und unabhängige Sicherheits-/Rechts-/Steuerprüfung. Die priorisierte Behandlung steht in [`SECURITY.md`](SECURITY.md) und [`IMPLEMENTATION_ROADMAP.md`](IMPLEMENTATION_ROADMAP.md).
