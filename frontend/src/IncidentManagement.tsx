@@ -130,9 +130,11 @@ export default function IncidentManagement({ user }: { user: AuthUser }) {
   const [incidents, setIncidents] = useState<IncidentItem[]>([]);
   const [total, setTotal] = useState(0);
   const [detail, setDetail] = useState<IncidentDetail | null>(null);
-  const [choices, setChoices] = useState({ objects: [], assignees: [] } as Awaited<
-    ReturnType<typeof getIncidentChoices>
-  >);
+  const [choices, setChoices] = useState<Awaited<ReturnType<typeof getIncidentChoices>>>({
+    objects: [],
+    assignees: [],
+    linked_owks_event_ids: [],
+  });
   const [selectedObject, setSelectedObject] = useState("");
   const [statusFilter, setStatusFilter] = useState<IncidentStatus | "">("");
   const [overdueOnly, setOverdueOnly] = useState(false);

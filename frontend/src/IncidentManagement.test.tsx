@@ -78,6 +78,7 @@ describe("Vorfallmanagement", () => {
     vi.mocked(api.getIncidentChoices).mockResolvedValue({
       objects: [{ id: "object-1", name: "Testobjekt", code: "INC-TEST" }],
       assignees: [{ id: "user-1", full_name: "Testkonto" }],
+      linked_owks_event_ids: [],
     });
     vi.mocked(api.getIncident).mockResolvedValue(detail);
     vi.mocked(api.createIncident).mockResolvedValue(incident);

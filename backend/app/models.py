@@ -2228,6 +2228,13 @@ class Incident(Base):
         CheckConstraint("length(trim(report)) > 0", name="ck_incidents_report"),
         Index("ix_incidents_object_status_due", "object_id", "status", "due_at"),
         Index("ix_incidents_assignee_status", "assigned_to_id", "status"),
+        Index(
+            "uq_incidents_owks_event_id",
+            "owks_event_id",
+            unique=True,
+            postgresql_where=text("owks_event_id IS NOT NULL"),
+            sqlite_where=text("owks_event_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)

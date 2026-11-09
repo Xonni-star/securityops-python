@@ -14,6 +14,7 @@ const qrScanner = vi.hoisted(() => ({
 }));
 
 vi.mock("./api", () => ({
+  createIncident: vi.fn(),
   createOWKSChallenge: vi.fn(),
   createOWKSControlPoint: vi.fn(),
   createOWKSEvent: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("./api", () => ({
   getOWKSEvents: vi.fn(),
   getOWKSObjects: vi.fn(),
   getOWKSRoutes: vi.fn(),
+  getIncidentChoices: vi.fn(),
   monitorOWKSRoute: vi.fn(),
   owksAttachmentUrl: vi.fn(),
   recordOWKSScan: vi.fn(),
@@ -74,6 +76,12 @@ describe("OWKS-NFC-Fallback", () => {
     vi.mocked(api.getOWKSEvents).mockResolvedValue([]);
     vi.mocked(api.getOWKSControlPoints).mockResolvedValue([]);
     vi.mocked(api.getOWKSRoutes).mockResolvedValue([]);
+    vi.mocked(api.getIncidentChoices).mockResolvedValue({
+      objects: [{ id: "object-1", code: "OBJ-1", name: "Testobjekt" }],
+      assignees: [{ id: "employee-1", full_name: "Testwache" }],
+      linked_owks_event_ids: [],
+    });
+    vi.mocked(api.createIncident).mockResolvedValue({} as never);
     vi.mocked(api.createOWKSChallenge).mockResolvedValue({
       id: "challenge-1",
       object_id: "object-1",
@@ -226,5 +234,276 @@ describe("OWKS-NFC-Fallback", () => {
         JSON.parse(localStorage.getItem("securityops-owks-offline-queue") ?? "[]"),
       ).toHaveLength(1);
     });
+  });
+
+  it("bietet die Vorfallerfassung ausschließlich mit incidents.create an", async () => {
+    const event: OWKSEvent = {
+      id: "owks-event-1",
+      object_id: "object-1",
+      route_id: null,
+      control_point_id: null,
+      corrects_event_id: null,
+      employee_id: "employee-1",
+      actor_id: "employee-1",
+      client_event_id: null,
+      event_type: "deviation",
+      severity: "critical",
+      title: "Originaltitel",
+      description: "Sensible Originalbeschreibung",
+      occurred_at: "2026-11-09T08:00:00Z",
+      sync_status: "synced",
+      presence_verified: false,
+      status: "open",
+      created_at: "2026-11-09T08:00:00Z",
+    };
+    vi.mocked(api.getOWKSEvents).mockResolvedValue([event]);
+    render(<OWKSManagement user={{
+      ...user,
+      permissions: [...user.permissions, "incidents.create"],
+    }} />);
+
+    expect(await screen.findByRole("button", { name: "Als Vorfall erfassen" })).toBeTruthy();
+
+    cleanup();
+    const unauthorizedUser = { ...user, permissions: ["owks.read", "owks.write"] };
+    render(<OWKSManagement user={unauthorizedUser} />);
+    await screen.findByText("Originaltitel");
+    expect(screen.queryByRole("button", { name: "Als Vorfall erfassen" })).toBeNull();
+
+    cleanup();
+    vi.mocked(api.getIncidentChoices).mockResolvedValue({
+      objects: [],
+      assignees: [],
+      linked_owks_event_ids: [],
+    });
+    render(<OWKSManagement user={{
+      ...user,
+      permissions: [...user.permissions, "incidents.create"],
+    }} />);
+    await screen.findByText("Originaltitel");
+    expect(screen.queryByRole("button", { name: "Als Vorfall erfassen" })).toBeNull();
+    expect(api.getIncidentChoices).toHaveBeenCalledTimes(2);
+  });
+
+  it("sendet die Vorfalldaten mit OWKS-Referenz und ausgewählter Verantwortung", async () => {
+    const event: OWKSEvent = {
+      id: "owks-event-1",
+      object_id: "object-1",
+      route_id: null,
+      control_point_id: null,
+      corrects_event_id: null,
+      employee_id: "employee-1",
+      actor_id: "employee-1",
+      client_event_id: null,
+      event_type: "deviation",
+      severity: "critical",
+      title: "Originaltitel",
+      description: "Sensible Originalbeschreibung",
+      occurred_at: "2026-11-09T08:00:00Z",
+      sync_status: "synced",
+      presence_verified: false,
+      status: "open",
+      created_at: "2026-11-09T08:00:00Z",
+    };
+    vi.mocked(api.getOWKSEvents).mockResolvedValue([event]);
+    render(<OWKSManagement user={{
+      ...user,
+      permissions: [...user.permissions, "incidents.create"],
+    }} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Als Vorfall erfassen" }));
+    fireEvent.change(screen.getByLabelText("Titel", { selector: "input[name='incident_title']" }), {
+      target: { value: "  Beschwerde am Eingang  " },
+    });
+    fireEvent.change(screen.getByLabelText("Bericht"), {
+      target: { value: "  Der Zugang war nicht gesichert.  " },
+    });
+    fireEvent.change(screen.getByLabelText("Typ"), { target: { value: "complaint" } });
+    fireEvent.change(screen.getByLabelText("Schwere"), { target: { value: "high" } });
+    fireEvent.change(screen.getByLabelText("Verantwortliche Person"), {
+      target: { value: "employee-1" },
+    });
+    fireEvent.change(screen.getByLabelText("Fällig am (optional)"), {
+      target: { value: "2026-11-10T12:30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Vorfall anlegen" }));
+
+    await waitFor(() => expect(api.createIncident).toHaveBeenCalledWith({
+      title: "Beschwerde am Eingang",
+      report: "Der Zugang war nicht gesichert.",
+      incident_type: "complaint",
+      severity: "high",
+      object_id: "object-1",
+      assigned_to_id: "employee-1",
+      due_at: new Date("2026-11-10T12:30").toISOString(),
+      owks_event_id: "owks-event-1",
+    }));
+    expect(api.createIncident).not.toHaveBeenCalledWith(expect.objectContaining({
+      report: "Sensible Originalbeschreibung",
+    }));
+    expect(await screen.findByText("Vorfall wurde angelegt und mit dem OWKS-Ereignis verknüpft."))
+      .toBeTruthy();
+    expect(await screen.findByText("Bereits mit einem Vorgang verknüpft")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Als Vorfall erfassen" })).toBeNull();
+  });
+
+  it("markiert bereits verknüpfte Ereignisse ohne Vorfalldetails", async () => {
+    vi.mocked(api.getOWKSEvents).mockResolvedValue([{
+      id: "owks-event-1",
+      object_id: "object-1",
+      route_id: null,
+      control_point_id: null,
+      corrects_event_id: null,
+      employee_id: null,
+      actor_id: null,
+      client_event_id: null,
+      event_type: "entry",
+      severity: "warning",
+      title: "Ereignis",
+      description: "",
+      occurred_at: "2026-11-09T08:00:00Z",
+      sync_status: "synced",
+      presence_verified: false,
+      status: "open",
+      created_at: "2026-11-09T08:00:00Z",
+    }]);
+    vi.mocked(api.getIncidentChoices).mockResolvedValue({
+      objects: [{ id: "object-1", code: "OBJ-1", name: "Testobjekt" }],
+      assignees: [{ id: "employee-1", full_name: "Testwache" }],
+      linked_owks_event_ids: ["owks-event-1"],
+    });
+    render(<OWKSManagement user={{
+      ...user,
+      permissions: [...user.permissions, "incidents.create"],
+    }} />);
+
+    expect(await screen.findByText("Bereits mit einem Vorgang verknüpft")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Als Vorfall erfassen" })).toBeNull();
+    expect(screen.queryByText("Vorfalldetails")).toBeNull();
+  });
+
+  it("markiert ein paralleles Duplikat nach HTTP 409 als verknüpft", async () => {
+    vi.mocked(api.getOWKSEvents).mockResolvedValue([{
+      id: "owks-event-1",
+      object_id: "object-1",
+      route_id: null,
+      control_point_id: null,
+      corrects_event_id: null,
+      employee_id: null,
+      actor_id: null,
+      client_event_id: null,
+      event_type: "entry",
+      severity: "warning",
+      title: "Ereignis",
+      description: "",
+      occurred_at: "2026-11-09T08:00:00Z",
+      sync_status: "synced",
+      presence_verified: false,
+      status: "open",
+      created_at: "2026-11-09T08:00:00Z",
+    }]);
+    vi.mocked(api.createIncident).mockRejectedValue(
+      new Error("Dieses OWKS-Ereignis ist bereits mit einem Vorgang verknüpft."),
+    );
+    render(<OWKSManagement user={{
+      ...user,
+      permissions: [...user.permissions, "incidents.create"],
+    }} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Als Vorfall erfassen" }));
+    fireEvent.change(screen.getByLabelText("Titel", { selector: "input[name='incident_title']" }), {
+      target: { value: "Vorfall" },
+    });
+    fireEvent.change(screen.getByLabelText("Bericht"), { target: { value: "Bericht" } });
+    fireEvent.change(screen.getByLabelText("Verantwortliche Person"), {
+      target: { value: "employee-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Vorfall anlegen" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Dieses OWKS-Ereignis ist bereits mit einem Vorgang verknüpft.",
+    );
+    expect(await screen.findByText("Bereits mit einem Vorgang verknüpft")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Als Vorfall erfassen" })).toBeNull();
+  });
+
+  it.each([
+    [403, "Keine Berechtigung, diesen Vorfall zu erfassen oder das Objekt zu bearbeiten."],
+    [404, "Das OWKS-Ereignis oder Objekt ist nicht vorhanden oder nicht zugänglich."],
+    [422, "Die Angaben sind ungültig. Bitte Titel, Bericht, Verantwortliche und OWKS-Bezug prüfen."],
+  ])("zeigt Fehler %s bei Vorfallerfassung verständlich auf Deutsch", async (status, expected) => {
+    vi.mocked(api.getOWKSEvents).mockResolvedValue([{
+      id: "owks-event-1",
+      object_id: "object-1",
+      route_id: null,
+      control_point_id: null,
+      corrects_event_id: null,
+      employee_id: null,
+      actor_id: null,
+      client_event_id: null,
+      event_type: "entry",
+      severity: "warning",
+      title: "Ereignis",
+      description: "",
+      occurred_at: "2026-11-09T08:00:00Z",
+      sync_status: "synced",
+      presence_verified: false,
+      status: "open",
+      created_at: "2026-11-09T08:00:00Z",
+    }]);
+    vi.mocked(api.createIncident).mockRejectedValue(new Error(`Serverfehler (${status})`));
+    render(<OWKSManagement user={{
+      ...user,
+      permissions: [...user.permissions, "incidents.create"],
+    }} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Als Vorfall erfassen" }));
+    fireEvent.change(screen.getByLabelText("Titel", { selector: "input[name='incident_title']" }), {
+      target: { value: "Vorfall" },
+    });
+    fireEvent.change(screen.getByLabelText("Bericht"), { target: { value: "Bericht" } });
+    fireEvent.change(screen.getByLabelText("Verantwortliche Person"), {
+      target: { value: "employee-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Vorfall anlegen" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(expected);
+  });
+
+  it("validiert Titel und Bericht vor dem POST", async () => {
+    vi.mocked(api.getOWKSEvents).mockResolvedValue([{
+      id: "owks-event-1",
+      object_id: "object-1",
+      route_id: null,
+      control_point_id: null,
+      corrects_event_id: null,
+      employee_id: null,
+      actor_id: null,
+      client_event_id: null,
+      event_type: "entry",
+      severity: "warning",
+      title: "Ereignis",
+      description: "",
+      occurred_at: "2026-11-09T08:00:00Z",
+      sync_status: "synced",
+      presence_verified: false,
+      status: "open",
+      created_at: "2026-11-09T08:00:00Z",
+    }]);
+    render(<OWKSManagement user={{
+      ...user,
+      permissions: [...user.permissions, "incidents.create"],
+    }} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Als Vorfall erfassen" }));
+    fireEvent.change(screen.getByLabelText("Titel", { selector: "input[name='incident_title']" }), {
+      target: { value: "   " },
+    });
+    fireEvent.change(screen.getByLabelText("Bericht"), { target: { value: "   " } });
+    fireEvent.submit(screen.getByLabelText("Bericht").closest("form")!);
+
+    expect((await screen.findByRole("alert")).textContent)
+      .toContain("Bitte Titel und Bericht ausfüllen");
+    expect(api.createIncident).not.toHaveBeenCalled();
   });
 });

@@ -217,3 +217,4 @@ class IncidentAssigneeChoice(BaseModel):
 class IncidentChoices(BaseModel):
     objects: list[IncidentObjectChoice]
     assignees: list[IncidentAssigneeChoice]
+    linked_owks_event_ids: list[UUID] = Field(default_factory=list)

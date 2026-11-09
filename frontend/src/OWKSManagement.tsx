@@ -4,11 +4,13 @@ import {
   createOWKSControlPoint,
   createOWKSEvent,
   createOWKSRoute,
+  createIncident,
   getOWKSControlPoints,
   getOWKSAttachments,
   getOWKSEvents,
   getOWKSObjects,
   getOWKSRoutes,
+  getIncidentChoices,
   monitorOWKSRoute,
   owksAttachmentUrl,
   recordOWKSScan,
@@ -29,6 +31,9 @@ import type {
   OWKSObject,
   OWKSRoute,
   OWKSSyncResult,
+  IncidentChoices,
+  IncidentSeverity,
+  IncidentType,
 } from "./types";
 
 type OfflineItem = {
@@ -50,10 +55,26 @@ function messageFrom(reason: unknown) {
   return reason instanceof Error ? reason.message : "Die OWKS-Aktion ist fehlgeschlagen.";
 }
 
+function incidentMessageFrom(reason: unknown) {
+  const message = messageFrom(reason);
+  if (message === "Serverfehler (403)") {
+    return "Keine Berechtigung, diesen Vorfall zu erfassen oder das Objekt zu bearbeiten.";
+  }
+  if (message === "Serverfehler (404)") {
+    return "Das OWKS-Ereignis oder Objekt ist nicht vorhanden oder nicht zugänglich.";
+  }
+  if (message === "Serverfehler (422)") {
+    return "Die Angaben sind ungültig. Bitte Titel, Bericht, Verantwortliche und OWKS-Bezug prüfen.";
+  }
+  return message;
+}
+
 export default function OWKSManagement({ user }: { user: AuthUser }) {
   const [objects, setObjects] = useState<OWKSObject[]>([]);
   const [selectedObjectId, setSelectedObjectId] = useState("");
   const [events, setEvents] = useState<OWKSEvent[]>([]);
+  const [incidentChoices, setIncidentChoices] = useState<IncidentChoices | null>(null);
+  const [incidentEvent, setIncidentEvent] = useState<OWKSEvent | null>(null);
   const [attachments, setAttachments] = useState<Record<string, OWKSAttachment[]>>({});
   const [attachmentsOpen, setAttachmentsOpen] = useState<string[]>([]);
   const [points, setPoints] = useState<OWKSControlPoint[]>([]);
@@ -72,6 +93,7 @@ export default function OWKSManagement({ user }: { user: AuthUser }) {
   );
   const canWrite = user.permissions.includes("owks.write") || user.permissions.includes("owks.manage");
   const canManage = user.permissions.includes("owks.manage");
+  const canCreateIncident = user.permissions.includes("incidents.create");
 
   const loadObjectData = useCallback(async (objectId: string) => {
     if (!objectId) return;
@@ -85,10 +107,21 @@ export default function OWKSManagement({ user }: { user: AuthUser }) {
       setPoints(nextPoints);
       setRoutes(nextRoutes);
       setError("");
+      if (canCreateIncident) {
+        try {
+          const choices = await getIncidentChoices(objectId);
+          setIncidentChoices(choices);
+        } catch (reason) {
+          setIncidentChoices(null);
+          setError(messageFrom(reason));
+        }
+      } else {
+        setIncidentChoices(null);
+      }
     } catch (reason) {
       setError(messageFrom(reason));
     }
-  }, []);
+  }, [canCreateIncident]);
 
   useEffect(() => {
     getOWKSObjects()
@@ -326,6 +359,65 @@ export default function OWKSManagement({ user }: { user: AuthUser }) {
     }
   }
 
+  async function submitIncident(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!incidentEvent || !canCreateIncident) return;
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const title = String(form.get("incident_title") ?? "").trim();
+    const report = String(form.get("incident_report") ?? "").trim();
+    const assignedToId = String(form.get("assigned_to_id") ?? "").trim();
+    if (!title || !report || !assignedToId) {
+      setError("Bitte Titel und Bericht ausfüllen und eine verantwortliche Person auswählen.");
+      return;
+    }
+    if (!incidentChoices?.assignees.some((assignee) => assignee.id === assignedToId)) {
+      setError("Die ausgewählte verantwortliche Person ist für dieses Objekt nicht verfügbar.");
+      return;
+    }
+    const due = String(form.get("incident_due_at") ?? "");
+    const dueAt = due ? new Date(due) : null;
+    if (dueAt && Number.isNaN(dueAt.getTime())) {
+      setError("Das Fälligkeitsdatum ist ungültig.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await createIncident({
+        title,
+        report,
+        incident_type: String(form.get("incident_type")) as IncidentType,
+        severity: String(form.get("incident_severity")) as IncidentSeverity,
+        object_id: incidentEvent.object_id,
+        assigned_to_id: assignedToId,
+        due_at: dueAt?.toISOString(),
+        owks_event_id: incidentEvent.id,
+      });
+      setIncidentChoices((current) => current && ({
+        ...current,
+        linked_owks_event_ids: [...current.linked_owks_event_ids, incidentEvent.id],
+      }));
+      setIncidentEvent(null);
+      setNotice("Vorfall wurde angelegt und mit dem OWKS-Ereignis verknüpft.");
+      formElement.reset();
+    } catch (reason) {
+      if (
+        reason instanceof Error
+        && reason.message === "Dieses OWKS-Ereignis ist bereits mit einem Vorgang verknüpft."
+      ) {
+        setIncidentChoices((current) => current && ({
+          ...current,
+          linked_owks_event_ids: [...current.linked_owks_event_ids, incidentEvent.id],
+        }));
+        setIncidentEvent(null);
+      }
+      setError(incidentMessageFrom(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function removeConflict(clientEventId: string) {
     saveQueue(queue.filter((item) => item.client_event_id !== clientEventId));
   }
@@ -359,7 +451,14 @@ export default function OWKSManagement({ user }: { user: AuthUser }) {
       {notice && <p className="owks-notice" role="status">{notice}</p>}
       {selectedObject && <div className="panel owks-object-picker">
         <label>Objekt
-          <select value={selectedObjectId} onChange={(event) => setSelectedObjectId(event.target.value)}>
+          <select
+            value={selectedObjectId}
+            onChange={(event) => {
+              setIncidentEvent(null);
+              setIncidentChoices(null);
+              setSelectedObjectId(event.target.value);
+            }}
+          >
             {objects.map((item) => <option key={item.id} value={item.id}>{item.code} – {item.name}</option>)}
           </select>
         </label>
@@ -504,6 +603,69 @@ export default function OWKSManagement({ user }: { user: AuthUser }) {
               {item.sync_status === "conflict" && <span className="owks-conflict-label">Synchronisierungskonflikt</span>}
               {item.corrects_event_id && <span>Korrektur eines älteren Eintrags</span>}
             </div>
+            {canCreateIncident
+              && incidentChoices?.objects.some((object) => object.id === item.object_id)
+              && item.object_id === selectedObjectId
+              && (incidentChoices.linked_owks_event_ids.includes(item.id)
+                ? <p className="muted" role="status">Bereits mit einem Vorgang verknüpft</p>
+                : <div className="time-action-row">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={busy}
+                  onClick={() => {
+                    setIncidentEvent(incidentEvent?.id === item.id ? null : item);
+                    setError("");
+                  }}
+                >
+                  {incidentEvent?.id === item.id ? "Erfassung abbrechen" : "Als Vorfall erfassen"}
+                </button>
+              </div>)}
+            {incidentEvent?.id === item.id && <form
+              className="owks-event-form"
+              onSubmit={(event) => void submitIncident(event)}
+            >
+              <p className="muted">Das OWKS-Original bleibt unverändert. Nur der Ereignisbezug wird gespeichert; sensible Angaben oder Anlagen werden nicht übernommen.</p>
+              <label>Titel<input name="incident_title" required maxLength={200} /></label>
+              <label>Typ
+                <select name="incident_type" defaultValue="incident">
+                  <option value="incident">Vorfall</option>
+                  <option value="complaint">Beschwerde</option>
+                  <option value="other">Sonstiges</option>
+                </select>
+              </label>
+              <label>Schwere
+                <select name="incident_severity" defaultValue="medium">
+                  <option value="low">Niedrig</option>
+                  <option value="medium">Mittel</option>
+                  <option value="high">Hoch</option>
+                  <option value="critical">Kritisch</option>
+                </select>
+              </label>
+              <label>Bericht<textarea name="incident_report" required maxLength={4000} /></label>
+              <label>Verantwortliche Person
+                <select name="assigned_to_id" required defaultValue="">
+                  <option value="" disabled>Bitte auswählen</option>
+                  {(incidentChoices?.assignees ?? []).map((assignee) =>
+                    <option key={assignee.id} value={assignee.id}>{assignee.full_name}</option>,
+                  )}
+                </select>
+              </label>
+              {!incidentChoices?.assignees.length
+                && <p className="muted">Für dieses Objekt sind keine verfügbaren Verantwortlichen vorhanden.</p>}
+              <label>Fällig am (optional)<input name="incident_due_at" type="datetime-local" /></label>
+              <div className="time-action-row">
+                <button className="primary-button" disabled={busy || !incidentChoices?.assignees.length}>
+                  Vorfall anlegen
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => setIncidentEvent(null)}
+                >Abbrechen</button>
+              </div>
+            </form>}
             {canManage && <div className="time-action-row">
               {item.status !== "in_progress" && <button className="text-button" onClick={() => void updateStatus(item.id, "in_progress")}>In Bearbeitung</button>}
               {item.status !== "resolved" && <button className="text-button" onClick={() => void updateStatus(item.id, "resolved")}>Als erledigt markieren</button>}

@@ -102,6 +102,7 @@ export interface IncidentPage {
 export interface IncidentChoices {
   objects: Array<{ id: string; name: string; code: string }>;
   assignees: Array<{ id: string; full_name: string }>;
+  linked_owks_event_ids: string[];
 }
 
 export interface ControlRoomObject {
