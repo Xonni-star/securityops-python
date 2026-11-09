@@ -4,8 +4,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-securityops}
-      POSTGRES_USER: ${POSTGRES_USER:-securityops}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Bitte POSTGRES_PASSWORD in .env setzen}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-securityops_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Bitte POSTGRES_ADMIN_PASSWORD in .env setzen}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -59,8 +59,8 @@ services:
       POSTGRES_HOST: ${POSTGRES_HOST:-db}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-securityops}
-      POSTGRES_USER: ${POSTGRES_USER:-securityops}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Bitte POSTGRES_PASSWORD in .env setzen}
+      POSTGRES_USER: securityops_runtime
+      POSTGRES_PASSWORD: ${POSTGRES_RUNTIME_PASSWORD:?Bitte POSTGRES_RUNTIME_PASSWORD in .env setzen}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://localhost}
       SESSION_COOKIE_SECURE: "true"
       RATE_LIMIT_STORAGE_URI: ${RATE_LIMIT_STORAGE_URI:-redis://redis:6379/0}
@@ -106,8 +106,8 @@ services:
       POSTGRES_HOST: ${POSTGRES_HOST:-db}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-securityops}
-      POSTGRES_USER: ${POSTGRES_USER:-securityops}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Bitte POSTGRES_PASSWORD in .env setzen}
+      POSTGRES_USER: securityops_runtime
+      POSTGRES_PASSWORD: ${POSTGRES_RUNTIME_PASSWORD:?Bitte POSTGRES_RUNTIME_PASSWORD in .env setzen}
       SESSION_COOKIE_SECURE: "true"
       RATE_LIMIT_STORAGE_URI: ${RATE_LIMIT_STORAGE_URI:-redis://redis:6379/0}
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-172.28.0.10}
@@ -134,13 +134,33 @@ services:
       POSTGRES_HOST: ${POSTGRES_HOST:-db}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-securityops}
-      POSTGRES_USER: ${POSTGRES_USER:-securityops}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Bitte POSTGRES_PASSWORD in .env setzen}
+      POSTGRES_USER: securityops_migrator
+      POSTGRES_PASSWORD: ${POSTGRES_MIGRATION_PASSWORD:?Bitte POSTGRES_MIGRATION_PASSWORD in .env setzen}
+    depends_on:
+      db:
+        condition: service_healthy
+      provision-db:
+        condition: service_completed_successfully
+    networks:
+      - app
+      - data
+
+  provision-db:
+    build: ./backend
+    profiles: ["release"]
+    command: ["python", "-m", "scripts.provision_database_roles"]
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST:-db}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-securityops}
+      POSTGRES_ADMIN_USER: ${POSTGRES_ADMIN_USER:-securityops_admin}
+      POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Bitte POSTGRES_ADMIN_PASSWORD in .env setzen}
+      POSTGRES_MIGRATION_PASSWORD: ${POSTGRES_MIGRATION_PASSWORD:?Bitte POSTGRES_MIGRATION_PASSWORD in .env setzen}
+      POSTGRES_RUNTIME_PASSWORD: ${POSTGRES_RUNTIME_PASSWORD:?Bitte POSTGRES_RUNTIME_PASSWORD in .env setzen}
     depends_on:
       db:
         condition: service_healthy
     networks:
-      - app
       - data
 
   restore-documents:

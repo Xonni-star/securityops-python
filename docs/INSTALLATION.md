@@ -3,13 +3,14 @@
 ## Docker Compose (Entwicklung)
 
 1. Docker Engine und Compose installieren.
-2. `cp .env.example .env` ausführen und ein eigenes Datenbankpasswort eintragen.
-3. Für lokales HTTP den Override `docker-compose.dev.yml` verwenden; er deaktiviert Secure-Cookies ausschließlich in der Entwicklungsumgebung.
+2. `cp .env.example .env` ausführen und drei unterschiedliche, zufällige Datenbank-Secrets für Administrator, Migration und Laufzeit eintragen. Im API-/Worker-Prozess wird nur das Laufzeit-Secret verwendet.
+3. Für ein bestehendes Datenbankvolume vor dem Upgrade ein vollständiges Backup erstellen. `POSTGRES_ADMIN_USER` und `POSTGRES_ADMIN_PASSWORD` müssen auf einen PostgreSQL-Superuser zeigen; dieser wird bei einer neuen Compose-Datenbank angelegt, nicht an API oder Worker weitergereicht.
 4. PostgreSQL und Redis starten und die Migration einmalig ausführen:
 
    ```sh
    docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db redis
-   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile release run --rm migrate
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile release run --rm provision-db
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile release run --rm --no-deps migrate
    docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
    ```
 
@@ -18,7 +19,7 @@
 
 ## Ohne Container
 
-Backend: Python 3.12+, `cd backend`, `pip install '.[test]'`, PostgreSQL-Umgebung setzen, Migrationen einmalig mit `alembic upgrade head` ausführen und `uvicorn app.main:app --reload` starten. Für Notification-/OWKS-Hintergrundverarbeitung zusätzlich in einem separaten Prozess `python -m app.notification_worker run` starten. Für lokale HTTP-Entwicklung `APP_ENV=development` und `SESSION_COOKIE_SECURE=false` ausdrücklich setzen. Frontend-Entwicklung: `cd frontend`, `npm ci`, `npm run dev`.
+Backend: Python 3.12+, `cd backend`, `pip install '.[test]'`, zunächst `python -m scripts.provision_database_roles` mit dem Administratorzugang und den beiden Rollen-Secrets ausführen. Anschließend `POSTGRES_USER=securityops_migrator` und `POSTGRES_PASSWORD` auf das Migrations-Secret setzen und einmalig `alembic upgrade head` ausführen. Für API und Worker danach `POSTGRES_USER=securityops_runtime` und `POSTGRES_PASSWORD` auf das Laufzeit-Secret setzen; API mit `uvicorn app.main:app --reload`, Hintergrundverarbeitung in einem separaten Prozess mit `python -m app.notification_worker run` starten. Für lokale HTTP-Entwicklung `APP_ENV=development` und `SESSION_COOKIE_SECURE=false` ausdrücklich setzen. Frontend-Entwicklung: `cd frontend`, `npm ci`, `npm run dev`.
 
 ## Status
 

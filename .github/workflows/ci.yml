@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -18,12 +19,12 @@ jobs:
         image: postgres:17-alpine
         env:
           POSTGRES_DB: securityops_test
-          POSTGRES_USER: securityops
-          POSTGRES_PASSWORD: ci-only-securityops-password
+          POSTGRES_USER: securityops_admin
+          POSTGRES_PASSWORD: ci-only-admin-password
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U securityops -d securityops_test"
+          --health-cmd "pg_isready -U securityops_admin -d securityops_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -41,12 +42,17 @@ jobs:
         working-directory: backend
     env:
       POSTGRES_DB: securityops_test
-      POSTGRES_USER: securityops
-      POSTGRES_PASSWORD: ci-only-securityops-password
+      POSTGRES_ADMIN_USER: securityops_admin
+      POSTGRES_ADMIN_PASSWORD: ci-only-admin-password
+      POSTGRES_MIGRATION_PASSWORD: ci-only-migration-password
+      POSTGRES_RUNTIME_PASSWORD: ci-only-runtime-password
+      POSTGRES_USER: securityops_migrator
+      POSTGRES_PASSWORD: ci-only-migration-password
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
       RATE_LIMIT_STORAGE_URI: redis://localhost:6379/0
-      SECURITYOPS_TEST_DATABASE_URL: postgresql+psycopg://securityops:ci-only-securityops-password@localhost:5432/securityops_test
+      SECURITYOPS_TEST_DATABASE_URL: postgresql+psycopg://securityops_admin:ci-only-admin-password@localhost:5432/securityops_test
+      SECURITYOPS_RUNTIME_DATABASE_URL: postgresql+psycopg://securityops_runtime:ci-only-runtime-password@localhost:5432/securityops_test
     steps:
       - name: Quellcode auschecken
         uses: actions/checkout@v7.0.1
@@ -58,17 +64,20 @@ jobs:
           cache-dependency-path: backend/pyproject.toml
       - name: Backend und Testabhängigkeiten installieren
         run: python -m pip install -e ".[test,quality]"
+      - name: Getrennte Datenbankrollen einrichten
+        run: python -m scripts.provision_database_roles
       - name: Migrationen mit synthetischen Bestandsdaten von 0024 bis zum Head prüfen
         run: python -m scripts.verify_migration_upgrade
       - name: Python-Lint und Format prüfen
         run: |
-          ruff check app tests migrations
-          ruff format --check app tests migrations
+          ruff check app tests migrations scripts
+          ruff format --check app tests migrations scripts
       - name: Alembic-Migrationskette auf PostgreSQL prüfen
         run: |
           alembic history --verbose
           alembic heads
           alembic upgrade head
+          python -m scripts.verify_audit_integrity
           python - <<'PY'
           from uuid import uuid4
 
@@ -126,8 +135,10 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: securityops-issue9-restore-test
       POSTGRES_DB: securityops_backup_test
-      POSTGRES_USER: securityops
-      POSTGRES_PASSWORD: ci-only-securityops-password
+      POSTGRES_ADMIN_USER: securityops_admin
+      POSTGRES_ADMIN_PASSWORD: ci-only-admin-password
+      POSTGRES_MIGRATION_PASSWORD: ci-only-migration-password
+      POSTGRES_RUNTIME_PASSWORD: ci-only-runtime-password
       APP_NETWORK_SUBNET: 172.28.0.0/24
       APP_FRONTEND_IP: 172.28.0.10
       FORWARDED_ALLOW_IPS: 172.28.0.10
@@ -141,7 +152,8 @@ jobs:
       - name: PostgreSQL starten und Migrationen einmalig anwenden
         run: |
           docker compose up --detach db
-          docker compose --profile release run --rm migrate
+          docker compose --profile release run --rm provision-db
+          docker compose --profile release run --rm --no-deps migrate
       - name: API und statisches Frontend als Produktionscontainer prüfen
         run: |
           docker compose up --detach api frontend notification-worker
@@ -235,7 +247,11 @@ jobs:
       - name: Quellcode auschecken
         uses: actions/checkout@v7.0.1
       - name: Compose-Konfiguration prüfen
-        run: POSTGRES_PASSWORD=ci-only-securityops-password docker compose config --quiet
+        run: >-
+          POSTGRES_ADMIN_PASSWORD=ci-only-admin-password
+          POSTGRES_MIGRATION_PASSWORD=ci-only-migration-password
+          POSTGRES_RUNTIME_PASSWORD=ci-only-runtime-password
+          docker compose --profile release config --quiet
       - name: Backend-Image bauen
         run: docker build -t securityops-api:ci ./backend
       - name: Frontend-Image bauen

@@ -1,6 +1,143 @@
-# API-Referenz (`main`)
+# API-Referenz
 
 ## Quelle, Basis und Zugriff
+
+| Methode | Pfad | Zugriff |
+|---|---|---|
+| GET | `/health/live` | öffentlich, Prozessstatus |
+| GET | `/health/ready` | öffentlich, Datenbankverbindung und in Produktion Redis |
+| POST | `/api/v1/auth/login` | öffentlich, 5/min je vertrauenswürdiger Client-IP; MFA- oder Wiederherstellungscode falls aktiviert, in Produktion gemeinsam über Redis |
+| GET | `/api/v1/auth/me` | angemeldete Sitzung |
+| POST | `/api/v1/auth/logout` | angemeldet + CSRF |
+| POST | `/api/v1/auth/change-password` | angemeldet + CSRF; widerruft Sitzungen |
+| GET | `/api/v1/auth/sessions` | angemeldet; eigene aktive Sitzungen |
+| DELETE | `/api/v1/auth/sessions/{session_id}` | eigene Sitzung oder `sessions.manage`; CSRF und Audit |
+| GET | `/api/v1/users/{user_id}/sessions` | `sessions.manage`; fremde aktive Sitzungen |
+| GET | `/api/v1/auth/mfa` | angemeldet; eigener MFA-Status |
+| POST | `/api/v1/auth/mfa/setup`, `/enable`, `/disable` | angemeldet + CSRF; Passwort-/TOTP-Prüfung; Recovery-Codes nur einmal bei Aktivierung |
+| GET | `/api/v1/users` | `users.read` |
+| POST | `/api/v1/users` | `users.manage`; Administratorvergabe zusätzlich `users.manage_admin` |
+| PATCH | `/api/v1/users/{user_id}` | `users.manage`; Rechte außerhalb der eigenen Berechtigungen zusätzlich `users.manage_admin` |
+| POST | `/api/v1/users/{user_id}/reset-password` | `users.manage` + `users.password_reset`; Zielkonto Administrator zusätzlich `users.manage_admin`; CSRF |
+| GET | `/api/v1/roles` | `roles.read` |
+| GET | `/api/v1/audit-logs` | `audit.read`; Limit 1–100 |
+| GET | `/api/v1/customers` | `customers.read`; `q`, `status`, `include_archived`, `sort_by`, `sort_order`, `limit`, `offset` |
+| POST | `/api/v1/customers` | `customers.create` + CSRF |
+| GET | `/api/v1/customers/{customer_id}` | `customers.read` |
+| PATCH | `/api/v1/customers/{customer_id}` | `customers.update` + CSRF |
+| GET | `/api/v1/customers/{customer_id}/history` | `customers.read`; `limit`, `offset` |
+| POST | `/api/v1/customers/{customer_id}/archive` | `customers.archive` + CSRF |
+| POST | `/api/v1/customers/{customer_id}/reactivate` | `customers.archive` + CSRF |
+| POST | `/api/v1/customers/{customer_id}/contacts` | `customers.update` + CSRF |
+| PATCH | `/api/v1/customers/{customer_id}/contacts/{contact_id}` | `customers.update` + CSRF |
+| DELETE | `/api/v1/customers/{customer_id}/contacts/{contact_id}` | `customers.update` + CSRF |
+| GET/POST/PATCH/DELETE | `/api/v1/customer-portal/links` und `/links/{contact_id}` | `customers.portal.manage`; manuelle eindeutige Kontaktverknüpfung, Aktivierung/Deaktivierung und Lösen + CSRF bei Änderungen |
+| GET | `/api/v1/customer-portal/management-options`, `/link-history`, `/access-history` | `customers.portal.manage`; passende Konten/Kontakte sowie Zugangshistorie/Portalabrufe nur mit Metadaten |
+| GET | `/api/v1/customer-portal/me`, `/invoices`, `/documents` | `customer_portal.access`; ausschließlich Daten des serverseitig verknüpften aktiven Kontakts |
+| GET | `/api/v1/customer-portal/invoices/{invoice_id}/pdf`, `/documents/{grant_id}/download` | `customer_portal.access`; eigene freigegebene Rechnungs-/Dokumentdatei |
+| GET | `/api/v1/customer-portal/document-candidates`, `/document-grants` | `customer_portal.documents.manage`; aktuelle geeignete Dokumente und Freigabehistorie |
+| POST/DELETE | `/api/v1/customer-portal/document-grants` und `/document-grants/{grant_id}` | `customer_portal.documents.manage` + CSRF; Freigabe beziehungsweise Widerruf mit Akteurhistorie |
+| GET/POST | `/api/v1/customer-portal/requests` | `customer_portal.access`; eigene Rückfragen/Beschwerden anlegen und einsehen |
+| GET/POST | `/api/v1/customer-portal/requests/{request_id}/messages` | `customer_portal.access`; nur eigener Vorgang, Kundennachrichten append-only |
+| POST/GET | `/api/v1/customer-portal/requests/{request_id}/attachments` und `/attachments/{attachment_id}/download` | `customer_portal.access`; eigener Vorgang, PDF/PNG/JPEG bis 10 MiB und fail-closed Malwareprüfung |
+| GET | `/api/v1/customer-portal/admin/requests` und `/admin/requests/{request_id}` | `customer_portal.requests.manage`; Kundenanfragenverwaltung |
+| POST/PATCH/GET | `/api/v1/customer-portal/admin/requests/{request_id}/messages`, `/status` und `/attachments/{attachment_id}/download` | `customer_portal.requests.manage`; kundensichtbare Antwort, Statusänderung und sicherer Anhangabruf |
+| GET | `/api/v1/objects` | `objects.read`; `q`, `customer_id`, `status`, `include_archived`, `sort_by`, `sort_order`, `limit`, `offset` |
+| POST | `/api/v1/objects` | `objects.manage` und `objects.manage_all` + CSRF |
+| GET | `/api/v1/objects/{object_id}` | `objects.read` und globales Leserecht oder Objektzuweisung |
+| PATCH | `/api/v1/objects/{object_id}` | `objects.manage` und globales Verwaltungsrecht oder Objektzuweisung + CSRF |
+| POST | `/api/v1/objects/{object_id}/archive` | `objects.manage` und globales Verwaltungsrecht oder Objektzuweisung + CSRF |
+| POST | `/api/v1/objects/{object_id}/reactivate` | `objects.manage` und globales Verwaltungsrecht oder Objektzuweisung + CSRF |
+| GET | `/api/v1/objects/{object_id}/history` | `objects.read` und globales Leserecht oder Objektzuweisung |
+| POST | `/api/v1/objects/{object_id}/contacts` | `objects.manage` und globales Verwaltungsrecht oder Objektzuweisung + CSRF |
+| PATCH/DELETE | `/api/v1/objects/{object_id}/contacts/{contact_id}` | `objects.manage` und globales Verwaltungsrecht oder Objektzuweisung + CSRF |
+| GET | `/api/v1/objects/assignment-candidates` | `objects.assign`; aktive Mitarbeiter- und Objektleitungskonten |
+| GET/PUT | `/api/v1/objects/{object_id}/assignments` | `objects.assign` und globales Verwaltungsrecht oder Objektzuweisung; PUT + CSRF |
+| GET | `/api/v1/objects/{object_id}/security` | `objects.sensitive.read` und globales Leserecht oder Objektzuweisung |
+| PATCH | `/api/v1/objects/{object_id}/security` | `objects.sensitive.manage` und globales Verwaltungsrecht oder Objektzuweisung + CSRF |
+| GET | `/api/v1/inventory/assets` | `inventory.read`; Suche/Filter/Pagination, zusätzlich auf den Objektbereich begrenzt |
+| POST | `/api/v1/inventory/assets` | `inventory.manage`; Objektbereich beziehungsweise globaler Zugriff für zentrales Inventar + CSRF |
+| PATCH | `/api/v1/inventory/assets/{asset_id}` | `inventory.manage` und Objektzugriff + CSRF |
+| POST | `/api/v1/inventory/assets/{asset_id}/archive` | `inventory.manage` und Objektzugriff + CSRF |
+| POST | `/api/v1/inventory/assets/{asset_id}/events` | `inventory.move` und Objektzugriff; Ausgabe, Rückgabe, Übergabe, Meldungen, Wartung/Reparatur + CSRF |
+| GET | `/api/v1/inventory/assets/{asset_id}/events` | `inventory.read` und Objektzugriff; append-only Ereignishistorie |
+| GET | `/api/v1/inventory/objects` | `inventory.read`; aktive, im eigenen Bereich erreichbare Objekte |
+| GET | `/api/v1/inventory/employees` | `inventory.read`; nur aktuell zugeordnete Mitarbeiter im eigenen Objektbereich |
+| GET | `/api/v1/inventory/eligible-employees` | `inventory.move`; aktive Konten mit passender Objektzuweisung |
+| GET | `/api/v1/employees` | `employees.read`; `q`, `status`, `include_archived`, `sort_by`, `sort_order`, `limit`, `offset` |
+| POST | `/api/v1/employees` | `employees.manage` + CSRF |
+| GET | `/api/v1/employees/{employee_id}` | `employees.read` |
+| PATCH | `/api/v1/employees/{employee_id}` | `employees.manage` + CSRF |
+| POST | `/api/v1/employees/{employee_id}/archive` und `/reactivate` | `employees.manage` + CSRF |
+| GET | `/api/v1/employees/{employee_id}/history` | `employees.read`; `limit`, `offset` |
+| GET | `/api/v1/employees/linked-user-candidates` | `employees.manage`; `employee_id` optional for editing the current link |
+| GET | `/api/v1/employees/object-assignment-candidates` | `employees.manage` + `objects.assign`; only objects within the caller's write scope |
+| GET | `/api/v1/employees/{employee_id}/objects` | `employees.read`; active assignments through the linked user account |
+| GET | `/api/v1/employees/{employee_id}/object-assignment-history` | `employees.read`; `limit`, `offset` |
+| POST/DELETE | `/api/v1/employees/{employee_id}/objects/{object_id}` | `employees.manage` + `objects.assign` and object write scope; CSRF; POST assigns, DELETE ends |
+| GET/POST | `/api/v1/employees/{employee_id}/qualifications` | Lesen: `employees.read`; Schreiben: `employees.manage` + CSRF |
+| PATCH | `/api/v1/employees/{employee_id}/qualifications/{qualification_id}` | `employees.manage` + CSRF |
+| POST | `/api/v1/employees/{employee_id}/qualifications/{qualification_id}/archive` | `employees.manage` + CSRF |
+| GET | `/api/v1/employees/{employee_id}/qualification-documents` | `employees.documents.read` |
+| POST | `/api/v1/employees/{employee_id}/qualifications/{qualification_id}/documents` | `employees.documents.manage` + CSRF; PDF/PNG/JPEG, max. 10 MiB |
+| GET | `/api/v1/employees/{employee_id}/qualifications/{qualification_id}/documents/{document_id}` | `employees.documents.read`; `download=true` forces attachment |
+| GET | `/api/v1/employees/qualifications/expiring` | `employees.read`; `days` |
+| GET/POST | `/api/v1/employees/{employee_id}/absences` | Lesen: `employees.absences.read`; Schreiben: `employees.absences.manage` + CSRF |
+| PATCH | `/api/v1/employees/{employee_id}/absences/{absence_id}` | `employees.absences.manage` + CSRF |
+| GET | `/api/v1/employees/{employee_id}/sensitive` | `employees.sensitive.read` |
+| PATCH | `/api/v1/employees/{employee_id}/sensitive` | `employees.sensitive.manage` + CSRF |
+| GET | `/api/v1/scheduling/settings` | `scheduling.read` |
+| PATCH | `/api/v1/scheduling/settings` | `scheduling.manage` + CSRF |
+| GET | `/api/v1/scheduling/shifts` | `scheduling.read`; `from_date`, `to_date`, `employee_id`, `object_id`, `include_cancelled`, `limit`, `offset` |
+| POST | `/api/v1/scheduling/shifts` | `scheduling.manage` + Objektzugriff + CSRF; legt einen Entwurf an |
+| PATCH | `/api/v1/scheduling/shifts/{shift_id}` | `scheduling.manage` + Objektzugriff + CSRF |
+| POST | `/api/v1/scheduling/shifts/{shift_id}/publish` oder `/cancel` | `scheduling.manage` + Objektzugriff + CSRF |
+| GET | `/api/v1/scheduling/shifts/{shift_id}/history` | `scheduling.read` und sichtbarer Objekt-/Personalbereich |
+| POST | `/api/v1/time-tracking/start` | `time_tracking.create` oder `time_tracking.manage`; ordnet den aktuellen veröffentlichten Dienst zu |
+| POST | `/api/v1/time-tracking/entries/{entry_id}/pause`, `/resume`, `/stop` | Berechtigter Eigentümer oder `time_tracking.manage`; CSRF |
+| POST | `/api/v1/time-tracking/entries/manual` | `time_tracking.manage`; abgeschlossene UTC-Segmente als einreichungspflichtiger Nachtrag; CSRF |
+| GET | `/api/v1/time-tracking/entries` | `time_tracking.read_own` oder `time_tracking.read_all`; optionale Filter `from_date`, `to_date`, `employee_id`, `object_id`, `customer_id`, `status` |
+| POST | `/api/v1/time-tracking/entries/{entry_id}/corrections` | Eigentümer mit `time_tracking.correct_own` oder berechtigter Verwalter mit `time_tracking.correct_all`; Grund und neue Segmente erforderlich; CSRF |
+| GET | `/api/v1/time-tracking/corrections` | `time_tracking.read_all`; `pending_only` standardmäßig `true` |
+| POST | `/api/v1/time-tracking/entries/{entry_id}/approve` oder `/reject` | `time_tracking.approve` beziehungsweise `time_tracking.reject`; Ablehnung mit Grund; keine Selbstfreigabe; CSRF |
+| POST | `/api/v1/time-tracking/corrections/{correction_id}/approve` oder `/reject` | `time_tracking.approve` beziehungsweise `time_tracking.reject`; Ablehnung mit Grund; CSRF |
+| POST | `/api/v1/time-tracking/entries/{entry_id}/lock` | `time_tracking.manage`; nur freigegebene Buchungen; CSRF |
+| GET | `/api/v1/time-tracking/reports` | `time_tracking.read_own` oder `time_tracking.read_all`; Zeitraum sowie optionale Mitarbeiter-/Objekt-/Kunden-/Statusfilter, `group_by=employee|object|customer|day|week|month` |
+| GET | `/api/v1/time-tracking/reports/missing` | `time_tracking.read_all`; `from_date`, `to_date`; veröffentlichte Schichten ohne Buchung |
+| GET | `/api/v1/time-tracking/export.csv` | `time_tracking.export`; Zeitraum sowie optionale Mitarbeiter-/Objekt-/Kundenfilter; nur freigegebene oder gesperrte Buchungen |
+| GET/PATCH | `/api/v1/time-tracking/settings` | `time_tracking.surcharges.read` / `time_tracking.surcharges.manage`; Bundesland für Feiertagskalender |
+| GET/POST | `/api/v1/time-tracking/surcharge-rules` | `time_tracking.surcharges.read` / `time_tracking.surcharges.manage`; unveränderliche Regeln mit Gültigkeit, Wert, Priorität und Kombinationsmodus |
+| POST/GET | `/api/v1/time-tracking/entries/{entry_id}/surcharge-calculations` | `time_tracking.surcharges.manage` / `time_tracking.surcharges.read` und sichtbarer Eintrag; Berechnung versionieren/einsehen |
+| GET | `/api/v1/time-tracking/reports/surcharges` | `time_tracking.surcharges.read` und `time_tracking.read_all`; aktueller, nicht veralteter Berechnungsnachweis je Buchung |
+| GET | `/api/v1/time-tracking/export-surcharges.csv` | `time_tracking.export` und `time_tracking.surcharges.read`; freigegebene Zuschlagsnachweise |
+| GET/POST | `/api/v1/time-tracking/periods` und `/periods/lock` | `time_tracking.periods.read` / `time_tracking.periods.lock`; endgültige Abrechnungsperiodensperren |
+| GET | `/api/v1/owks/objects` | `owks.read`; nur aktive, berechtigte oder zugewiesene Objekte |
+| GET/POST | `/api/v1/owks/objects/{object_id}/control-points` | Lesen: `owks.read`; Anlegen: `owks.manage`; Kennung wird nur bei Anlage einmal zurückgegeben |
+| GET/POST | `/api/v1/owks/objects/{object_id}/routes` | Lesen: `owks.read`; Anlegen: `owks.manage`; Route darf nur Kontrollpunkte desselben Objekts enthalten |
+| POST | `/api/v1/owks/objects/{object_id}/challenges` und `/api/v1/owks/scans` | `owks.write`; kurzlebige, benutzer-/objektgebundene Einmal-Challenge und QR-/NFC-Kontrollprüfung |
+| GET | `/api/v1/owks/objects/{object_id}/events` | `owks.read`; Ereignisse, Übergaben, Kontrollen, Status und Konflikte |
+| POST | `/api/v1/owks/events` und `/events/sync` | `owks.write`; Ereignis mit Idempotenzschlüssel; Offline-Kontrollscans werden als sichtbare Konflikte gespeichert, nicht als verifiziert gewertet |
+| POST | `/api/v1/owks/events/{event_id}/status` und `/corrections` | `owks.manage`; Statusänderungen und begründete Korrekturen werden angehängt, Originalereignisse bleiben unverändert |
+| POST/GET | `/api/v1/owks/events/{event_id}/attachments` und `/attachments/{attachment_id}` | Schreiben: `owks.write`; Lesen: `owks.read`; PDF/PNG/JPEG, maximal 10 MiB, Objektzugriff serverseitig geprüft |
+| POST | `/api/v1/owks/routes/{route_id}/monitor` | `owks.manage`; löst dieselbe idempotente Prüfung wie der eingebaute Minuten-Monitor aus |
+| GET | `/api/v1/dashboard` | `dashboard.read` |
+
+## Kundenportal-Endpunkte (PR #42, in `main`)
+
+| Methode | Pfad | Zugriff |
+|---|---|---|
+| GET | `/api/v1/customer-portal/me` | `customer_portal.access`; nur eigener verknüpfter Kontakt, Kunde und nicht archivierte Objekte |
+| GET | `/api/v1/customer-portal/invoices` | `customer_portal.access`; höchstens 100 eigene, nicht archivierte Rechnungen mit Status `approved` |
+| GET | `/api/v1/customer-portal/invoices/{invoice_id}/pdf` | `customer_portal.access`; eigene freigegebene Rechnung; Download wird auditiert |
+| GET | `/api/v1/customer-portal/links` | `customers.portal.manage`; aktive Portalverknüpfungen |
+| POST | `/api/v1/customer-portal/links` | `customers.portal.manage`; manuelle eindeutige Benutzer-/Kontaktverknüpfung |
+| DELETE | `/api/v1/customer-portal/links/{contact_id}` | `customers.portal.manage`; Verknüpfung lösen, Historie und Audit bleiben erhalten |
+
+Kundenlisten blenden archivierte Datensätze standardmäßig aus. Sie können nach Kundenstatus (`status`) und Vertragsstatus (`contract_status`) filtern. Die Sortierfelder sind `company_name`, `customer_number`, `created_at`, `status` und `contract_status`; die Sortierrichtung ist `asc` oder `desc`. Die Suche berücksichtigt Kunden-, Kontakt-, Anschrift- und Websitedaten.
+
+Inventarwerte, zulässige Vorgänge und Objektbereichsregeln sind in [`INVENTORY.md`](INVENTORY.md) dokumentiert. Physische Einzelschlüssel bleiben im separaten Schlüsselregister; Inventarereignisse sind append-only.
+
+Kunden können Geschäfts- und Rechnungsanschrift, Rechtsform, Website, Vertragsstatus, Umsatzsteuer-ID, Steuernummer und interne Notizen enthalten. Websites müssen HTTP- oder HTTPS-URLs sein. Vertragsstatuswerte: `none` (kein Vertrag), `draft` (in Vorbereitung), `active` (aktiv), `expired` (abgelaufen), `terminated` (beendet). Ansprechpartner werden separat verwaltet; pro Kunde kann höchstens einer als primär markiert sein. Kunden werden archiviert statt physisch gelöscht. Historieneinträge speichern Ereignis, Akteur, Zeitpunkt und geänderte Feldnamen; das Audit-Protokoll hält dieselben geänderten Bereiche fest, aber keine vorherigen/neuen Feldwerte.
 
 Dieses API-Inventar ist eine historische Momentaufnahme vom 09.11.2026 auf Basis von `main` SHA `a8cc63b3eeef9cbcdc033e4156ca046c14e8c99a` (Main-Commit um 07:51 UTC, vor PR #40). Es wurde aus `backend/app/main.py`, den dort registrierten Routern und dem generierten FastAPI-OpenAPI-Schema erstellt. Versionierung: `/api/v1`. OpenAPI/Swagger: `/docs`. Das Schema enthält 190 Operationen unter `/api/v1` sowie zwei Health-Operationen außerhalb des Präfixes. OWKS (PR #23), Dokumente/Verträge (PR #24), Dienstplan-Verfügbarkeiten/Vertretungen (PR #26), Rechnungswesen (PR #27), MFA/Sitzungsverwaltung (PR #31), Upload-Prüfung (PR #33), Aufgaben (PR #34), In-App-Aufgabenbenachrichtigungen (PR #35), Schlüsselverwaltung (PR #36), Vorfallmanagement (PR #37), Leitstellenübersicht (PR #38) und Notification-/OWKS-Worker (PR #39) waren gemergt. Der Worker ist kein HTTP-Router und ändert die OpenAPI-Zählung nicht; PR #25 war zum damaligen Prüfzeitpunkt offen. Der aktuelle PR-Status steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
@@ -10,9 +147,9 @@ Außer `/health/live`, `/health/ready` und `/api/v1/auth/login` sind Endpunkte s
 
 `GET /api/v1/...`-Antworten sind JSON, sofern unten nicht CSV/Datei steht. `[]` bedeutet JSON-Array, `Page` paginierte Antwort. Body-Namen verweisen auf Pydantic-Schemas in `backend/app/schemas.py`; Upload nutzt multipart/form-data. Erfolgsstatus und Response-Schema folgen dem OpenAPI-Output. Parameter in der Spalte **Eingabe** sind zusätzliche Queryparameter und JSON-/Multipart-Bodys; Pfad-IDs stehen im jeweiligen Pfad.
 
-## Kundenportal (PR #42)
+## Kundenportal (PR #42, in `main`)
 
-Die folgenden Routen sind die Portal-Erweiterung dieses PRs; das darüber dokumentierte API-Inventar bleibt eine historische Momentaufnahme von `main`. Kundenendpunkte verwenden ausschließlich das serverseitig verknüpfte aktive Portal-Konto und den damit verbundenen Kontakt/Kunden. Ein vom Client übermittelter Kunden- oder Kontaktbezug begründet keinen Zugriff. Kundenkonten erhalten keine allgemeinen Kunden-, Dokument-, Vorfall- oder Personalrechte. Schreibende Requests benötigen Sitzung und CSRF-Token.
+Die folgenden Routen beschreiben die Portal-Erweiterung aus PR #42. Das historische API-Inventar oben bildet den damaligen Stand von `main` ab. Kundenendpunkte verwenden ausschließlich das serverseitig verknüpfte aktive Portal-Konto und den damit verbundenen Kontakt/Kunden. Ein vom Client übermittelter Kunden- oder Kontaktbezug begründet keinen Zugriff. Kundenkonten erhalten keine allgemeinen Kunden-, Dokument-, Vorfall- oder Personalrechte. Schreibende Requests benötigen Sitzung und CSRF-Token.
 
 | Methode und Route | Recht / Bereich | Eingabe | Erfolg / Response |
 |---|---|---|---|

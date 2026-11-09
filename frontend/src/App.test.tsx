@@ -57,6 +57,10 @@ vi.mock("./api", () => ({
   getTimeCorrections: vi.fn(),
   getMissingShifts: vi.fn(),
   getTasks: vi.fn(),
+  getInventoryAssets: vi.fn(),
+  getInventoryEmployees: vi.fn(),
+  getInventoryObjects: vi.fn(),
+  getInventoryEligibleEmployees: vi.fn(),
   getTask: vi.fn(),
   getTaskAssignees: vi.fn(),
   getTaskLocations: vi.fn(),
@@ -173,6 +177,34 @@ describe("Kundenformulare", () => {
       reviewed_at: null,
       history: [{ event: "requested", occurred_at: "2026-11-09T08:00:00Z" }],
     });
+  });
+
+  it("öffnet die Inventarverwaltung nur mit Leserecht", async () => {
+    vi.mocked(api.getSession).mockResolvedValue({
+      user: {
+        id: "inventory-user",
+        username: "inventar",
+        email: "inventar@example.de",
+        full_name: "Inventarzugriff",
+        is_active: true,
+        roles: [],
+        permissions: ["inventory.read"],
+      },
+    });
+    vi.mocked(api.getInventoryAssets).mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 25,
+      offset: 0,
+    });
+    vi.mocked(api.getInventoryObjects).mockResolvedValue([]);
+    vi.mocked(api.getInventoryEmployees).mockResolvedValue([]);
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "Inventar" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Inventarverwaltung" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Inventar erfassen" })).toBeNull();
   });
 
   it("öffnet die Leitstelle automatisch für berechtigte Rollen", async () => {

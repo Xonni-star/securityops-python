@@ -204,6 +204,10 @@ def test_document_and_version_uploads_fail_closed_on_scan_rejection(
 ) -> None:
     monkeypatch.setattr(get_settings(), "document_storage_path", tmp_path)
     headers = sign_in(client)
+    with TestingSessionLocal() as db:
+        rejected_uploads_before = db.scalar(
+            select(func.count()).select_from(AuditLog).where(AuditLog.action == "uploads.rejected")
+        )
 
     def infected(_content: bytes) -> None:
         raise MalwareDetected
@@ -219,7 +223,7 @@ def test_document_and_version_uploads_fail_closed_on_scan_rejection(
                 .select_from(AuditLog)
                 .where(AuditLog.action == "uploads.rejected")
             )
-            == 1
+            == rejected_uploads_before + 1
         )
     assert list(tmp_path.iterdir()) == []
 

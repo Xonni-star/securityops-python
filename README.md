@@ -10,17 +10,18 @@ Voraussetzung ist Docker mit Compose. Im Projektordner:
 cp .env.example .env
 ```
 
-Ändere in `.env` das Datenbankpasswort. Lokal wird die gesicherte Produktionskonfiguration mit einem ausdrücklich getrennten HTTP-Entwicklungs-Override verwendet:
+Trage in `.env` drei unterschiedliche, zufällige Secrets für Datenbankadministrator, Migration und Laufzeit ein. Lokal wird die gesicherte Produktionskonfiguration mit einem ausdrücklich getrennten HTTP-Entwicklungs-Override verwendet:
 
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db redis
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile release run --rm migrate
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile release run --rm provision-db
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile release run --rm --no-deps migrate
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 ```
 
 Die Anwendung wird als statischer Build unter <http://localhost:5173> ausgeliefert. Die API-Dokumentation befindet sich unter <http://localhost:8000/docs>. Die Ports sind standardmäßig nur an `localhost` gebunden. Die Migration wird einmalig und vor dem API-Start ausgeführt, nicht durch jede API-Replik.
 
-Der Entwicklungs-Override deaktiviert Secure-Cookies ausschließlich für lokales HTTP. Ohne ihn erzwingt Compose `APP_ENV=production`, `SESSION_COOKIE_SECURE=true` und einen gemeinsamen Redis-Speicher für Rate-Limits. `POSTGRES_PASSWORD` ist erforderlich; ändere das Beispielpasswort vor dem Start und verwende für jeden Server ein eigenes Secret.
+Der Entwicklungs-Override deaktiviert Secure-Cookies ausschließlich für lokales HTTP. Ohne ihn erzwingt Compose `APP_ENV=production`, `SESSION_COOKIE_SECURE=true` und einen gemeinsamen Redis-Speicher für Rate-Limits. `POSTGRES_ADMIN_PASSWORD`, `POSTGRES_MIGRATION_PASSWORD` und `POSTGRES_RUNTIME_PASSWORD` sind erforderlich; ersetze die Beispielwerte und verwende unterschiedliche Secrets.
 
 ## Erstes Administratorkonto
 
@@ -69,6 +70,8 @@ Das Passwort muss mindestens 12 Zeichen lang sein. Der Bootstrapping-Befehl erst
 - `/api/v1/objects/{id}/contacts` – Ansprechpartner einzeln verwalten
 - `/api/v1/objects/{id}/assignments` – Objektmitarbeiter zuweisen (separate Berechtigung)
 - `/api/v1/objects/{id}/security` – sensible Sicherheits- und Zutrittsdaten (separate Berechtigungen)
+- `/api/v1/inventory/assets` – Inventargegenstände suchen/filtern und mit Berechtigung anlegen oder ändern; Ausgabe, Rückgabe, Übergabe, Meldungen, Wartung und Reparaturen werden als Ereignisse protokolliert
+- `/api/v1/inventory/assets/{id}/events` – Inventarhistorie einsehen oder neue Vorgänge erfassen
 - `GET /api/v1/employees?q=...&status=...` – Personal suchen, filtern und paginieren (`employees.read`)
 - `POST /api/v1/employees` und `GET /api/v1/employees/{id}` – Personalakte anlegen und abrufen
 - `/api/v1/employees/{id}/qualifications` – Qualifikationsnachweise verwalten
@@ -105,9 +108,9 @@ Zuschlagsregeln unterstützen Nacht, Samstag, Sonntag, Feiertag und betriebliche
 
 ## Datenbankserver konfigurieren
 
-Das Backend liest `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` und `POSTGRES_PASSWORD` aus der Umgebung. Compose setzt `POSTGRES_HOST=db` für den enthaltenen PostgreSQL-Dienst. Für einen externen PostgreSQL-Server können diese Werte in der `.env` auf dessen Verbindungsdaten gesetzt werden. `CORS_ORIGINS` steuert die erlaubte Browser-Origin. Der Datenbankport wird absichtlich nicht öffentlich freigegeben. Sitzungen verwenden zufällige opaque Cookies; der Datenbankeintrag speichert nur den Token-Hash. Schreibzugriffe erfordern einen CSRF-Header. Passwort-Hashes werden mit Argon2id erzeugt.
+Das Backend liest `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` und `POSTGRES_PASSWORD` aus der Umgebung. Compose gibt der API und dem Worker ausschließlich die Rolle `securityops_runtime`; Migrationen laufen als `securityops_migrator`, der Administrator bleibt auf Provisioning und getrennte Betriebsaufgaben beschränkt. `CORS_ORIGINS` steuert die erlaubte Browser-Origin. Der Datenbankport wird absichtlich nicht öffentlich freigegeben. Sitzungen verwenden zufällige opaque Cookies; der Datenbankeintrag speichert nur den Token-Hash. Schreibzugriffe erfordern einen CSRF-Header. Passwort-Hashes werden mit Argon2id erzeugt.
 
-Bei direktem Backend-Start außerhalb von Docker: Python 3.12+, `cd backend`, `pip install '.[test]'`, die PostgreSQL-Variablen setzen, Migrationen einmalig mit `alembic upgrade head` ausführen und danach `uvicorn app.main:app --reload` starten. Für Notification-/OWKS-Hintergrundverarbeitung zusätzlich in einem separaten Prozess `python -m app.notification_worker run` starten. Für lokale HTTP-Entwicklung müssen `APP_ENV=development` und `SESSION_COOKIE_SECURE=false` ausdrücklich gesetzt werden. `POSTGRES_PASSWORD` sollte nicht in Quellcode oder Versionsverwaltung abgelegt werden.
+Bei direktem Backend-Start außerhalb von Docker: Python 3.12+, `cd backend`, `pip install '.[test]'`, die getrennten Datenbankrollen mit `python -m scripts.provision_database_roles` als Administrator provisionieren, Alembic mit `securityops_migrator` und die API mit `securityops_runtime` starten. Für Notification-/OWKS-Hintergrundverarbeitung zusätzlich in einem separaten Prozess `python -m app.notification_worker run` starten. Für lokale HTTP-Entwicklung müssen `APP_ENV=development` und `SESSION_COOKIE_SECURE=false` ausdrücklich gesetzt werden. Datenbank-Secrets gehören nicht in Quellcode oder Versionsverwaltung.
 
 ## Tests
 
@@ -124,6 +127,8 @@ Die lokalen API-Tests verwenden standardmäßig eine isolierte SQLite-Testdatenb
 Die Bestandsaufnahme und offenen Module sind in [`docs/PROJECT_AUDIT.md`](docs/PROJECT_AUDIT.md), [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) und der [priorisierten Implementierungs-Roadmap](docs/IMPLEMENTATION_ROADMAP.md) dokumentiert. Weitere technische Informationen: [Architektur](docs/ARCHITECTURE.md), [Datenbank](docs/DATABASE.md), [API](docs/API.md), [Sicherheitsstatus](docs/SECURITY.md), [Sicherheitsprüfung](docs/SECURITY_REVIEW.md), [Installation](docs/INSTALLATION.md), [Deployment](docs/DEPLOYMENT.md), [Backup/Restore](docs/BACKUP_RESTORE.md), [Benutzeranleitung](docs/USER_GUIDE.md), [Changelog](docs/CHANGELOG.md) und [Roadmap](docs/ROADMAP.md).
 
 Die Objektverwaltung umfasst Backend, API und Frontend mit Suche, Filtern, Details, Anschriften, Ansprechpartnern, Archivierung, Historie, Zuweisungen und getrennt geschützten Sicherheitsdaten. Objektzugriff wird serverseitig anhand globaler Rechte oder einer Objektzuweisung geprüft. Personalakten, Qualifikationen, Abwesenheiten, getrennte sensible Daten und versionierte Qualifikationsdateien sind in `main`. PRs #18–#20, #22–#24, #26–#29, #31, #33–#38 sind gemergt; Issues #2–#6 geschlossen. Die Leitstellenübersicht aus PR #38 ist eine berechtigungsgefilterte Momentaufnahme über aktive erreichbare Objekte und vorhandene Fachquellen, keine Echtzeitüberwachung. Sie erfindet keine Alarmmeldungen und gibt keine sensiblen Vorfalldetails oder Anhänge aus. OWKS umfasst objektspezifische QR-/NFC-Kontrollpunkte und -Routen, ein append-only Wachbuch, geschützte Anhänge und Offline-Synchronisierung mit sichtbaren Konflikten. QR-Codes werden erzeugt und können per Kamera gescannt werden; Web-NFC liest/beschreibt NDEF-Textkennungen nur bei sicherem Kontext und kompatiblem Browser/Gerät. Der eingebaute PostgreSQL-Minutenmonitor prüft versäumte Kontrollen auch über mehrere API-Instanzen. Statische QR-/NFC-Treffer bleiben `presence_verified=false`, gelten nicht als erledigter Besuch und beweisen keine physische Anwesenheit; dynamische kryptografische Tags oder Geräte-/Standortnachweise sind nicht integriert. Neue Dokumente/-versionen, OWKS-Anhänge, Personal-Qualifikationsdateien und Vorfallanhänge werden vor Speicherung fail-closed mit ClamAV geprüft. Bereits gespeicherte Dateien werden nicht rückwirkend geprüft; Scan und CI sind keine Garantie vollständiger Erkennung oder Produktionssicherheit. Dokumenten-/Vertragsverwaltung (PR #24), Rechnungswesen (PR #27), MFA/Sitzungsverwaltung (PR #31), Uploadscan (PR #33), Aufgaben-Kern (PR #34), In-App-Aufgabenbenachrichtigungen (PR #35), Schlüsselverwaltung (PR #36), Vorfallmanagement (PR #37) und Leitstellenübersicht (PR #38) sind in `main`. Issues #7–#10 sind aktuell offen, darunter Issue #8 trotz Merge der Dokumentenfunktionen. Das Audit-Protokoll ist über die Anwendung schreibgeschützt, aber nicht durch getrennte Datenbankrollen gegen privilegierte direkte Änderungen abgesichert.
+
+PR #47 ergänzt getrennte Administrator-, Migrations- und Laufzeitrollen, PostgreSQL-Append-only-Schutz und eine prüfbare SHA-256-Auditkette; Datenbank-Owner/Superuser können diese Kontrollen weiterhin umgehen. PR #50 ergänzt im PR-Stack eine Inventarverwaltung für nicht schlüsselartige Betriebsmittel mit nachvollziehbaren Bewegungsereignissen. Externe getrennte Backups und Integritätsprüfpunkte bleiben Betreiberaufgaben. Weder CI noch diese Funktionen bedeuten eine Produktionsfreigabe.
 
 Die Anwendung ist weiterhin keine Produktionsfreigabe. Produktions-Compose liefert statische Assets über Nginx aus, erzwingt Secure-Cookies und nutzt Redis für gemeinsame Rate-Limits; Migration, Scanner sowie ein verschlüsselter PostgreSQL-17-Restore sind in CI eingebunden. Für einen realen Betrieb müssen Betreiber TLS, Zertifikate, vertrauenswürdige Proxy-IP-Adressen, externe Secrets, minimale Datenbankrechte, Überwachung und getrennte Backup-Aufbewahrung einrichten und den Restore in ihrer eigenen Testumgebung wiederholen. Es wurde kein Produktions-Restore durchgeführt. MFA ist optional; Passwortzurücksetzung steht nur berechtigten Administratoren zur Verfügung. Selbstbedienungs-Reset per E-Mail fehlt. Ruhezeitregeln sind keine automatische Rechtsprüfung; gesetzliche, steuerliche oder buchhalterische Konformität wird nicht behauptet und erfordert unabhängige fachliche Prüfung.
 

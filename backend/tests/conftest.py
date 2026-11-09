@@ -57,6 +57,8 @@ from app.models import (
     IncidentMeasure,
     IncidentPerson,
     IncidentSensitiveDetails,
+    InventoryAsset,
+    InventoryEvent,
     KeyMovement,
     Notification,
     NotificationOutbox,
@@ -147,6 +149,7 @@ def client() -> Generator[TestClient, None, None]:
                 "owks_event_statuses",
                 "owks_attachments",
                 "key_movements",
+                "inventory_events",
                 "notification_outbox_attempts",
                 "customer_portal_link_history",
                 "customer_portal_document_grant_history",
@@ -157,7 +160,8 @@ def client() -> Generator[TestClient, None, None]:
                 db.execute(text(f"ALTER TABLE {table} DISABLE TRIGGER {table}_append_only"))
         db.execute(delete(UserSession))
         db.execute(delete(UserMFARecoveryCode))
-        db.execute(delete(AuditLog))
+        if test_engine.dialect.name != "postgresql":
+            db.execute(delete(AuditLog))
         db.execute(delete(TaskComment))
         db.execute(delete(TaskHistory))
         db.execute(delete(Notification))
@@ -172,6 +176,8 @@ def client() -> Generator[TestClient, None, None]:
         db.execute(delete(Incident))
         db.execute(delete(KeyMovement))
         db.execute(delete(PhysicalKey))
+        db.execute(delete(InventoryEvent))
+        db.execute(delete(InventoryAsset))
         db.execute(delete(OWKSAttachment))
         db.execute(delete(OWKSEventStatus))
         db.execute(delete(OWKSEvent))
@@ -244,6 +250,7 @@ def client() -> Generator[TestClient, None, None]:
                 "owks_event_statuses",
                 "owks_attachments",
                 "key_movements",
+                "inventory_events",
                 "notification_outbox_attempts",
                 "customer_portal_link_history",
                 "customer_portal_document_grant_history",
@@ -333,6 +340,9 @@ def client() -> Generator[TestClient, None, None]:
             "keys.read",
             "keys.manage",
             "keys.move",
+            "inventory.read",
+            "inventory.manage",
+            "inventory.move",
             "incidents.read",
             "incidents.read_all",
             "incidents.create",
@@ -410,6 +420,9 @@ def client() -> Generator[TestClient, None, None]:
                 "keys.read",
                 "keys.manage",
                 "keys.move",
+                "inventory.read",
+                "inventory.manage",
+                "inventory.move",
                 "incidents.read",
                 "incidents.read_all",
                 "incidents.create",
@@ -464,6 +477,8 @@ def client() -> Generator[TestClient, None, None]:
                 "documents.download",
                 "keys.read",
                 "keys.move",
+                "inventory.read",
+                "inventory.move",
                 "incidents.read",
                 "incidents.create",
                 "incidents.update",

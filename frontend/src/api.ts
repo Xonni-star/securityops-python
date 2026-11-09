@@ -101,6 +101,16 @@ import type {
   KeyMovementType,
   KeyEmployeeCandidate,
   KeyObjectCandidate,
+  InventoryActionType,
+  InventoryAsset,
+  InventoryAssetPage,
+  InventoryCategory,
+  InventoryCondition,
+  InventoryEmployeeCandidate,
+  InventoryEvent,
+  InventoryEventPage,
+  InventoryObjectCandidate,
+  InventoryStatus,
   IncidentDetail,
   IncidentItem,
   IncidentPage,
@@ -1125,6 +1135,102 @@ export const createKeyMovement = (keyId: string, data: {
 
 export const getKeyMovements = (keyId: string, limit = 100, offset = 0) =>
   request<KeyMovementPage>(`/keys/${keyId}/movements?limit=${limit}&offset=${offset}`);
+
+export interface InventoryFilters {
+  q: string;
+  category: InventoryCategory | "";
+  condition: InventoryCondition | "";
+  status: InventoryStatus | "";
+  object_id: string;
+  employee_id: string;
+  include_archived: boolean;
+  limit: number;
+  offset: number;
+}
+
+export const getInventoryAssets = (filters: InventoryFilters) => {
+  const params = new URLSearchParams({
+    limit: String(filters.limit),
+    offset: String(filters.offset),
+  });
+  if (filters.q.trim()) params.set("q", filters.q.trim());
+  if (filters.category) params.set("category", filters.category);
+  if (filters.condition) params.set("condition", filters.condition);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.object_id) params.set("object_id", filters.object_id);
+  if (filters.employee_id) params.set("employee_id", filters.employee_id);
+  if (filters.include_archived) params.set("include_archived", "true");
+  return request<InventoryAssetPage>(`/inventory/assets?${params}`);
+};
+
+export const getInventoryObjects = () =>
+  request<InventoryObjectCandidate[]>("/inventory/objects");
+
+export const getInventoryEmployees = () =>
+  request<InventoryEmployeeCandidate[]>("/inventory/employees");
+
+export const getInventoryEligibleEmployees = (objectId?: string) => {
+  const params = new URLSearchParams();
+  if (objectId) params.set("object_id", objectId);
+  return request<InventoryEmployeeCandidate[]>(
+    `/inventory/eligible-employees${params.size ? `?${params}` : ""}`,
+  );
+};
+
+export const createInventoryAsset = (data: {
+  asset_number: string;
+  serial_number?: string;
+  name: string;
+  category: InventoryCategory;
+  condition: InventoryCondition;
+  location: string;
+  object_id?: string;
+}) =>
+  request<InventoryAsset>("/inventory/assets", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const updateInventoryAsset = (
+  assetId: string,
+  data: {
+    serial_number?: string | null;
+    name?: string;
+    category?: InventoryCategory;
+    condition?: InventoryCondition;
+    location?: string;
+  },
+) =>
+  request<InventoryAsset>(`/inventory/assets/${assetId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+export const archiveInventoryAsset = (assetId: string) =>
+  request<InventoryAsset>(`/inventory/assets/${assetId}/archive`, { method: "POST" });
+
+export const createInventoryEvent = (
+  assetId: string,
+  data: {
+    event_type: InventoryActionType;
+    employee_id?: string;
+    object_id?: string | null;
+    acknowledged?: boolean;
+    acknowledgement_note?: string;
+    condition?: InventoryCondition;
+    location?: string;
+    note?: string;
+  },
+) =>
+  request<InventoryEvent>(`/inventory/assets/${assetId}/events`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const getInventoryEvents = (assetId: string, limit = 100, offset = 0) =>
+  request<InventoryEventPage>(
+    `/inventory/assets/${assetId}/events?limit=${limit}&offset=${offset}`,
+  );
 
 export const getCustomerObjects = (customerId: string) =>
   getObjects({

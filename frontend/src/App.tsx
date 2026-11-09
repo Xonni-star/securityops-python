@@ -28,6 +28,7 @@ import IdentitySecurity from "./IdentitySecurity";
 import TaskManagement from "./TaskManagement";
 import NotificationManagement from "./NotificationManagement";
 import KeyManagement from "./KeyManagement";
+import InventoryManagement from "./InventoryManagement";
 import IncidentManagement from "./IncidentManagement";
 import ControlRoom from "./ControlRoom";
 import EmployeePortal from "./EmployeePortal";
@@ -90,6 +91,7 @@ type ActiveModule =
   | "tasks"
   | "notifications"
   | "keys"
+  | "inventory"
   | "incidents"
   | "customer_portal"
   | "security";
@@ -185,6 +187,9 @@ export default function App() {
     user?.permissions.includes("notifications.read_own") && canReadTasks,
   );
   const canReadKeys = user?.permissions.includes("keys.read") ?? false;
+  const canReadInventory = user?.permissions.includes("inventory.read") ?? false;
+  const canManageInventory = user?.permissions.includes("inventory.manage") ?? false;
+  const canMoveInventory = user?.permissions.includes("inventory.move") ?? false;
   const canManageCustomerPortal = user?.permissions.includes("customers.portal.manage") ?? false;
   const canManageCustomerPortalRequests =
     user?.permissions.includes("customer_portal.requests.manage") ?? false;
@@ -261,6 +266,9 @@ export default function App() {
     else if (user && !canReadCustomers && !canReadObjects && canReadKeys) {
       setActiveModule("keys");
     }
+    else if (user && !canReadCustomers && !canReadObjects && !canReadKeys && canReadInventory) {
+      setActiveModule("inventory");
+    }
     else if (user && !canReadCustomers && !canReadObjects && canReadEmployees) {
       setActiveModule("employees");
     } else if (user && !canReadCustomers && !canReadObjects && !canReadEmployees && canReadScheduling) {
@@ -302,7 +310,7 @@ export default function App() {
     ) {
       setActiveModule("notifications");
     }
-  }, [canAccessBilling, canAccessDocuments, canCreateTasks, canReadCustomers, canReadEmployees, canReadKeys, canReadNotifications, canReadObjects, canReadOWKS, canReadScheduling, canReadTasks, canReadTimeTracking, isEmployeePortal, user]);
+  }, [canAccessBilling, canAccessDocuments, canCreateTasks, canReadCustomers, canReadEmployees, canReadInventory, canReadKeys, canReadNotifications, canReadObjects, canReadOWKS, canReadScheduling, canReadTasks, canReadTimeTracking, isEmployeePortal, user]);
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -599,7 +607,7 @@ export default function App() {
         <h1>{isEmployeePortal ? `Guten Tag, ${user.full_name}.` : "Guten Tag."}</h1>
         <p>{isEmployeePortal
           ? "Eigene Dienste, Aufgaben, Qualifikationen, Arbeitszeiten und Anträge."
-          : "Kunden, Objekte, Personal, Schlüssel, Aufgaben, Dienste und Arbeitszeiten zentral verwalten."}</p>
+          : "Kunden, Objekte, Personal, Schlüssel, Inventar, Aufgaben, Dienste und Arbeitszeiten zentral verwalten."}</p>
       </section>
 
       <nav className="module-tabs" aria-label="Verwaltungsmodule">
@@ -629,6 +637,9 @@ export default function App() {
         {canReadKeys && <button
           className={activeModule === "keys" ? "module-tab active" : "module-tab"}
           onClick={() => selectModule("keys")}>Schlüssel</button>}
+        {canReadInventory && <button
+          className={activeModule === "inventory" ? "module-tab active" : "module-tab"}
+          onClick={() => selectModule("inventory")}>Inventar</button>}
         {canReadEmployees && <button
           className={activeModule === "employees" ? "module-tab active" : "module-tab"}
           onClick={() => selectModule("employees")}>Personal</button>}
@@ -678,6 +689,12 @@ export default function App() {
         ? <ControlRoom />
         : activeModule === "keys" && canReadKeys
         ? <KeyManagement canManage={canManageKeys} canMove={canMoveKeys} />
+        : activeModule === "inventory" && canReadInventory
+        ? <InventoryManagement
+          canManage={canManageInventory}
+          canManageGlobal={user.permissions.includes("objects.manage_all")}
+          canMove={canMoveInventory}
+        />
         : activeModule === "notifications" && canReadNotifications
         ? <NotificationManagement />
         : activeModule === "documents" && canAccessDocuments
