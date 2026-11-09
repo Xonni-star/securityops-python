@@ -1,6 +1,6 @@
 # SecurityOps – Projektstatus
 
-**Geprüft:** 09.11.2026, 19:07 Uhr CET · Checkout und `origin/main` stimmten bei der Live-Prüfung überein · **Alembic-Head:** `0035_worker_monitoring` · **Alembic-Migrationen:** 35 · **Offene Pull Requests (Live-Abfrage):** #62, #64, #65, #66, #68–#75.
+**Geprüft:** 09.11.2026, 19:15 Uhr CET · Checkout und `origin/main` stimmten bei der Live-Prüfung überein · **Alembic-Head:** `0035_worker_monitoring` · **Alembic-Migrationen:** 35 · **Offene Pull Requests (Live-Abfrage):** #62, #64, #65, #66, #68–#77.
 
 Diese Momentaufnahme wurde mit dem `main`-Quellcode und einer Live-Abfrage von GitHub abgeglichen. Die Momentaufnahme enthält absichtlich keinen Commit-SHA, der nach dem nächsten Merge veraltet wäre. Implementierung, erfolgreiche CI, fachliche Abnahme und produktiver Betrieb sind getrennte Nachweise. Ein Merge oder grüner CI-Lauf belegt für sich weder fachliche, rechtliche oder steuerliche Abnahme noch einen produktiven Rollout. Der CI-Validator prüft lokale Projektfakten; er fragt GitHub nicht ab. GitHub-Statusangaben müssen bei einer Aktualisierung erneut live geprüft werden.
 
@@ -52,11 +52,11 @@ Die bei diesen Merge-PRs angezeigten CI-Prüfungen waren erfolgreich (Backend/Po
 
 ### Offene Pull Requests
 
-Bei der Live-Abfrage am 09.11.2026 um 19:07 CET waren PRs #62, #64, #65, #66, #68, #69, #70, #71, #72, #73, #74 und #75 offen. PRs #62, #64, #65, #66, #68, #69, #70, #71 und #73 hatten erfolgreiche CI- und Security-Checks. PR #65 ist auf #64 gestapelt und PR #72 auf #65. Bei PR #72 war nur der verschlüsselte Restore noch ausstehend. PR #74 hatte einen fehlgeschlagenen Backend-/PostgreSQL-Job; die übrigen gemeldeten Checks waren erfolgreich. Bei PR #75 waren SCA und JavaScript/TypeScript-CodeQL noch ausstehend; Backend/PostgreSQL, Python-CodeQL, Docker, Frontend-Build/Browser-E2E und Restore waren erfolgreich. Diese zeitgebundenen CI-Ergebnisse belegen keine fachliche oder produktive Abnahme.
+Bei der Live-Abfrage am 09.11.2026 um 19:15 CET waren PRs #62, #64, #65, #66, #68–#77 offen. PR #65 ist auf #64 gestapelt, PR #72 auf #65, PR #75 auf #62 und PR #77 auf #65. PR #62 hatte einen fehlgeschlagenen CI-Workflow ohne gestartete Jobs („workflow file issue“ laut GitHub); die CodeQL-Einzelchecks waren erfolgreich, die Ursache des Workflowfehlers ist ungeklärt. PR #72s CI-Workflow meldete Fehler; der zuvor gemeldete verschlüsselte Restore-Job war fehlgeschlagen, nachdem der Produktionscontainer-Prüfschritt für API/statisches Frontend scheiterte und der Restore übersprungen wurde. Im zuletzt abgerufenen Lauf wurde nur ein erfolgreicher Docker-Job angezeigt, daher ist die Fehlerursache nicht abschließend verifiziert. PR #74 hat den Head `224abf0`; der neuere CI-Lauf endete mit Workflowfehler, während nur der Docker-Job als erfolgreich gemeldet wurde; die Korrektur des vorherigen Testkonflikts ist damit nicht bestätigt. PR #76 meldete erfolgreiche Frontend-, SCA-, CodeQL-JS- und Restore-Jobs; zugleich endete der Security-Workflow mit Fehler und der aggregierte CodeQL-Check war übersprungen. PR #77 hatte fehlgeschlagene Workflows ohne gestartete Jobs („workflow file issue“ laut GitHub), obwohl die PR-Beschreibung lokale Backend- und Frontend-Prüfungen als erfolgreich aufführt; die Ursache ist ungeklärt. PR #73 blieb auf `f9f9bf3` mit allen Checks erfolgreich. Auch PR #64, #65, #66, #68–#71 und #75 hatten erfolgreiche Checks. Diese zeitgebundenen CI-Ergebnisse belegen keine fachliche oder produktive Abnahme.
 
 | PR | Status und Head zum Prüfzeitpunkt | Thema |
 |---|---|---|
-| [#62](https://github.com/Xonni-star/securityops-python/pull/62) | Offen · `d3db930` · alle Checks erfolgreich | Automate project status documentation checks |
+| [#62](https://github.com/Xonni-star/securityops-python/pull/62) | Offen · `f8f145b` · CI-Workflow vor Jobstart fehlgeschlagen; CodeQL-Einzelchecks erfolgreich | Automate project status documentation checks |
 | [#64](https://github.com/Xonni-star/securityops-python/pull/64) | Offen · `d94911c` · alle Checks erfolgreich | Add safe invoice-approval automation trigger |
 | [#65](https://github.com/Xonni-star/securityops-python/pull/65) | Offen, auf #64 gestapelt · `11b503b` · alle Checks erfolgreich | Objektqualifikationen in der Dienstplanung prüfen |
 | [#66](https://github.com/Xonni-star/securityops-python/pull/66) | Offen · `dc48048` · alle Checks erfolgreich | Add transactional backend workflow integration test |
@@ -64,12 +64,14 @@ Bei der Live-Abfrage am 09.11.2026 um 19:07 CET waren PRs #62, #64, #65, #66, #6
 | [#69](https://github.com/Xonni-star/securityops-python/pull/69) | Offen · `eacd9a1` · alle Checks erfolgreich | Test-only-Prüfung, dass Vorfallanhänge verschlüsselten Speicher verwenden |
 | [#70](https://github.com/Xonni-star/securityops-python/pull/70) | Offen · `987b96a` · alle Checks erfolgreich | Dokumentiere Betrieb, Deployment und Wiederherstellung |
 | [#71](https://github.com/Xonni-star/securityops-python/pull/71) | Offen · `6b39d7d` · alle Checks erfolgreich | Configure weekly Dependabot version updates |
-| [#72](https://github.com/Xonni-star/securityops-python/pull/72) | Offen, auf #65 gestapelt · `8625719` · Restore ausstehend, übrige Checks erfolgreich | Erklärbare Vorschläge für Dienstvertretungen |
+| [#72](https://github.com/Xonni-star/securityops-python/pull/72) | Offen, auf #65 gestapelt · `8625719` · CI-Workflow fehlgeschlagen; zuvor Restore nach fehlgeschlagenem Produktionscontainer-Schritt übersprungen | Erklärbare Vorschläge für Dienstvertretungen |
 | [#73](https://github.com/Xonni-star/securityops-python/pull/73) | Offen · `f9f9bf3` · alle Checks erfolgreich | Aktualisiere Datenbankdokumentation auf Main-Schema |
-| [#74](https://github.com/Xonni-star/securityops-python/pull/74) | Offen · `181b9e2` · Backend/PostgreSQL fehlgeschlagen, übrige Checks erfolgreich | Ergänzt sicheren objektbezogenen Betriebsbericht |
-| [#75](https://github.com/Xonni-star/securityops-python/pull/75) | Offen, auf #62 gestapelt · `4b0b305` · SCA und JavaScript/TypeScript-CodeQL ausstehend; übrige Checks erfolgreich | Add synthetic browser E2E for login and object access |
+| [#74](https://github.com/Xonni-star/securityops-python/pull/74) | Offen · `224abf0` · neuerer CI-Lauf mit Workflowfehler; nur Docker-Job als erfolgreich gemeldet | Ergänzt sicheren objektbezogenen Betriebsbericht |
+| [#75](https://github.com/Xonni-star/securityops-python/pull/75) | Offen, auf #62 gestapelt · `4b0b305` · alle gemeldeten Checks erfolgreich | Add synthetic browser E2E for login and object access |
+| [#76](https://github.com/Xonni-star/securityops-python/pull/76) | Offen · `7422e1f` · Frontend/SCA/CodeQL-JS/Restore erfolgreich; Security-Workflow fehlgeschlagen und aggregierter CodeQL-Check übersprungen | MFA-Schlüssel an API-Container weitergeben |
+| [#77](https://github.com/Xonni-star/securityops-python/pull/77) | Offen, auf #65 gestapelt · `95445ef` · CI und Security-Workflows vor Jobstart fehlgeschlagen („workflow file issue“); lokale Backend-/Frontend-Prüfungen laut PR-Beschreibung erfolgreich | Versionierte digitale Dienstanweisungen und Unterweisungsnachweise |
 
-Ein separater MFA-Compose-Key-Forwarding-Commit `7422e1f` auf `lapalousa-mfa-compose-key-forwarding` wurde gemeldet, aber die Live-Abfrage fand weder den Branch auf `origin` noch den Commit über die GitHub-Commit-API; es gibt dafür keinen offenen PR in der obigen Liste. Er wird daher nicht als Bestandteil von `main` gewertet. Für das Repository wurden bei der Live-Abfrage keine Deployments zurückgegeben.
+PR #76 enthält den zuvor separat gemeldeten MFA-Compose-Key-Forwarding-Commit; er ist offen und nicht Bestandteil von `main`. Für das Repository wurden bei der Live-Abfrage keine Deployments zurückgegeben.
 
 ### Issues
 
