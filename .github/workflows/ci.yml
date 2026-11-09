@@ -72,6 +72,8 @@ jobs:
         run: |
           ruff check app tests migrations scripts
           ruff format --check app tests migrations scripts
+      - name: Projektstatus-Dokumentation gegen Quellcode prüfen
+        run: python -m scripts.validate_project_status
       - name: Alembic-Migrationskette auf PostgreSQL prüfen
         run: |
           alembic history --verbose

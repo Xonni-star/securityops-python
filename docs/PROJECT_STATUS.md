@@ -1,12 +1,12 @@
 # SecurityOps – Projektstatus
 
-**Geprüft:** 09.11.2026, 16:05 Uhr +01:00 · **`main`:** `0b32db6809d763dc58d003ce0657d1af03666a52` (Merge von PR #58 am 09.11.2026) · **Alembic-Head:** `0035_worker_monitoring`
+**Geprüft:** 09.11.2026, 19:40 Uhr CET · Checkout und `origin/main` stimmten bei der Live-Prüfung überein · **Alembic-Head:** `0035_worker_monitoring` · **Alembic-Migrationen:** 35 · **Offene Pull Requests (Live-Abfrage):** #62, #64, #65, #66, #68–#77.
 
-Diese Momentaufnahme wurde mit dem aktuellen `main`-Quellcode und der Live-Abfrage von GitHub abgeglichen. Implementierung, erfolgreiche CI, fachliche Abnahme und produktiver Betrieb sind getrennte Nachweise. Ein Merge oder grüner CI-Lauf belegt für sich weder fachliche, rechtliche oder steuerliche Abnahme noch einen produktiven Rollout.
+Diese Momentaufnahme wurde mit dem `main`-Quellcode und einer Live-Abfrage von GitHub abgeglichen. Die Momentaufnahme enthält absichtlich keinen Commit-SHA, der nach dem nächsten Merge veraltet wäre. Implementierung, erfolgreiche CI, fachliche Abnahme und produktiver Betrieb sind getrennte Nachweise. Ein Merge oder grüner CI-Lauf belegt für sich weder fachliche, rechtliche oder steuerliche Abnahme noch einen produktiven Rollout. Der CI-Validator prüft lokale Projektfakten; er fragt GitHub nicht ab. GitHub-Statusangaben müssen bei einer Aktualisierung erneut live geprüft werden.
 
 ## Tatsächlich in `main`
 
-`backend/app/main.py` registriert Fach- und Portalrouter für Personal, Mitarbeiterportal, Dienstplanung, Zeiterfassung/Zuschläge, Aufgaben, Automatisierungen, Benachrichtigungen, Worker-Monitoring, Schlüssel, Inventar, Dokumente/Verträge, Rechnungswesen, Identität, Vorfälle, OWKS, Leitstelle, Kundenportal und globale Suche. Die lineare Alembic-Kette reicht von `0001_customers` bis `0035_worker_monitoring`; der geprüfte Head ist `0035_worker_monitoring`. Für diese Aktualisierung wurden keine aggregierten Tabellen-/API-Zahlen neu aufgenommen.
+`backend/app/main.py` registriert Fach- und Portalrouter für Personal, Mitarbeiterportal, Dienstplanung, Zeiterfassung/Zuschläge, Aufgaben, Automatisierungen, Benachrichtigungen, Worker-Monitoring, Schlüssel, Inventar, Dokumente/Verträge, Rechnungswesen, Identität, Vorfälle, OWKS, Leitstelle, Kundenportal und globale Suche. Das vollständige Routerinventar aus der Registrierung in `backend/app/main.py` lautet: **Registrierte API-Router:** `api, automations_api, billing_api, control_room_api, customer_portal_api, documents_contracts_api, employee_portal_api, identity_api, incidents_api, inventory_api, key_management_api, notification_monitoring, notifications_api, owks_api, personnel_api, scheduling_api, search_api, tasks_api, time_tracking_api, time_tracking_surcharges`. Die lineare Alembic-Kette hat 35 Revisionen, von `0001_customers` bis zum einzigen Head `0035_worker_monitoring`. Für diese Aktualisierung wurden keine aggregierten Tabellen-/API-Zahlen neu aufgenommen.
 
 - **Identität und Berechtigungen:** Anmeldung, Rollen/Rechte, serverseitig widerrufbare Sitzungen, optionales TOTP-MFA, Recovery-Codes, administrative Passwortzurücksetzung und Audit-Lesezugriff. Ein nutzerinitiierter E-Mail-Passwortreset und Mailzustellung sind nicht implementiert.
 - **Kunden, Objekte und Personal:** Kunden- und Objektverwaltung, objektbezogene Zugriffsgrenzen, Personalakten, Qualifikationen, Abwesenheiten und nachvollziehbare Zuweisungsverläufe. Personal-Objektzuweisungen berücksichtigen serverseitig den Objektzugriff.
@@ -52,7 +52,26 @@ Die bei diesen Merge-PRs angezeigten CI-Prüfungen waren erfolgreich (Backend/Po
 
 ### Offene Pull Requests
 
-Zum Zeitpunkt der Prüfung ist PR #53 der einzige offene Pull Request; die früher offenen PRs #54, #55, #57, #58 und #59 sind alle gemergt. Die CI-Prüfungen der Merge-PRs waren auf den jeweiligen geprüften Heads erfolgreich. Das belegt keine fachliche oder produktive Abnahme.
+Bei der Live-Abfrage am 09.11.2026 um 19:40 CET waren PRs #62, #64, #65, #66, #68–#77 offen. PR #65 ist auf #64 gestapelt, PR #72 auf #65, PR #75 auf #62 und PR #77 auf #65. PR #62 steht auf `5f9c8e2`; CI-Lauf [42675534181](https://github.com/Xonni-star/securityops-python/actions/runs/42675534181) (Backend/PostgreSQL, Frontend, Docker, Restore) und Security-Lauf [42675534376](https://github.com/Xonni-star/securityops-python/actions/runs/42675534376) (SCA, Python- und JavaScript/TypeScript-CodeQL) sind vollständig erfolgreich. PR #72 steht auf `a5b1e5a`: Backend/Migration/PostgreSQL, Docker und Restore einschließlich Produktionscontainer-Prüfung waren erfolgreich; der CI-Rollup endete trotzdem mit Fehler und enthielt keinen Frontend-Job. SCA und Python-CodeQL waren erfolgreich, der Security-Rollup endete ebenfalls mit Fehler und enthielt keinen JavaScript/TypeScript-CodeQL-Job. Daher kein vollständig grüner CI-Nachweis. PR #73 steht auf `e9d9bb7`, bewahrt nach dem Diff den bisherigen Spaltenkatalog und ergänzt Schema-/Betriebsinformationen; alle gemeldeten Checks sind erfolgreich. PR #74 steht auf `224abf0`; die gemeldeten SCA-, CodeQL-, Docker-, Frontend- und Restore-Checks sind erfolgreich, jedoch fehlt ein aktueller Backend/PostgreSQL-Check. Ein manueller Lauf endete insgesamt mit Fehler und wies nur den Docker-Job als erfolgreich aus; der PostgreSQL-Testfix ist damit nicht bestätigt. PR #75 hat alle gemeldeten Checks erfolgreich. PR #76 besteht den vollständigen `workflow_dispatch`-CI-Lauf einschließlich Backend/PostgreSQL, Frontend, Docker und Restore; der PR-ausgelöste Security-Workflow bleibt unvollständig (kein Python-CodeQL-Job), daher ist PR #76 nicht vollständig grün. PR #77 steht auf `41c299b`; CI-Lauf [42675608126](https://github.com/Xonni-star/securityops-python/actions/runs/42675608126) und Security-Lauf [42675607994](https://github.com/Xonni-star/securityops-python/actions/runs/42675607994) sind vollständig erfolgreich: Backend/PostgreSQL, Frontend, Docker, Restore, SCA und beide CodeQL-Sprachen. Der vorherige Head `8e49be7` scheiterte in vier Migrationstests mit veralteter Erwartung `0037`; der neue Head bestätigt die Korrektur. PRs #64, #65, #66, #68–#71 hatten erfolgreiche Checks. Diese zeitgebundenen Ergebnisse belegen keine fachliche oder produktive Abnahme.
+
+| PR | Status und Head zum Prüfzeitpunkt | Thema |
+|---|---|---|
+| [#62](https://github.com/Xonni-star/securityops-python/pull/62) | Offen · `5f9c8e2` · alle CI- und Security-Checks erfolgreich | Automate project status documentation checks |
+| [#64](https://github.com/Xonni-star/securityops-python/pull/64) | Offen · `d94911c` · alle Checks erfolgreich | Add safe invoice-approval automation trigger |
+| [#65](https://github.com/Xonni-star/securityops-python/pull/65) | Offen, auf #64 gestapelt · `11b503b` · alle Checks erfolgreich | Objektqualifikationen in der Dienstplanung prüfen |
+| [#66](https://github.com/Xonni-star/securityops-python/pull/66) | Offen · `dc48048` · alle Checks erfolgreich | Add transactional backend workflow integration test |
+| [#68](https://github.com/Xonni-star/securityops-python/pull/68) | Offen · `4aa43b3` · alle Checks erfolgreich | Dokumentiere GitHub Copilot Repository-Anweisungen |
+| [#69](https://github.com/Xonni-star/securityops-python/pull/69) | Offen · `eacd9a1` · alle Checks erfolgreich | Test-only-Prüfung, dass Vorfallanhänge verschlüsselten Speicher verwenden |
+| [#70](https://github.com/Xonni-star/securityops-python/pull/70) | Offen · `987b96a` · alle Checks erfolgreich | Dokumentiere Betrieb, Deployment und Wiederherstellung |
+| [#71](https://github.com/Xonni-star/securityops-python/pull/71) | Offen · `6b39d7d` · alle Checks erfolgreich | Configure weekly Dependabot version updates |
+| [#72](https://github.com/Xonni-star/securityops-python/pull/72) | Offen, auf #65 gestapelt · `a5b1e5a` · Backend/Migration/PostgreSQL, Docker und Restore erfolgreich; CI-Rollup fehlgeschlagen, Frontend fehlt; SCA/Python-CodeQL erfolgreich, Security-Rollup fehlgeschlagen, JS-CodeQL fehlt | Erklärbare Vorschläge für Dienstvertretungen |
+| [#73](https://github.com/Xonni-star/securityops-python/pull/73) | Offen · `e9d9bb7` · alle gemeldeten Checks erfolgreich; vorheriger Spaltenkatalog bleibt erhalten und wird ergänzt | Aktualisiere Datenbankdokumentation auf Main-Schema |
+| [#74](https://github.com/Xonni-star/securityops-python/pull/74) | Offen · `224abf0` · gelistete Checks erfolgreich, Backend/PostgreSQL-Check fehlt; Testfix daher nicht bestätigt | Ergänzt sicheren objektbezogenen Betriebsbericht |
+| [#75](https://github.com/Xonni-star/securityops-python/pull/75) | Offen, auf #62 gestapelt · `4b0b305` · alle gemeldeten Checks erfolgreich | Add synthetic browser E2E for login and object access |
+| [#76](https://github.com/Xonni-star/securityops-python/pull/76) | Offen · `7422e1f` · `workflow_dispatch`-CI vollständig erfolgreich; PR-Security-Workflow unvollständig, Python-CodeQL fehlt | MFA-Schlüssel an API-Container weitergeben |
+| [#77](https://github.com/Xonni-star/securityops-python/pull/77) | Offen, auf #65 gestapelt · `41c299b` · alle Checks erfolgreich | Versionierte digitale Dienstanweisungen und Unterweisungsnachweise |
+
+PR #76 enthält den zuvor separat gemeldeten MFA-Compose-Key-Forwarding-Commit; er ist offen und nicht Bestandteil von `main`. Für das Repository wurden bei der Live-Abfrage keine Deployments zurückgegeben.
 
 ### Issues
 
@@ -65,23 +84,43 @@ Zum Zeitpunkt der Prüfung ist PR #53 der einzige offene Pull Request; die früh
 | [#48](https://github.com/Xonni-star/securityops-python/issues/48) | Geschlossen am 09.11.2026 | Inventaranforderungen wurden mit PR #50 integriert. |
 | [#51](https://github.com/Xonni-star/securityops-python/issues/51) | Offen | Beschränkte Task- und OWKS-Automatisierung ist implementiert (PRs #54/#59); weitere Trigger und fachlicher Abgleich des Gesamtumfangs bleiben offen. |
 | [#52](https://github.com/Xonni-star/securityops-python/issues/52) | Geschlossen am 09.11.2026 | Antragsrücknahme und Freigabe von Qualifikationsdateien wurden mit PR #55 integriert. Allgemeine Personal-/Vertragsdokumente bleiben ausgeschlossen. |
-| [#56](https://github.com/Xonni-star/securityops-python/issues/56) | Offen · sehr hohe Priorität | Dateiverschlüsselung und Rekey-Werkzeug sind in `main` implementiert (PR #57). Issue bleibt offen, da kein Betreiber-Schlüsselsetup, keine Bestandsmigration/Rotation in einer Zielumgebung und keine Betreiberabnahme nachgewiesen sind. |
+| [#56](https://github.com/Xonni-star/securityops-python/issues/56) | Offen · Betreiber-Nachweise fehlen | Verschlüsselter Dateispeicher und expliziter Rekey-Befehl sind mit gemergtem PR #57 in `main` vorhanden. Die Issue-Beschreibung ist hinsichtlich „nicht anwendungsseitig verschlüsselt“ und „Rekey fehlt“ teilweise überholt. Die test-only-Abdeckung für Vorfallanhänge liegt in offenem PR #69 und ist noch nicht Teil von `main`. Nicht belegt sind Betreiber-Schlüsselbereitstellung, Rekey/Migration bestehender Dateien in einer Zielumgebung und deren Abnahme; das Issue bleibt dafür offen. |
+| [#63](https://github.com/Xonni-star/securityops-python/issues/63) | Offen · Maintainer-Aktion erforderlich | Dependabot alerts sind laut GitHub deaktiviert; das verfügbare Konto erhielt HTTP 403 und konnte die Einstellung nicht ändern. Ein Repository-Maintainer muss Dependabot alerts unter **Settings → Security → Code security and analysis** aktivieren und den Status verifizieren. Security updates sind gemäß Repository-/Branch-Schutzrichtlinien zu aktivieren, sofern verfügbar. Die vorhandene CI-SCA mit `pip-audit` und `npm audit` ersetzt diese Repository-Einstellung nicht; für Code Scanning wurden keine offenen Alerts gemeldet. |
 
 Die Issues #2–#6 und #8 sind ebenfalls geschlossen. Geschlossene Issues und gemergte PRs werden nicht als offene Arbeit oder als außerhalb von `main` dargestellt. Offene Issues beschreiben verbleibende fachliche beziehungsweise betriebliche Arbeit, nicht zwingend fehlende Grundfunktionen.
 
 ## CI, Abnahme und produktiver Nachweis
 
-Der Code enthält Backend- und Frontendtests sowie CI für Lint/Format, PostgreSQL-Migrationen und -Integration, Frontend-Build/-Tests, Container, Sicherheitsanalyse und einen isolierten Backup-/Restorelauf. Für die Merge-PRs #54, #55, #57, #58 und #59 waren die angezeigten CI-Prüfungen auf den jeweiligen geprüften Heads erfolgreich. Das belegt die CI der Änderungen, nicht deren fachliche Abnahme, Betreiber-Schlüsselkonfiguration, produktive Rekey-Ausführung oder einen Produktivbetrieb. Diese Projektstatusdatei nennt bewusst keine aggregierten Testzahlen.
+Der Code enthält Backend- und Frontendtests sowie CI für Lint/Format, PostgreSQL-Migrationen und -Integration, Frontend-Build/-Tests, Container, Sicherheitsanalyse und einen isolierten Backup-/Restorelauf. Die letzten auf `main` gefundenen CI- und Security-Analysis-Läufe waren beim Live-Abgleich erfolgreich. Die individuellen offenen PR-Checks sind oben zeitgebunden aufgeführt. Laufstatus ist kein Nachweis fachlicher Abnahme, Betreiber-Schlüsselkonfiguration, produktiver Rekey-Ausführung oder eines Produktivbetriebs. Für das Repository wurden bei dieser Prüfung keine Deployments zurückgegeben. Diese Projektstatusdatei nennt bewusst keine aggregierten Testzahlen.
+
+**Technische Voraussetzungen laut Projekt/CI:** Backend Python `>=3.12` (CI: 3.12); PostgreSQL 17 (CI); Frontend Node.js 22 (CI).
+
+**Verfügbare CI-Prüfbefehle:** Backend `python -m pytest -q`, `ruff check app tests migrations scripts` und `ruff format --check app tests migrations scripts`; Frontend `npm run build` und `npm test`. Der Dokumentationsvalidator läuft im Backend-Job mit `python -m scripts.validate_project_status`.
+
+### Branch-Schutz für `main`
+
+Der Branch-Schutz wurde in dieser Arbeit nicht eingerichtet. Das GitHub-Konto meldete `permissions.admin=false`; die Abfrage der Branch-Protection-API lieferte HTTP 404. Damit ist der tatsächliche Regelstatus über dieses Konto nicht bestätigt. Ein Maintainer muss die Regeln in GitHub unter **Settings → Rules → Rulesets** oder **Settings → Branches** für `main` manuell einrichten und danach überprüfen:
+
+1. Änderungen an `main` nur über Pull Requests zulassen.
+2. Als erforderliche Checks alle im Pull Request erscheinenden Jobs der Workflows **CI** (Backend/Migrationen/PostgreSQL, Backup/Restore, Frontend, Container-Build) und **Security analysis** (Abhängigkeitsprüfung sowie beide CodeQL-Sprachen) auswählen.
+3. Direkte Pushes und Force-Pushes auf `main` sowie das Löschen des Branches verhindern.
+4. Bypass-Rechte auf ausdrücklich benannte Maintainer begrenzen; keine allgemeine Bypass-Ausnahme für Administratoren oder andere Rollen belassen.
+
+Der Validator prüft die genannten lokalen Projektfakten und Dokumentationsangaben, aber weder GitHub-PR-/Issue-Status noch Branch-Schutz. Dafür ist eine erneute Live-Prüfung durch einen berechtigten Maintainer erforderlich.
+
+### Lizenz
+
+Für das Repository ist keine Lizenz ausgewählt oder hinterlegt (GitHub-Metadatum `license: null`, keine `LICENSE`-Datei). Eine Auswahl wird hier nicht vorgenommen; sie erfordert eine Entscheidung des Rechteinhabers. Die neutralen Optionen und ihre groben Auswirkungen sind in [Lizenzstatus und offene Entscheidung](LICENSING.md) zusammengefasst.
 
 | Nachweisart | Status |
 |---|---|
 | Implementiert | Die oben aufgeführten Funktionen und Migrationen sind im geprüften `main`-Quellcode vorhanden. |
 | CI | Die Checks der genannten Merge-PRs waren laut Live-Abfrage erfolgreich. Das gilt jeweils für die geprüften PR-Heads. |
-| Fachlich abgenommen | Issue #10 wurde nach dokumentiertem Abgleich der Issue-Akzeptanzkriterien geschlossen; Issue #52 nach Merge von PR #55. Eine externe rechtliche, steuerliche oder arbeitsrechtliche Abnahme ist damit nicht belegt; Issues #7, #9, #51 und #56 bleiben offen. |
+| Fachlich abgenommen | Issue #10 wurde nach dokumentiertem Abgleich der Issue-Akzeptanzkriterien geschlossen; Issue #52 nach Merge von PR #55. Eine externe rechtliche, steuerliche oder arbeitsrechtliche Abnahme ist damit nicht belegt; Issues #7, #9, #51, #56 und #63 bleiben offen. Issue #63 ist eine separate Repository-Administration-Aufgabe. |
 | Produktiv geprüft | Kein produktiver Rollout, Betreiber-Restore oder Rekey ist belegt; Issue #9 bleibt offen. |
 
 ## Verweise
 
 - [Architektur](ARCHITECTURE.md) · [Datenbank/Migrationen](DATABASE.md) · [API](API.md)
 - [Sicherheit](SECURITY.md) · [Deployment](DEPLOYMENT.md) · [Backup/Restore](BACKUP_RESTORE.md)
-- [Audit](PROJECT_AUDIT.md) · [Sicherheitsprüfung](SECURITY_REVIEW.md) · [Roadmap](IMPLEMENTATION_ROADMAP.md)
+- [Audit](PROJECT_AUDIT.md) · [Sicherheitsprüfung](SECURITY_REVIEW.md) · [Roadmap](IMPLEMENTATION_ROADMAP.md) · [Lizenzstatus](LICENSING.md)
