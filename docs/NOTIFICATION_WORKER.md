@@ -2,7 +2,7 @@
 
 ## Umfang
 
-Der eigene Compose-Dienst `notification-worker` verarbeitet die persistierte Transactional Outbox für Aufgabenereignisse. Task-Änderung, Historieneintrag und Outbox-Ereignis werden weiterhin in derselben Datenbanktransaktion geschrieben. Der API-Prozess startet keine Hintergrundprozesse mehr. Unterstützt werden derzeit ausschließlich `task.assigned` und `task.status_changed`; daraus werden In-App-Benachrichtigungen erzeugt. Der bestehende OWKS-Prüfzyklus läuft ebenfalls im separaten Dienst weiter und behält seine PostgreSQL-Advisory-Lock-Absicherung.
+Der eigene Compose-Dienst `notification-worker` verarbeitet die persistierte Transactional Outbox für Aufgabenereignisse und sichere Automatisierungsaktionen. Task-Änderung, Historieneintrag und Outbox-Ereignis werden weiterhin in derselben Datenbanktransaktion geschrieben. Der API-Prozess startet keine Hintergrundprozesse mehr. Als Quellen sind `task.assigned` und `task.status_changed` registriert; daraus können aktivierte Regeln eine weitere `automation.notification` für die vorhandenen Ereignisempfänger erzeugen. Der bestehende OWKS-Prüfzyklus läuft ebenfalls im separaten Dienst weiter und behält seine PostgreSQL-Advisory-Lock-Absicherung.
 
 Der Versand von E-Mail oder Push ist nicht konfiguriert: Es gibt keinen vorhandenen Provider. Diese Kanäle werden weder als zugestellt markiert noch durch Platzhalter simuliert.
 
@@ -29,9 +29,9 @@ python -m app.notification_worker run
 
 ## Zustellung und Fehler
 
-Mehrere Worker beanspruchen fällige Ereignisse in kurzen PostgreSQL-Transaktionen mit `FOR UPDATE SKIP LOCKED`. Eine Lease samt Token verhindert, dass ein überholter Worker den neueren Claim abschließt. Die Erstellung der In-App-Einträge und das Markieren des Outbox-Ereignisses als abgeschlossen erfolgen atomar. `uq_notifications_event_recipient` verhindert doppelte Empfänger-Einträge auch bei erneuter Ausführung.
+Mehrere Worker beanspruchen fällige Ereignisse in kurzen PostgreSQL-Transaktionen mit `FOR UPDATE SKIP LOCKED`. Eine Lease samt Token verhindert, dass ein überholter Worker den neueren Claim abschließt. Die Erstellung der In-App-Einträge und das Markieren des Outbox-Ereignisses als abgeschlossen erfolgen atomar. Regel-/Quellereignis, eindeutiger Aktionsschlüssel und `uq_notifications_event_recipient` verhindern doppelte Läufe, Aktionen und Empfänger-Einträge auch bei erneuter Ausführung.
 
-Temporäre Fehler werden mit deterministischem exponentiellem Backoff erneut versucht: 5 Sekunden, danach Verdopplung bis maximal 1 Stunde. Nicht unterstützte oder ungültige Outbox-Nachrichten werden direkt in `dead_letter` überführt; andere Fehler nach Erreichen der maximalen Versuchsanzahl. Status, letzter Fehlercode, Versuchszähler und eine durch PostgreSQL gegen Änderung/Löschung geschützte Attempt-Historie bleiben erhalten. Fehlertexte und Payloads werden nicht in Worker-Logs geschrieben; gespeichert wird nur ein Fehlercode bzw. Exception-Klassenname.
+Temporäre Fehler werden mit deterministischem exponentiellem Backoff erneut versucht: 5 Sekunden, danach Verdopplung bis maximal 1 Stunde. Nicht unterstützte oder ungültige Outbox-Nachrichten werden direkt in `dead_letter` überführt; andere Fehler nach acht fehlgeschlagenen Versuchen. Fehlgeschlagene Claims und fehlgeschlagene Zustellungen werden getrennt gezählt. Administratoren können einen Dead-Letter bis zu dreimal manuell erneut einreihen; Vorgänge werden auditiert und die frühere Attempt-Historie bleibt unverändert erhalten. Status, letzter Fehlercode, Versuchszähler und eine durch PostgreSQL gegen Änderung/Löschung geschützte Attempt-Historie bleiben erhalten. Fehlertexte und Payloads werden nicht in Worker-Logs geschrieben; gespeichert wird nur ein Fehlercode bzw. Exception-Klassenname.
 
 ## Operative Inspektion
 
@@ -43,6 +43,10 @@ docker compose exec notification-worker \
 ```
 
 Die Ausgabe enthält keine Outbox-Payload, Titel, Nachrichtenkörper, Empfänger oder Exception-Texte. Das ist eine lokale Betriebs-CLI und kein öffentlich erreichbarer Monitoring-Endpunkt.
+
+## Sichere Regeln
+
+Regelverwaltung und Ausführungshistorie sind in der API/Oberfläche ausschließlich mit `automations.manage` zugänglich, standardmäßig nur für Administratoren. Es sind nur Aufgaben-Zuweisungs-/Statusereignisse, ein optionaler typisierter Aufgabenstatus und eine In-App-Benachrichtigung an die bestehenden Empfänger verfügbar. Weitere Auslöser/Aktionen und zeitbasierte Aufgabenfristen sind nicht implementiert. Die Historie hat keine automatische Bereinigung; Einzelheiten und Grenzen stehen in [`AUTOMATIONS.md`](AUTOMATIONS.md).
 
 ## Noch nicht enthalten
 

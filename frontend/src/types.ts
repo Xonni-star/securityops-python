@@ -674,6 +674,67 @@ export interface AuthUser {
   permissions: string[];
 }
 
+export type AutomationTrigger = "task.assigned" | "task.status_changed";
+export type AutomationTaskStatus = TaskStatus;
+
+export interface AutomationRule {
+  id: string;
+  name: string;
+  description: string | null;
+  trigger_type: AutomationTrigger;
+  conditions: { status?: AutomationTaskStatus };
+  action_type: "notify_event_recipients";
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AutomationAttempt {
+  attempt_number: number;
+  event: "claimed" | "succeeded" | "retry_scheduled" | "dead_lettered";
+  error_code: string | null;
+  created_at: string;
+}
+
+export interface AutomationRun {
+  id: string;
+  rule_id: string;
+  rule_name: string;
+  source_event_id: string;
+  action_event_id: string | null;
+  trigger_type: AutomationTrigger;
+  status: "condition_not_met" | "skipped_no_recipients" | "queued" | "succeeded" | "dead_letter";
+  last_error: string | null;
+  manual_retry_count: number;
+  created_at: string;
+  updated_at: string;
+  attempt_history: AutomationAttempt[];
+}
+
+export interface AutomationRunPage {
+  items: AutomationRun[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AutomationDeadLetter {
+  id: string;
+  event_type: string;
+  aggregate_id: string;
+  status: "dead_letter";
+  attempt_count: number;
+  manual_retry_count: number;
+  last_error: string | null;
+  created_at: string;
+  attempt_history: AutomationAttempt[];
+}
+
+export interface AutomationDeadLetterPage {
+  items: AutomationDeadLetter[];
+  total: number;
+}
+
 export interface CustomerPortalAddress {
   street: string;
   house_number: string;

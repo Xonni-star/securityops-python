@@ -17,12 +17,20 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import get_settings
 from app.database import SessionLocal, engine
-from app.models import Notification, NotificationOutbox, NotificationOutboxAttempt
+from app.models import (
+    AutomationRule,
+    AutomationRun,
+    Notification,
+    NotificationOutbox,
+    NotificationOutboxAttempt,
+)
 from app.owks_scheduler import run_monitoring_scheduler
 
 logger = logging.getLogger("app.notification_worker")
 
-SUPPORTED_EVENTS = {"task.assigned", "task.status_changed"}
+TASK_EVENTS = {"task.assigned", "task.status_changed"}
+SUPPORTED_EVENTS = TASK_EVENTS | {"automation.notification"}
+TASK_STATUSES = {"open", "in_progress", "blocked", "completed", "cancelled"}
 BASE_RETRY_SECONDS = 5
 MAX_RETRY_SECONDS = 60 * 60
 
@@ -183,8 +191,6 @@ class NotificationOutboxWorker:
         ).all()
         existing_recipient_ids = {row.recipient_id for row in existing_notifications}
         missing_recipient_ids = recipient_ids - existing_recipient_ids
-        if not missing_recipient_ids:
-            return
         title = payload.get("title")
         body = payload.get("body")
         if not isinstance(title, str) or not title or len(title) > 200:
@@ -215,6 +221,123 @@ class NotificationOutboxWorker:
                 .on_conflict_do_nothing(index_elements=["outbox_id", "recipient_id"])
             )
 
+        if event.event_type in TASK_EVENTS:
+            event_status = payload.get("status")
+            self._evaluate_automation_rules(
+                db,
+                event,
+                task_id=task_id,
+                event_status=event_status if isinstance(event_status, str) else None,
+                recipient_ids=recipient_ids,
+                body=body,
+            )
+        else:
+            try:
+                run_id = UUID(str(payload["automation_run_id"]))
+            except (KeyError, TypeError, ValueError, AttributeError) as exc:
+                raise InvalidOutboxEvent("invalid_payload") from exc
+            run = db.scalar(
+                select(AutomationRun).where(
+                    AutomationRun.id == run_id,
+                    AutomationRun.action_event_id == event.id,
+                )
+            )
+            if run is None or run.status not in {"queued", "dead_letter"}:
+                raise InvalidOutboxEvent("invalid_automation_run")
+            run.status = "succeeded"
+            run.last_error = None
+
+    def _evaluate_automation_rules(
+        self,
+        db: Session,
+        event: NotificationOutbox,
+        *,
+        task_id: UUID,
+        event_status: str | None,
+        recipient_ids: set[UUID],
+        body: str,
+    ) -> None:
+        rules = db.scalars(
+            select(AutomationRule)
+            .where(
+                AutomationRule.is_active.is_(True),
+                AutomationRule.deleted_at.is_(None),
+                AutomationRule.trigger_type == event.event_type,
+            )
+            .order_by(AutomationRule.id)
+            .with_for_update()
+        ).all()
+        for rule in rules:
+            existing_run = db.scalar(
+                select(AutomationRun).where(
+                    AutomationRun.rule_id == rule.id,
+                    AutomationRun.source_event_id == event.id,
+                )
+            )
+            if existing_run is not None:
+                continue
+            conditions = rule.conditions
+            condition_status = conditions.get("status") if isinstance(conditions, dict) else None
+            if (
+                not isinstance(conditions, dict)
+                or set(conditions) - {"status"}
+                or (event_status is not None and event_status not in TASK_STATUSES)
+                or event_status is None
+                or (
+                    "status" in conditions
+                    and condition_status is not None
+                    and (
+                        not isinstance(condition_status, str)
+                        or condition_status not in TASK_STATUSES
+                    )
+                )
+                or rule.action_type != "notify_event_recipients"
+            ):
+                raise InvalidOutboxEvent("invalid_automation_rule")
+
+            run_id = uuid4()
+            matches = event_status is not None and condition_status in {None, event_status}
+            run = AutomationRun(
+                id=run_id,
+                rule_id=rule.id,
+                rule_name=rule.name,
+                source_event_id=event.id,
+                trigger_type=event.event_type,
+                status=(
+                    "condition_not_met"
+                    if not matches
+                    else "skipped_no_recipients"
+                    if not recipient_ids
+                    else "queued"
+                ),
+            )
+            if not matches or not recipient_ids:
+                db.add(run)
+                continue
+
+            action_event_id = uuid4()
+            run.action_event_id = action_event_id
+            db.add(
+                NotificationOutbox(
+                    id=action_event_id,
+                    dedupe_key=f"automation:{rule.id}:{event.id}",
+                    event_type="automation.notification",
+                    aggregate_type="task",
+                    aggregate_id=task_id,
+                    payload={
+                        "automation_run_id": str(run_id),
+                        "task_id": str(task_id),
+                        "recipient_ids": sorted(
+                            str(recipient_id) for recipient_id in recipient_ids
+                        ),
+                        "title": f"Automatisierung: {rule.name}"[:200],
+                        "body": body[:500],
+                    },
+                )
+            )
+            db.flush()
+            db.add(run)
+
     def _record_failure(
         self, claim: ClaimedEvent, error_code: str, *, permanent: bool
     ) -> str | None:
@@ -230,7 +353,8 @@ class NotificationOutboxWorker:
             )
             if event is None:
                 return None
-            terminal = permanent or event.attempt_count >= self.max_attempts
+            event.failure_count += 1
+            terminal = permanent or event.failure_count >= self.max_attempts
             now = datetime.now(UTC)
             event.status = "dead_letter" if terminal else "pending"
             event.last_error = error_code
@@ -249,6 +373,14 @@ class NotificationOutboxWorker:
                     error_code=error_code,
                 )
             )
+            if event.event_type == "automation.notification":
+                run = db.scalar(
+                    select(AutomationRun).where(AutomationRun.action_event_id == event.id)
+                )
+                if run is not None:
+                    run.last_error = error_code
+                    if terminal:
+                        run.status = "dead_letter"
             db.commit()
         return "dead_lettered" if terminal else "retry_scheduled"
 

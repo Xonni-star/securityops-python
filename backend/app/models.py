@@ -293,6 +293,11 @@ class NotificationOutbox(Base):
             name="ck_notification_outbox_status",
         ),
         CheckConstraint("attempt_count >= 0", name="ck_notification_outbox_attempt_count"),
+        CheckConstraint("failure_count >= 0", name="ck_notification_outbox_failure_count"),
+        CheckConstraint(
+            "manual_retry_count BETWEEN 0 AND 3",
+            name="ck_notification_outbox_manual_retry_count",
+        ),
         UniqueConstraint("dedupe_key", name="uq_notification_outbox_dedupe_key"),
         Index("ix_notification_outbox_status_available", "status", "available_at"),
     )
@@ -307,6 +312,10 @@ class NotificationOutbox(Base):
         String(20), default="pending", server_default=text("'pending'"), nullable=False
     )
     attempt_count: Mapped[int] = mapped_column(default=0, server_default=text("0"), nullable=False)
+    failure_count: Mapped[int] = mapped_column(default=0, server_default=text("0"), nullable=False)
+    manual_retry_count: Mapped[int] = mapped_column(
+        default=0, server_default=text("0"), nullable=False
+    )
     available_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
@@ -345,6 +354,96 @@ class NotificationOutboxAttempt(Base):
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class AutomationRule(Base):
+    __tablename__ = "automation_rules"
+    __table_args__ = (
+        CheckConstraint(
+            "trigger_type IN ('task.assigned', 'task.status_changed')",
+            name="ck_automation_rules_trigger_type",
+        ),
+        CheckConstraint(
+            "action_type = 'notify_event_recipients'",
+            name="ck_automation_rules_action_type",
+        ),
+        CheckConstraint("length(trim(name)) > 0", name="ck_automation_rules_name"),
+        Index("ix_automation_rules_trigger_active", "trigger_type", "is_active", "deleted_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    trigger_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    conditions: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
+    action_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        default=False, server_default=text("false"), nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+
+class AutomationRun(Base):
+    __tablename__ = "automation_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('condition_not_met', 'skipped_no_recipients', 'queued', "
+            "'succeeded', 'dead_letter')",
+            name="ck_automation_runs_status",
+        ),
+        CheckConstraint(
+            "manual_retry_count BETWEEN 0 AND 3", name="ck_automation_runs_manual_retry_count"
+        ),
+        UniqueConstraint("rule_id", "source_event_id", name="uq_automation_runs_rule_source"),
+        UniqueConstraint("action_event_id", name="uq_automation_runs_action_event"),
+        Index("ix_automation_runs_created", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    rule_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("automation_rules.id", ondelete="RESTRICT"), nullable=False
+    )
+    rule_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_event_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("notification_outbox.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    action_event_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("notification_outbox.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    trigger_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    last_error: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    manual_retry_count: Mapped[int] = mapped_column(
+        default=0, server_default=text("0"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
 
