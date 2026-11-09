@@ -19,6 +19,7 @@ PORTAL_REVISION = "0026_customer_portal_access"
 DOCUMENT_GRANTS_REVISION = "0027_customer_document_grants"
 CUSTOMER_REQUESTS_REVISION = "0028_customer_portal_requests"
 AUDIT_REVISION = "0029_audit_integrity"
+INVENTORY_REVISION = "0030_inventory_management"
 
 
 def admin_connection_options() -> dict[str, str | int]:
@@ -58,7 +59,10 @@ def verify_revision_chain() -> None:
     audit_revision = script.get_revision(AUDIT_REVISION)
     if audit_revision is None or audit_revision.down_revision != CUSTOMER_REQUESTS_REVISION:
         raise RuntimeError(f"{AUDIT_REVISION} folgt nicht auf {CUSTOMER_REQUESTS_REVISION}.")
-    if script.get_heads() != [AUDIT_REVISION]:
+    inventory_revision = script.get_revision(INVENTORY_REVISION)
+    if inventory_revision is None or inventory_revision.down_revision != AUDIT_REVISION:
+        raise RuntimeError(f"{INVENTORY_REVISION} folgt nicht auf {AUDIT_REVISION}.")
+    if script.get_heads() != [INVENTORY_REVISION]:
         raise RuntimeError(f"Unerwartete Alembic-Heads: {script.get_heads()}")
 
 
@@ -137,9 +141,9 @@ def main() -> None:
         with engine.connect() as connection:
             if (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                != AUDIT_REVISION
+                != INVENTORY_REVISION
             ):
-                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0029 geendet.")
+                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0030 geendet.")
             if (
                 connection.execute(
                     text("SELECT company_name FROM customers WHERE id = :id"),
@@ -181,6 +185,30 @@ def main() -> None:
                     {"table_name": table_name},
                 ).scalar_one():
                     raise RuntimeError(f"Portal-Tabelle {table_name} fehlt nach dem Upgrade.")
+            for table_name in ("inventory_assets", "inventory_events"):
+                if not connection.execute(
+                    text("SELECT to_regclass(:table_name) IS NOT NULL"),
+                    {"table_name": table_name},
+                ).scalar_one():
+                    raise RuntimeError(f"Inventartabelle {table_name} fehlt nach dem Upgrade.")
+            inventory_permissions = connection.execute(
+                text(
+                    "SELECT count(*) FROM permissions "
+                    "WHERE code IN ('inventory.read', 'inventory.manage', 'inventory.move')"
+                )
+            ).scalar_one()
+            if inventory_permissions != 3:
+                raise RuntimeError("Inventarberechtigungen wurden nicht angelegt.")
+            if (
+                connection.execute(
+                    text(
+                        "SELECT count(*) FROM pg_trigger "
+                        "WHERE tgname = 'inventory_events_append_only' AND NOT tgisinternal"
+                    )
+                ).scalar_one()
+                != 1
+            ):
+                raise RuntimeError("Der Inventar-Append-only-Trigger wurde nicht angelegt.")
             if (
                 connection.execute(
                     text("SELECT action FROM audit_logs WHERE id = :id"),
