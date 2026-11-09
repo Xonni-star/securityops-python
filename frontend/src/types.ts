@@ -702,7 +702,12 @@ export interface AuthUser {
   permissions: string[];
 }
 
-export type AutomationTrigger = "task.assigned" | "task.status_changed";
+export type AutomationTrigger =
+  | "task.assigned"
+  | "task.status_changed"
+  | "owks.missed_control"
+  | "owks.deviation_reported"
+  | "owks.offline_event_synced";
 export type AutomationTaskStatus = TaskStatus;
 
 export interface AutomationRule {
@@ -994,11 +999,15 @@ export interface TaskPage {
   offset: number;
 }
 
-export type NotificationEventType = "task.assigned" | "task.status_changed";
+export type NotificationEventType =
+  | "task.assigned"
+  | "task.status_changed"
+  | "automation.notification";
 
 export interface NotificationItem {
   id: string;
-  task_id: string;
+  task_id: string | null;
+  object_id: string | null;
   event_type: NotificationEventType;
   title: string;
   body: string;

@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import AuthPrincipal, add_audit_entry, require_permission
+from app.automation_events import OWKS_AUTOMATION_EVENT_TYPES
 from app.automation_schemas import (
     AutomationCondition,
     AutomationOutboxEventPage,
@@ -213,6 +214,13 @@ def update_automation_rule(
         changes["conditions"] = AutomationCondition.model_validate(
             changes["conditions"]
         ).model_dump(exclude_none=True)
+    effective_trigger = changes.get("trigger_type", rule.trigger_type)
+    effective_conditions = changes.get("conditions", rule.conditions)
+    if effective_trigger in OWKS_AUTOMATION_EVENT_TYPES and effective_conditions:
+        raise HTTPException(
+            status_code=422,
+            detail="OWKS-Auslöser unterstützen keine Aufgabenstatus-Bedingung.",
+        )
     for field, value in changes.items():
         setattr(rule, field, value)
     rule.updated_by_id = principal.user.id

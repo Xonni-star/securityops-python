@@ -13,6 +13,7 @@ vi.mock("./api", () => ({
 const notification = {
   id: "notification-1",
   task_id: "task-1",
+  object_id: null,
   event_type: "task.assigned" as const,
   title: "Neue Aufgabe zugewiesen",
   body: "Kontrollbericht prüfen",

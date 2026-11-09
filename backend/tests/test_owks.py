@@ -18,6 +18,7 @@ from app.identity_api import password_hasher
 from app.malware_scanner import MalwareDetected
 from app.models import (
     Employee,
+    NotificationOutbox,
     ObjectAssignment,
     OWKSAttachment,
     OWKSEvent,
@@ -27,7 +28,12 @@ from app.models import (
     SecurityObject,
     User,
 )
-from app.owks_api import MONITOR_ADVISORY_LOCK_KEY, as_utc, monitor_due_routes
+from app.owks_api import (
+    MONITOR_ADVISORY_LOCK_KEY,
+    as_utc,
+    create_event,
+    monitor_due_routes,
+)
 
 
 def sign_in(client: TestClient, username: str = "admin", password: str = ADMIN_PASSWORD) -> str:
@@ -150,6 +156,25 @@ def test_object_scoping_scan_replay_route_monitor_and_timestamp(client: TestClie
     assert missed.status_code == 200
     assert len(missed.json()) == 1
     assert missed.json()[0]["event_type"] == "missed"
+    with TestingSessionLocal() as db:
+        missed_outbox = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.aggregate_id == UUID(missed.json()[0]["id"]),
+                NotificationOutbox.event_type == "owks.missed_control",
+            )
+        )
+    assert missed_outbox is not None
+    assert missed_outbox.payload["schema_version"] == 1
+    with TestingSessionLocal() as db:
+        assigned_ids = sorted(
+            str(user_id)
+            for user_id in db.scalars(
+                select(ObjectAssignment.user_id).where(
+                    ObjectAssignment.object_id == UUID(object_id)
+                )
+            ).all()
+        )
+    assert missed_outbox.payload["recipient_ids"] == assigned_ids
     catch_up = client.post(f"/api/v1/owks/routes/{route_id}/monitor", headers=admin_headers)
     assert catch_up.status_code == 200
     assert len(catch_up.json()) == 1
@@ -281,8 +306,32 @@ def test_offline_sync_conflicts_status_corrections_and_secure_attachments(
     )
     assert sync.status_code == 200
     assert [item["status"] for item in sync.json()] == ["synced", "conflict"]
+    synced_event_id = sync.json()[0]["event"]["id"]
     conflict_event = sync.json()[1]["event"]
     assert conflict_event["sync_status"] == "conflict"
+    with TestingSessionLocal() as db:
+        synced_outbox = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.aggregate_id == UUID(synced_event_id),
+                NotificationOutbox.event_type == "owks.offline_event_synced",
+            )
+        )
+        conflict_sync_outbox = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.aggregate_id == UUID(conflict_event["id"]),
+                NotificationOutbox.event_type == "owks.offline_event_synced",
+            )
+        )
+        conflict_deviation_outbox = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.aggregate_id == UUID(conflict_event["id"]),
+                NotificationOutbox.event_type == "owks.deviation_reported",
+            )
+        )
+    assert synced_outbox is not None
+    assert synced_outbox.payload["schema_version"] == 1
+    assert conflict_sync_outbox is None
+    assert conflict_deviation_outbox is None
     repeated = client.post(
         "/api/v1/owks/events/sync",
         headers=employee_headers,
@@ -663,6 +712,42 @@ def test_monitoring_scheduler_retries_each_interval(monkeypatch: pytest.MonkeyPa
         )
     )
     assert calls == 2
+
+
+def test_owks_event_and_outbox_share_the_transaction(client: TestClient) -> None:
+    headers = {"X-CSRF-Token": sign_in(client)}
+    object_id = create_object(client, headers, "OWKS-TX-001")
+    with TestingSessionLocal() as db:
+        event = create_event(
+            db,
+            object_id=UUID(object_id),
+            employee_id=None,
+            actor_id=None,
+            event_type="deviation",
+            title="Transaktionstest",
+            description="Nicht persistieren",
+            severity="warning",
+            occurred_at=datetime.now(UTC),
+        )
+        event_id = event.id
+        db.flush()
+        outbox = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.aggregate_id == event_id,
+                NotificationOutbox.event_type == "owks.deviation_reported",
+            )
+        )
+        assert outbox is not None
+        db.rollback()
+
+    with TestingSessionLocal() as db:
+        assert db.get(OWKSEvent, event_id) is None
+        assert db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.aggregate_id == event_id,
+                NotificationOutbox.event_type == "owks.deviation_reported",
+            )
+        ) is None
 
 
 @pytest.mark.skipif(

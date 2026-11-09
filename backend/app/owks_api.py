@@ -35,6 +35,7 @@ from app.models import (
     OWKSRoutePoint,
     SecurityObject,
 )
+from app.notifications_service import enqueue_owks_automation_event
 from app.schemas import (
     OWKSAttachmentRead,
     OWKSChallengeRead,
@@ -228,6 +229,7 @@ def create_event(
             "event_id": str(event.id),
         },
     )
+    enqueue_owks_automation_event(db, event)
     return event
 
 
@@ -912,6 +914,12 @@ def sync_offline_events(
             sync_status="conflict" if is_unverified_control else "synced",
             request=request,
         )
+        if event.sync_status == "synced":
+            enqueue_owks_automation_event(
+                db,
+                event,
+                trigger_type="owks.offline_event_synced",
+            )
         results.append(
             OWKSSyncResult(
                 client_event_id=item.client_event_id,

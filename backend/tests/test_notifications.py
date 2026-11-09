@@ -12,6 +12,7 @@ from app.identity_api import password_hasher
 from app.models import (
     Notification,
     NotificationOutbox,
+    ObjectAssignment,
     Permission,
     Role,
     Task,
@@ -187,6 +188,117 @@ def test_notifications_require_permission_and_bound_pagination(client: TestClien
     admin_headers = sign_in(client)
     assert client.get("/api/v1/notifications?limit=101", headers=admin_headers).status_code == 422
     assert client.get("/api/v1/notifications?offset=-1", headers=admin_headers).status_code == 422
+
+
+def test_object_notification_requires_owks_permission_and_assignment(client: TestClient) -> None:
+    admin_headers = sign_in(client)
+    customer = client.post(
+        "/api/v1/customers",
+        headers=admin_headers,
+        json={"company_name": "Testkunde Objektbenachrichtigung GmbH"},
+    )
+    assert customer.status_code == 201
+    object_response = client.post(
+        "/api/v1/objects",
+        headers=admin_headers,
+        json={
+            "customer_id": customer.json()["id"],
+            "name": "Objekt Benachrichtigung",
+            "code": "NOTIF-OBJECT-001",
+        },
+    )
+    assert object_response.status_code == 201
+    object_id = UUID(object_response.json()["id"])
+
+    with TestingSessionLocal() as db:
+        notification_permission = db.scalar(
+            select(Permission).where(Permission.code == "notifications.read_own")
+        )
+        task_permission = db.scalar(select(Permission).where(Permission.code == "tasks.read_own"))
+        owks_permission = db.scalar(select(Permission).where(Permission.code == "owks.read"))
+        assert notification_permission is not None and task_permission is not None
+        assert owks_permission is not None
+        role = Role(
+            code="notification_task_scope_only",
+            name="Benachrichtigung ohne OWKS-Leserecht",
+            description="Testrolle ohne OWKS-Leserecht",
+            permissions=[notification_permission, task_permission],
+        )
+        user = User(
+            username="notification_task_scope_only",
+            email="notification-task-scope-only@example.com",
+            full_name="Test ohne OWKS-Leserecht",
+            password_hash=password_hasher.hash("notification-test-password"),
+            roles=[role],
+        )
+        unassigned_role = Role(
+            code="notification_owks_unassigned",
+            name="OWKS-Benachrichtigung ohne Objektzuweisung",
+            description="Testrolle ohne Objektzuweisung",
+            permissions=[notification_permission, owks_permission],
+        )
+        unassigned_user = User(
+            username="notification_owks_unassigned",
+            email="notification-owks-unassigned@example.com",
+            full_name="Test ohne Objektzuweisung",
+            password_hash=password_hasher.hash("notification-test-password"),
+            roles=[unassigned_role],
+        )
+        db.add(user)
+        db.add(unassigned_user)
+        db.flush()
+        db.add(ObjectAssignment(object_id=object_id, user_id=user.id))
+        outbox = NotificationOutbox(
+            dedupe_key="test:object-notification-scope",
+            event_type="automation.notification",
+            aggregate_type="object",
+            aggregate_id=object_id,
+            payload={},
+            status="completed",
+        )
+        db.add(outbox)
+        db.flush()
+        db.add(
+            Notification(
+                outbox_id=outbox.id,
+                recipient_id=user.id,
+                task_id=None,
+                object_id=object_id,
+                event_type="automation.notification",
+                title="Objektbezogene Nachricht",
+                body="Allgemeine Meldung",
+            )
+        )
+        db.add(
+            Notification(
+                outbox_id=outbox.id,
+                recipient_id=unassigned_user.id,
+                task_id=None,
+                object_id=object_id,
+                event_type="automation.notification",
+                title="Nicht zugewiesene Objektmeldung",
+                body="Allgemeine Meldung",
+            )
+        )
+        db.commit()
+
+    user_headers = sign_in(
+        client,
+        "notification_task_scope_only",
+        "notification-test-password",
+    )
+    response = client.get("/api/v1/notifications", headers=user_headers)
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+
+    unassigned_headers = sign_in(
+        client,
+        "notification_owks_unassigned",
+        "notification-test-password",
+    )
+    unassigned_response = client.get("/api/v1/notifications", headers=unassigned_headers)
+    assert unassigned_response.status_code == 200
+    assert unassigned_response.json()["items"] == []
 
 
 def test_notification_migration_is_linear_after_tasks() -> None:

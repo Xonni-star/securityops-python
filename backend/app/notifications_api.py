@@ -2,12 +2,12 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth import AuthPrincipal, require_permission
 from app.database import get_db
-from app.models import Notification, Task
+from app.models import Notification, ObjectAssignment, SecurityObject, Task
 from app.notifications_schemas import NotificationPage, NotificationRead
 from app.tasks_api import task_visibility
 
@@ -18,7 +18,7 @@ def require_notification_reader(
     principal: AuthPrincipal = Depends(require_permission("notifications.read_own")),
 ) -> AuthPrincipal:
     if not principal.permission_codes.intersection(
-        {"tasks.read_own", "tasks.read_all", "tasks.manage_all"}
+        {"tasks.read_own", "tasks.read_all", "tasks.manage_all", "owks.read"}
     ):
         raise HTTPException(
             status_code=403,
@@ -28,12 +28,32 @@ def require_notification_reader(
 
 
 def visible_notification_query(principal: AuthPrincipal):
+    object_scope = (
+        and_(
+            Notification.object_id.is_not(None),
+            SecurityObject.archived_at.is_(None),
+            Notification.object_id.in_(
+                select(ObjectAssignment.object_id).where(
+                    ObjectAssignment.user_id == principal.user.id
+                )
+            ),
+        )
+        if "owks.read" in principal.permission_codes
+        else false()
+    )
     return (
         select(Notification)
-        .join(Task, Notification.task_id == Task.id)
+        .outerjoin(Task, Notification.task_id == Task.id)
+        .outerjoin(SecurityObject, Notification.object_id == SecurityObject.id)
         .where(
             Notification.recipient_id == principal.user.id,
-            task_visibility(principal),
+            or_(
+                and_(
+                    Notification.task_id.is_not(None),
+                    task_visibility(principal),
+                ),
+                object_scope,
+            ),
         )
     )
 
@@ -49,14 +69,11 @@ def list_notifications(
     base_query = visible_notification_query(principal)
     unread_count = (
         db.scalar(
-            select(func.count())
-            .select_from(Notification)
-            .join(Task, Notification.task_id == Task.id)
-            .where(
-                Notification.recipient_id == principal.user.id,
-                Notification.read_at.is_(None),
-                task_visibility(principal),
-            )
+                select(func.count()).select_from(
+                    visible_notification_query(principal)
+                    .where(Notification.read_at.is_(None))
+                    .subquery()
+                )
         )
         or 0
     )

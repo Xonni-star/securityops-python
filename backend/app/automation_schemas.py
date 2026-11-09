@@ -2,9 +2,10 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-AutomationTrigger = Literal["task.assigned", "task.status_changed"]
+from app.automation_events import OWKS_AUTOMATION_EVENT_TYPES, AutomationTrigger
+
 AutomationAction = Literal["notify_event_recipients"]
 TaskStatus = Literal["open", "in_progress", "blocked", "completed", "cancelled"]
 
@@ -40,6 +41,12 @@ class AutomationRuleCreate(BaseModel):
             if not value:
                 raise ValueError("Die Beschreibung darf nicht leer sein.")
         return value
+
+    @model_validator(mode="after")
+    def validate_trigger_conditions(self) -> "AutomationRuleCreate":
+        if self.trigger_type in OWKS_AUTOMATION_EVENT_TYPES and self.conditions.status is not None:
+            raise ValueError("OWKS-Auslöser unterstützen keine Aufgabenstatus-Bedingung.")
+        return self
 
 
 class AutomationRuleUpdate(BaseModel):

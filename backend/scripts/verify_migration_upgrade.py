@@ -23,6 +23,7 @@ INVENTORY_REVISION = "0030_inventory_management"
 AUTOMATION_REVISION = "0031_safe_automations"
 EMPLOYEE_PORTAL_REVISION = "0032_employee_portal"
 DOCUMENT_STORAGE_REVISION = "0033_encrypted_document_storage"
+OWKS_AUTOMATION_REVISION = "0032_owks_automation_events"
 
 
 def admin_connection_options() -> dict[str, str | int]:
@@ -82,7 +83,15 @@ def verify_revision_chain() -> None:
         raise RuntimeError(
             f"{DOCUMENT_STORAGE_REVISION} folgt nicht auf {EMPLOYEE_PORTAL_REVISION}."
         )
-    if script.get_heads() != [DOCUMENT_STORAGE_REVISION]:
+    owks_automation_revision = script.get_revision(OWKS_AUTOMATION_REVISION)
+    if (
+        owks_automation_revision is None
+        or owks_automation_revision.down_revision != DOCUMENT_STORAGE_REVISION
+    ):
+        raise RuntimeError(
+            f"{OWKS_AUTOMATION_REVISION} folgt nicht auf {DOCUMENT_STORAGE_REVISION}."
+        )
+    if script.get_heads() != [OWKS_AUTOMATION_REVISION]:
         raise RuntimeError(f"Unerwartete Alembic-Heads: {script.get_heads()}")
 
 
@@ -191,9 +200,9 @@ def main() -> None:
         with engine.connect() as connection:
             if (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                != DOCUMENT_STORAGE_REVISION
+                != OWKS_AUTOMATION_REVISION
             ):
-                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0033 geendet.")
+                raise RuntimeError("Die Upgrade-Kette hat nicht bei 0032 geendet.")
             if (
                 connection.execute(
                     text("SELECT company_name FROM customers WHERE id = :id"),
