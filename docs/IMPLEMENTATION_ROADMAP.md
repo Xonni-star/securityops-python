@@ -7,6 +7,7 @@ Diese Roadmap basiert auf dem geprüften `main`-Stand vom 09.11.2026 (SHA `463dd
 1. **Issue #9 bleibt offen.** Die Repository-Konfiguration enthält getrennte PostgreSQL-Rollen, Redis-Rate-Limits, statische Frontend-Auslieferung, Release-Migrationen, ClamAV und Backup-/Restore-Hilfen. Für eine konkrete Zielumgebung fehlen weiterhin der belegte Rollout, TLS-/Proxy-/DNS-Konfiguration, Secret-Verwaltung, Monitoring/Alarmierung, Incident-Abläufe sowie eine dokumentierte und regelmäßig ausgeführte Wiederherstellung aus echten Betreiber-Sicherungen. CI-Restoreläufe ersetzen diese Nachweise nicht.
 2. Backupziel, Verschlüsselung, Schlüsseltrennung, Aufbewahrung/Löschung, Wiederanlaufplan und Restoreübungen für den jeweiligen Betrieb festlegen und nachweisen. Keine Bestandsdateien rückwirkend als gescannt behandeln; ClamAV prüft neue unterstützte Uploads fail-closed.
 3. Audit-/Datenbankrollen, MFA/Sitzungsverwaltung, Scopes und Uploadpfade unabhängig sicherheitsprüfen. Die Audit-Hashkette schützt nicht gegen privilegierte Änderungen durch Datenbank-Owner/Superuser; Prüfpunkte und Sicherungen müssen dafür außerhalb der Datenbank getrennt vorliegen.
+4. **Issue #56 bleibt offen.** Verschlüsselung ruhender Nutzdaten im gemeinsamen privaten Dateispeicher sowie explizite Bestandsmigration und sichere Schlüsselrotation fehlen. Die Umsetzung läuft separat gestapelt auf dem Mitarbeiterportal-Branch, nicht in `main` oder PR #53. Schlüssel müssen aus externer Konfiguration kommen; Produktionsbetrieb darf bei fehlendem/ungültigem Schlüssel nicht auf Klartext zurückfallen. Bestandsdateien nur über einen geprüften, wiederaufnehmbaren und nicht-destruktiven Vorgang umschlüsseln.
 
 ## P1 – Fachentscheidungen und Portalgrenzen
 
@@ -27,7 +28,7 @@ Diese Roadmap basiert auf dem geprüften `main`-Stand vom 09.11.2026 (SHA `463dd
 ## GitHub-Lage am Prüftag
 
 - PRs #40, #42, #43, #44, #46, #47, #49 und #50 sind gemergt und ihre Änderungen sind in `main` enthalten; für diese PRs waren die angezeigten CI-Prüfungen erfolgreich. #50 war auf #47 gestapelt und brachte die letzte Inventarmigration `0030_inventory_management` ein.
-- Offen sind PR #54 auf `main` und der darauf gestapelte PR #55; ihre Änderungen und CI-Ergebnisse sind nicht Bestandteil von `main`. Für beide PRs waren alle acht angezeigten CI-Checks erfolgreich. Issues #7, #9, #51 und #52 sind offen. Issue #10 wurde geschlossen; Issues #45 und #48 sind nach Integration der Audit-/Rollen- beziehungsweise Inventarfunktionen geschlossen.
+- Offen sind PR #54 auf `main` und der darauf gestapelte PR #55; ihre Änderungen und CI-Ergebnisse sind nicht Bestandteil von `main`. Für beide PRs waren alle acht angezeigten CI-Checks erfolgreich. Issues #7, #9, #51, #52 und #56 sind offen. Die Umsetzung zu #56 läuft separat gestapelt auf dem Mitarbeiterportal-Branch. Issue #10 wurde geschlossen; Issues #45 und #48 sind nach Integration der Audit-/Rollen- beziehungsweise Inventarfunktionen geschlossen.
 - CI, fachliche Abnahme und produktive Prüfung sind unterschiedliche Nachweise. Insbesondere belegen Merge und CI weder Betreiber-Restore noch Produktionsfreigabe oder Rechts-/Steuerkonformität.
 
 ## Abhängigkeiten und Abschlusskriterien
