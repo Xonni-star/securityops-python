@@ -247,7 +247,7 @@ jobs:
             'from app.document_storage import read_file; assert read_file("00000000000000000000000000000001") == b"%PDF-1.7\nsynthetic restore fixture"'
 
   frontend:
-    name: Frontend-Typprüfung und Build
+    name: Frontend-Typprüfung, Build und Browser-E2E
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -255,18 +255,29 @@ jobs:
     steps:
       - name: Quellcode auschecken
         uses: actions/checkout@v7.0.1
+      - name: Python einrichten
+        uses: actions/setup-python@v7.1.0
+        with:
+          python-version: "3.12"
       - name: Node.js einrichten
         uses: actions/setup-node@v7.1.0
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Backend-Abhängigkeiten für den isolierten E2E-Test installieren
+        run: python -m pip install -e ".[test]"
+        working-directory: backend
       - name: Abhängigkeiten installieren
         run: npm ci
       - name: Typprüfung und Produktionsbuild
         run: npm run build
       - name: Frontend-Tests
         run: npm test
+      - name: Chromium für Browser-E2E installieren
+        run: npx playwright install --with-deps chromium
+      - name: Synthetischen Browser-E2E-Test ausführen
+        run: npm run test:e2e
 
   container-build:
     name: Docker-Images bauen
