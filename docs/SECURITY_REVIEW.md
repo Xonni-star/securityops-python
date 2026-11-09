@@ -8,7 +8,7 @@ Diese Prüfung fasst die bisherigen Reviews für `main` nach PR #16 und den aktu
 |---|---|---|---|
 | SEC-01 | Mittel | Offen | Login-Rate-Limit liegt pro Prozess im Arbeitsspeicher; Neustarts und mehrere Instanzen schwächen die Begrenzung. |
 | SEC-02 | Mittel | Offen | Compose startet Vite im Entwicklungsmodus; produktiver Webserver, TLS-Reverse-Proxy und Security-Header sind nicht Bestandteil des Deployments. |
-| SEC-03 | Mittel | Offen | Audit-Protokolle sind über die App-API schreibgeschützt, aber nicht gegen direkte Änderungen privilegierter Datenbankrollen geschützt. |
+| SEC-03 | Mittel | Teilweise behoben (Issue #45) | Getrennte Datenbankrollen, Append-only-Trigger und eine SHA-256-Kette schützen vor Änderungen durch die Laufzeitrolle und machen Änderungen innerhalb der Datenbank prüfbar. Datenbank-Owner/Superuser können Schutzmechanismen umgehen; getrennte externe Sicherungen und Prüfpunktaufbewahrung bleiben Betreiberaufgaben. |
 | SEC-04 | Mittel | Offen | Anmeldung ohne MFA und Passwortzurücksetzungsprozess; keine aktive Sitzungsübersicht oder gezielte Einzelwiderruf-UI. |
 | SEC-05 | Niedrig | Offen | Es gibt noch keine automatisierte Abhängigkeits- oder statische Sicherheitsanalyse in CI; als nächste Härtungsmaßnahme in [#9](https://github.com/Xonni-star/securityops-python/issues/9) nachzuverfolgen. |
 | SEC-06 | Niedrig | Offen | API setzt keine expliziten allgemeinen Browser-Sicherheitsheader; dies muss derzeit ein vorgeschalteter Webserver übernehmen. |

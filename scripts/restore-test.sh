@@ -45,6 +45,9 @@ docker compose exec -T db psql -v ON_ERROR_STOP=1 -U "$db_user" -d postgres \
 age --decrypt --identity "$BACKUP_AGE_IDENTITY_FILE" "$1/database.dump.age" \
     | docker compose exec -T db pg_restore --exit-on-error --no-owner --no-acl \
         -U "$db_user" -d "$target_database"
+POSTGRES_DB=$target_database docker compose --profile release run --rm provision-db
+POSTGRES_DB=$target_database docker compose --profile release run --rm --no-deps migrate \
+    python -m scripts.verify_audit_integrity
 
 docker compose --profile restore-test build --quiet restore-documents >/dev/null
 restore_container_id=$(

@@ -157,7 +157,8 @@ def client() -> Generator[TestClient, None, None]:
                 db.execute(text(f"ALTER TABLE {table} DISABLE TRIGGER {table}_append_only"))
         db.execute(delete(UserSession))
         db.execute(delete(UserMFARecoveryCode))
-        db.execute(delete(AuditLog))
+        if test_engine.dialect.name != "postgresql":
+            db.execute(delete(AuditLog))
         db.execute(delete(TaskComment))
         db.execute(delete(TaskHistory))
         db.execute(delete(Notification))

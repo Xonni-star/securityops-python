@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_db: str = "securityops"
-    postgres_user: str = "securityops"
+    postgres_user: str = "securityops_runtime"
     postgres_password: SecretStr
     mfa_encryption_key: SecretStr | None = None
     cors_origins: str = "http://localhost:5173"

@@ -12,12 +12,14 @@
 - Globales Rate-Limit und strengere Anmelde-/MFA-/Passwortlimits; Produktion verwendet Redis als gemeinsamen Speicher, die API-Readiness prüft dessen Verfügbarkeit. Lokale direkte Starts ohne Redis nutzen den In-Memory-Store.
 - Keine Passworthashes in API-Antworten.
 - Audit-Einträge für implementierte Anmelde-, Benutzer-, Kunden- und Objektänderungen.
+- PostgreSQL trennt Administrator, Migrations- und Laufzeitrolle. Die Laufzeitrolle kann `audit_logs` lesen/einfügen, aber nicht verändern oder löschen; Trigger schützen die Audit- und Integritätstabellen auch vor versehentlichen Owner-Änderungen.
+- Audit-Einträge sind per SHA-256 verkettet; eine Sperre serialisiert parallele Einfügungen. Die Integritätsprüfung erkennt fehlende, abgetrennte und veränderte Einträge innerhalb der Datenbank.
 - Objektzugriff serverseitig nach globalen Rechten oder Objektzuweisung; Sicherheits- und Zutrittsdaten sind getrennt und zusätzlich berechtigt.
 - OWKS-Endpunkte prüfen das OWKS-Recht und zusätzlich den Objekt-Scope; Anhangabruf ist nicht öffentlich und der Upload validiert Dateiendung, MIME-Typ, Signatur und 10-MiB-Grenze.
 - OWKS-Ereignisse, Statusverläufe und Anhänge sind in PostgreSQL append-only. Statusänderungen und Korrekturen werden als neue Datensätze protokolliert.
 - Kontrollscans benötigen eine kurzlebige, benutzer- und objektgebundene Einmal-Challenge; PostgreSQL koordiniert den Versäumnis-Monitor zwischen Instanzen und verhindert doppelte generierte Meldungen.
 - Statische QR-/NFC-Kennungstreffer werden als `presence_verified=false` protokolliert, bleiben offen und zählen nicht als erledigter Besuch. Sie belegen keine physische Anwesenheit.
-- `POSTGRES_PASSWORD` ist als Umgebungsvariable erforderlich; es gibt keinen impliziten Datenbankpasswort-Standardwert.
+- Datenbankpasswörter sind als getrennte Umgebungsvariablen erforderlich; es gibt keine impliziten Produktiv-Secrets.
 
 ## Vor jedem produktiven Betrieb
 
@@ -27,17 +29,21 @@
 - Redis-Speicher und Proxy-IP-Vertrauen gemäß Produktionskonfiguration betreiben und überwachen.
 - Secrets sicher außerhalb von Git und Image-Layern bereitstellen.
 - Den Migrationsdienst einmalig je Release vor den API-Replikaten starten; API-Container migrieren nicht selbst.
-- Datenbankrollen mit minimalen Rechten definieren; Audit-Schreibschutz/externes unveränderliches Archiv bewerten.
-- Backups verschlüsseln, getrennt aufbewahren und Wiederherstellungen regelmäßig in einer isolierten Testumgebung praktisch testen.
+- Administrator-, Migrations- und Laufzeit-Secrets getrennt aus einem Secret-Manager bereitstellen; API und Worker ausschließlich mit `securityops_runtime` betreiben. Der Migrationsbenutzer ist Datenbankeigentümer und kann Daten verändern.
+- Verschlüsselte Backups und den Prüfpunkt aus `python -m scripts.verify_audit_integrity` regelmäßig in ein getrenntes, zugriffsbeschränktes und unveränderliches Ziel übertragen. Wiederherstellung und Integritätsprüfung regelmäßig in einer isolierten Testumgebung praktisch testen.
 - Sicherheits- und Datenschutzprüfung, Aufbewahrungs-/Löschregeln, Monitoring und Incident-Abläufe definieren.
 - OWKS-Downgrade nicht ausführen, solange Betriebsdaten vorliegen; Migration 0014 verweigert den Downgrade dann explizit. Für sichere Rollbacks müssen Datenaufbewahrung und Exportverfahren vorher festgelegt werden.
 - Dokumenten-/Vertrags-Downgrade 0015 verweigert den Rückbau, sobald Fachdaten oder angepasste Erinnerungseinstellungen bestehen. Die CI prüft die Ablehnung mit einem PostgreSQL-Testdatensatz und bestätigt, dass der Datensatz erhalten bleibt.
 - Statische OWKS-QR-Codes und NFC-Tags sind kopierbar. Web-NFC, Challenge und serverseitige Replay-Prüfungen beweisen keine physische Anwesenheit; dynamische kryptografische Tags oder verwaltete Standort-/Gerätenachweise sind nicht integriert.
 - Keine echten Kunden-/Personal-/Einsatzdaten verwenden, solange fachliche Berechtigungen und Produktionshärtung fehlen.
 
+## Grenzen des Audit-Schutzes
+
+Append-only-Trigger und Hash-Verkettung sind keine vollständige Abwehr gegen privilegierte Manipulation: Datenbank-Owner und Superuser können Trigger deaktivieren, Funktionen ersetzen oder Datensätze samt Kette neu berechnen. Der Kettenprüfpunkt ist nur aussagekräftig, wenn er außerhalb der Datenbank in einem getrennten Vertrauensbereich gespeichert wird. Externe, getrennte Backups und deren regelmäßiger Restore sind weiterhin erforderlich. Die Umsetzung ist keine Produktionsabnahme.
+
 ## Offene Sicherheitsfunktionen
 
-Ein nutzerinitiierter Passwort-Reset mit verifizierter E-Mail-Zustellung fehlt, weil kein Zustellprovider eingerichtet ist. Bis dahin steht nur der auditierte Admin-Reset mit erzwungener Passwortänderung zur Verfügung. Instanzübergreifende Rate-Limits setzen den gemeinsamen Redis-Speicher voraus. Der Auditbetrieb ist nicht extern manipulationsgeschützt. Die Objektberechtigungen und Datentrennung müssen weiterhin durch PostgreSQL-CI und Review bestätigt werden. Das implementierte System ist nicht sicherheitszertifiziert und noch kein vollständiges Produkt.
+Ein nutzerinitiierter Passwort-Reset mit verifizierter E-Mail-Zustellung fehlt, weil kein Zustellprovider eingerichtet ist. Bis dahin steht nur der auditierte Admin-Reset mit erzwungener Passwortänderung zur Verfügung. Instanzübergreifende Rate-Limits setzen den gemeinsamen Redis-Speicher voraus. Der externe Backup-/Prüfpunkt-Betrieb muss vom Betreiber eingerichtet und überprüft werden. Die Objektberechtigungen und Datentrennung müssen weiterhin durch PostgreSQL-CI und Review bestätigt werden. Das implementierte System ist nicht sicherheitszertifiziert und noch kein vollständiges Produkt.
 
 ## Automatisierte Sicherheitsbefunde
 

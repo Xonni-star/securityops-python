@@ -2,7 +2,7 @@
 
 ## Verbindung und Migrationen
 
-PostgreSQL ist für den Betrieb vorgesehen. Verbindungsdaten werden über `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` und `POSTGRES_PASSWORD` gesetzt. Alembic-Migrationen liegen in `backend/migrations/versions`; normales Modell-Metadaten-`create_all` ist nur in Tests zulässig.
+PostgreSQL ist für den Betrieb vorgesehen. Laufzeitverbindungen verwenden `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` und `POSTGRES_PASSWORD`; Compose setzt dafür ausschließlich `securityops_runtime`. Alembic verwendet `securityops_migrator`, der Datenbankadministrator `POSTGRES_ADMIN_USER` und `POSTGRES_ADMIN_PASSWORD`. Die drei Rollen haben getrennte Zugangsdaten. Die API und der Benachrichtigungs-Worker erhalten keine Administrator- oder Migrationszugangsdaten. Alembic-Migrationen liegen in `backend/migrations/versions`; normales Modell-Metadaten-`create_all` ist nur in Tests zulässig.
 
 ## Derzeitige Tabellen
 
@@ -39,6 +39,7 @@ PostgreSQL ist für den Betrieb vorgesehen. Verbindungsdaten werden über `POSTG
 - `roles`, `permissions`, `user_roles`, `role_permissions`: rollenbasierte Rechte.
 - `user_sessions`: Hash des Sitzungstokens, CSRF-Tokenhash und Ablaufzeiten.
 - `audit_logs`: Akteur, Ereignis, betroffener Datensatz, optionale Metadaten und UTC-Zeit.
+- `audit_log_integrity`: SHA-256-Verkettung der Audit-Einträge; eine transaktionsgebundene PostgreSQL-Sperre ordnet auch gleichzeitig eintreffende Einträge eindeutig. Die Migration verkettet vorhandene Einträge, ohne sie zu ändern oder zu löschen. Der Laufzeitbenutzer darf Audit-Einträge lesen und einfügen, aber nicht ändern, löschen, truncaten, Trigger verwalten oder die Integritätstabelle lesen/schreiben.
 
 ## Zusätzliche Tabellen im offenen PR-Stack (nicht in `main`)
 
@@ -60,6 +61,10 @@ Migration 0015 (`0014_owks_wachbuch` → `0015_documents_contracts`) ergänzt Do
 Der Downgrade von 0015 prüft vor dem Abbau alle Dokument-/Vertragstabellen auf Inhalte und lehnt den Rückbau mit einer verständlichen Fehlermeldung ab, wenn Fachdaten oder angepasste Erinnerungseinstellungen vorhanden sind. Dadurch entfernt das automatische Tabellen-Dropping keine solchen Daten. Nur unbenutzte leere Feature-Tabellen und die unveränderte Standard-Vorlaufzeit dürfen zurückgebaut werden. Binärdateien im privaten Volume werden durch die Datenbankmigration nicht gelöscht; ihre Aufbewahrung bleibt separat zu verwalten.
 
 Migration 0016 ergänzt regelmäßige Mitarbeiterverfügbarkeiten, einmalige Dienstwunsch-/Sperrzeiträume, das Recht `scheduling.availability.request` für eigene Meldungen sowie Vorher-/Nachher-Angaben für Vertretungen in der Schichthistorie. Der Downgrade wird abgelehnt, sobald Verfügbarkeitsdaten, Anträge oder Vertretungsdetails gespeichert sind.
+
+Migration 0029 (`0028_customer_portal_requests` → `0029_audit_integrity`) schützt `audit_logs` und `audit_log_integrity` mit PostgreSQL-Triggern vor UPDATE/DELETE. Der Audit-Akteur wird als historische UUID ohne Fremdschlüssel gespeichert, damit das spätere Entfernen eines Benutzerkontos keinen alten Audit-Eintrag verändert. Ein Hash bildet alle Audit-Felder und den vorherigen Hash ab; advisory locks serialisieren konkurrierende Inserts in derselben Transaktion. `python -m scripts.verify_audit_integrity` validiert Vollständigkeit, Verknüpfungen und Hashwerte und gibt Anzahl sowie SHA-256-Kettenende als extern speicherbaren Prüfpunkt aus. Die Kette allein schützt nicht vor Datenbank-Ownern oder Superusern: Sie können Trigger/Funktionen ändern oder Daten samt Kette neu berechnen. Dafür müssen verschlüsselte Datenbank-Backups und Prüfpunkt getrennt, zugriffsbeschränkt und möglichst unveränderlich außerhalb des Datenbankhosts aufbewahrt und regelmäßig in einer isolierten Umgebung verifiziert/restauriert werden. Der Downgrade wird abgelehnt, solange Audit-Daten vorhanden sind.
+
+Das einmalige/idempotente `python -m scripts.provision_database_roles` wird vor Migrationen mit einem PostgreSQL-Superuser ausgeführt. Es erzeugt `securityops_migrator` und `securityops_runtime` ohne Superuser-, Rollen- oder Datenbank-Erstellungsrechte, überträgt das Eigentum bestehender Schemaobjekte an den Migrationsbenutzer und gewährt dem Laufzeitbenutzer nur benötigte Objekt- und DML-Rechte. Das Übertragen ändert keine Tabelleninhalte. Der Migrationsbenutzer ist Datenbankeigentümer und kann DDL sowie Datenänderungen ausführen; der Administrator bleibt privilegiert. Rollen-/Passwortänderungen und Backup-/Restore müssen daher getrennt kontrolliert werden.
 
 Im offenen PR-Stack, nicht im gemergten `main`, verhindert Migration `0025_unique_incident_owks_event` doppelte Vorfallverknüpfungen zu OWKS-Ereignissen. Migration `0026_customer_portal_access` folgt darauf, ergänzt Verknüpfung und append-only Historie sowie `customer_portal.access` und `customers.portal.manage` und weist das Verwaltungsrecht der Administrator-Rolle zu. `0027_customer_document_grants` ergänzt das Aktivierungskennzeichen für Portalzugänge, Aktivierungsereignisse und explizite Dokumentfreigaben samt append-only Freigabehistorie; das Verwaltungsrecht `customer_portal.documents.manage` erhält nur die Administrator-Rolle. `0028_customer_portal_requests` ergänzt Kundenanfragen zu Kundenobjekten, append-only Nachrichten/Verlauf, private Anhang-Metadaten und das nur Administratoren zugewiesene `customer_portal.requests.manage`. Der Datenzugriff bleibt an den aktuell verknüpften Kundenkontakt gebunden.
 
