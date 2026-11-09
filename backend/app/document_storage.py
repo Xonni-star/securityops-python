@@ -1,11 +1,14 @@
 import base64
 import binascii
+import fcntl
 import hashlib
 import os
 import re
 import stat
 import tempfile
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
 
@@ -241,24 +244,70 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
+@contextmanager
+def _storage_directory_lock(directory: Path) -> Iterator[None]:
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+    finally:
+        os.close(descriptor)
+
+
+def _remove_failed_publication(path: Path, temporary_path: Path) -> None:
+    try:
+        published_stat = path.lstat()
+    except FileNotFoundError:
+        return
+
+    staged_stat = temporary_path.stat()
+    if (published_stat.st_dev, published_stat.st_ino) != (
+        staged_stat.st_dev,
+        staged_stat.st_ino,
+    ):
+        return
+
+    path.unlink()
+    _fsync_directory(path.parent)
+
+
 def store_file(storage_key: str, content: bytes) -> None:
     path = _storage_path(storage_key, create_root=True)
     encrypted_content = _encrypt_content(storage_key, content)
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".rekey-{storage_key}-", dir=path.parent)
-    temporary_path = Path(temporary_name)
-    try:
-        with os.fdopen(descriptor, "wb") as file:
-            file.write(encrypted_content)
-            file.flush()
-            os.fsync(file.fileno())
-        os.link(temporary_path, path)
-        _fsync_directory(path.parent)
-    finally:
-        temporary_path.unlink(missing_ok=True)
+    with _storage_directory_lock(path.parent):
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".rekey-{storage_key}-", dir=path.parent
+        )
+        temporary_path = Path(temporary_name)
+        try:
+            with os.fdopen(descriptor, "wb") as file:
+                file.write(encrypted_content)
+                file.flush()
+                os.fsync(file.fileno())
+            os.link(temporary_path, path)
+            try:
+                _fsync_directory(path.parent)
+            except OSError as publish_error:
+                try:
+                    _remove_failed_publication(path, temporary_path)
+                except OSError as cleanup_error:
+                    raise ExceptionGroup(
+                        f"Veröffentlichung und Bereinigung der Dokumentdatei {path} "
+                        "sind fehlgeschlagen; Zielpfad muss geprüft werden.",
+                        [publish_error, cleanup_error],
+                    ) from None
+                raise
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
 
 def remove_file(storage_key: str) -> None:
-    _storage_path(storage_key).unlink(missing_ok=True)
+    path = _storage_path(storage_key)
+    with _storage_directory_lock(path.parent):
+        path.unlink(missing_ok=True)
 
 
 def read_file(storage_key: str, *, allow_legacy: bool = False) -> bytes:
@@ -311,6 +360,11 @@ def inspect_storage_file(storage_key: str) -> str | None:
 
 def rekey_storage_file(storage_key: str) -> bool:
     path = _storage_path(storage_key)
+    with _storage_directory_lock(path.parent):
+        return _rekey_storage_file(storage_key, path)
+
+
+def _rekey_storage_file(storage_key: str, path: Path) -> bool:
     file_stat = path.lstat()
     if not stat.S_ISREG(file_stat.st_mode):
         raise OSError("Der private Dokumentenspeicher enthält keine reguläre Datei.")

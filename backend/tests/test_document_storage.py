@@ -87,6 +87,84 @@ def test_failed_staging_sync_leaves_no_target_and_can_be_retried(monkeypatch) ->
     assert read_file(storage_key) == PDF_CONTENT
 
 
+def test_failed_publish_sync_removes_target_and_can_be_retried(monkeypatch) -> None:
+    storage_key = uuid4().hex
+    path = get_settings().document_storage_path / storage_key
+    sync_attempts = 0
+    target_exists_during_sync: list[bool] = []
+
+    def fail_first_directory_sync(directory: Path) -> None:
+        nonlocal sync_attempts
+        target_exists_during_sync.append(path.exists())
+        if path.exists():
+            assert path.read_bytes().startswith(b"SECOPS-DOC\x00")
+        sync_attempts += 1
+        if sync_attempts == 1:
+            raise OSError("injected post-publish sync failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            "app.document_storage._fsync_directory",
+            fail_first_directory_sync,
+        )
+        with pytest.raises(OSError, match="injected post-publish sync failure"):
+            store_file(storage_key, PDF_CONTENT)
+
+        assert not path.exists()
+        assert not list(path.parent.glob(f".rekey-{storage_key}-*"))
+        store_file(storage_key, PDF_CONTENT)
+        assert read_file(storage_key) == PDF_CONTENT
+
+    assert sync_attempts == 3
+    assert target_exists_during_sync == [True, False, True]
+
+
+def test_failed_publish_sync_does_not_remove_replaced_target(monkeypatch) -> None:
+    storage_key = uuid4().hex
+    path = get_settings().document_storage_path / storage_key
+
+    def replace_before_sync_failure(_directory: Path) -> None:
+        path.unlink()
+        path.write_bytes(b"replacement from concurrent writer")
+        raise OSError("injected post-publish sync failure")
+
+    monkeypatch.setattr(
+        "app.document_storage._fsync_directory",
+        replace_before_sync_failure,
+    )
+    with pytest.raises(OSError, match="injected post-publish sync failure"):
+        store_file(storage_key, PDF_CONTENT)
+
+    assert path.read_bytes() == b"replacement from concurrent writer"
+    assert not list(path.parent.glob(f".rekey-{storage_key}-*"))
+
+
+def test_failed_cleanup_sync_reports_both_errors_and_allows_retry(monkeypatch) -> None:
+    storage_key = uuid4().hex
+    path = get_settings().document_storage_path / storage_key
+    sync_attempts = 0
+
+    def fail_both_directory_syncs(_directory: Path) -> None:
+        nonlocal sync_attempts
+        sync_attempts += 1
+        raise OSError(f"injected directory sync failure {sync_attempts}")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            "app.document_storage._fsync_directory",
+            fail_both_directory_syncs,
+        )
+        with pytest.raises(ExceptionGroup, match="Zielpfad muss geprüft werden") as error:
+            store_file(storage_key, PDF_CONTENT)
+
+    assert len(error.value.exceptions) == 2
+    assert all(isinstance(exception, OSError) for exception in error.value.exceptions)
+    assert not path.exists()
+    assert not list(path.parent.glob(f".rekey-{storage_key}-*"))
+    store_file(storage_key, PDF_CONTENT)
+    assert read_file(storage_key) == PDF_CONTENT
+
+
 def test_legacy_pdf_is_readable_until_explicit_rekey() -> None:
     storage_key = uuid4().hex
     (get_settings().document_storage_path / storage_key).write_bytes(PDF_CONTENT)
