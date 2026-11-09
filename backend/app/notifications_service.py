@@ -1,17 +1,22 @@
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
 from app.automation_events import (
+    BILLING_INVOICE_APPROVED_EVENT,
     OWKS_EVENT_TRIGGER_TYPES,
     OWKS_OFFLINE_SYNC_TRIGGER,
+    BillingInvoiceApprovedEventPayload,
     OWKSAutomationEventPayload,
 )
 from app.models import (
+    BillingInvoice,
     NotificationOutbox,
     ObjectAssignment,
     OWKSEvent,
+    Permission,
+    Role,
     SecurityObject,
     Task,
     TaskHistory,
@@ -104,6 +109,40 @@ def enqueue_owks_automation_event(
             event_type=trigger_type,
             aggregate_type="owks_event",
             aggregate_id=event.id,
+            payload=payload.model_dump(mode="json"),
+        )
+    )
+
+
+def billing_notification_recipient_ids(db: Session) -> set[UUID]:
+    return set(
+        db.scalars(
+            select(User.id)
+            .join(User.roles)
+            .join(Role.permissions)
+            .where(
+                User.is_active.is_(True),
+                Permission.code.in_({"billing.invoices.read", "notifications.read_own"}),
+            )
+            .group_by(User.id)
+            .having(func.count(distinct(Permission.code)) == 2)
+        ).all()
+    )
+
+
+def enqueue_invoice_approved_event(db: Session, invoice: BillingInvoice) -> None:
+    payload = BillingInvoiceApprovedEventPayload(
+        schema_version=1,
+        invoice_id=invoice.id,
+        recipient_ids=sorted(billing_notification_recipient_ids(db), key=str),
+    )
+    db.add(
+        NotificationOutbox(
+            id=uuid4(),
+            dedupe_key=f"billing.invoice_approved:{invoice.id}",
+            event_type=BILLING_INVOICE_APPROVED_EVENT,
+            aggregate_type="billing_invoice",
+            aggregate_id=invoice.id,
             payload=payload.model_dump(mode="json"),
         )
     )

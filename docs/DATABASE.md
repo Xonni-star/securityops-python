@@ -2,7 +2,7 @@
 
 ## Quelle und Stand
 
-Diese Referenz bewahrt den bisherigen Tabellen-/Spaltenkatalog und die Betriebs- und Migrationshinweise und ergänzt sie um den aktuellen PK/FK-Katalog und Beziehungsdiagramme. Der aktuelle `main`-Stand ist `eb4d4ca3e75f8281af9bf2a5ccd48f0bcace3e60`; seine lineare Alembic-Kette endet bei `0035_worker_monitoring`. Das ORM definiert 89 Tabellen; Migration 0029 erzeugt zusätzlich `audit_log_integrity` direkt in PostgreSQL (90 Schema-Tabellen insgesamt). PostgreSQL ist für den Betrieb vorgesehen. Laufzeitverbindungen verwenden `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` und `POSTGRES_PASSWORD`; Compose setzt dafür ausschließlich `securityops_runtime`. Alembic verwendet `securityops_migrator`, der Datenbankadministrator `POSTGRES_ADMIN_USER` und `POSTGRES_ADMIN_PASSWORD`. Die drei Rollen haben getrennte Zugangsdaten. API und Worker erhalten keine Administrator- oder Migrationszugangsdaten. Normales Modell-Metadaten-`create_all` ist nur in Tests zulässig.
+Diese Referenz beschreibt das Schema in `backend/app/models.py` und `backend/migrations/versions/`. Sie bewahrt den bisherigen Tabellen-/Spaltenkatalog sowie Betriebs- und Migrationshinweise, einschließlich historisch abgegrenzter Teilinventare und PR-Kontext, und ergänzt sie um den aktuellen PK/FK-Katalog und Beziehungsdiagramme. Der bei der Live-Prüfung aktuelle `main`-Migrationsgraph hat 36 Revisionen und endet auf `0036_billing_approval_automation`; das ORM definiert 89 Tabellen, Migration 0029 erzeugt zusätzlich `audit_log_integrity` direkt in PostgreSQL (90 Schema-Tabellen insgesamt). Den aktuellen Prüfzeitpunkt und PR-/Issue-Status dokumentiert [`PROJECT_STATUS.md`](PROJECT_STATUS.md). PostgreSQL ist für den Betrieb vorgesehen. Laufzeitverbindungen verwenden `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` und `POSTGRES_PASSWORD`; Compose setzt dafür ausschließlich `securityops_runtime`. Alembic verwendet `securityops_migrator`, der Datenbankadministrator `POSTGRES_ADMIN_USER` und `POSTGRES_ADMIN_PASSWORD`. Die drei Rollen haben getrennte Zugangsdaten. API und Worker erhalten keine Administrator- oder Migrationszugangsdaten. Normales Modell-Metadaten-`create_all` ist nur in Tests zulässig.
 
 UUID-Primärschlüssel werden in PostgreSQL als UUID geführt. Datums-/Zeitpunktfelder mit `DateTime(timezone=True)` werden als zeitzonenbewusste Zeitpunkte (`TIMESTAMPTZ`) abgebildet; APIs normalisieren Zeitpunkte für operative Zeitdaten nach UTC. JSON-Spalten und Binärdaten verwenden PostgreSQL-JSON bzw. `BYTEA`. Nicht aufgeführte `CHECK`-Regeln können zusätzlich in Schemas/Service-Code validiert werden; hier werden Datenbankconstraints und -indizes dokumentiert.
 
@@ -122,7 +122,7 @@ UUID-Primärschlüssel werden in PostgreSQL als UUID geführt. Datums-/Zeitpunkt
 | `task_history` | PK `id`; `task_id`, `actor_id`, `action`, `changes`, `created_at` |
 | `notification_outbox` | PK `id`; `dedupe_key`, `event_type`, `aggregate_type`, `aggregate_id`, `payload`, `status`, `attempt_count`, `failure_count`, `manual_retry_count`, `available_at`, `last_attempt_at`, `processed_at`, `locked_at`, `lock_token`, `last_error`, `created_at` |
 | `notification_outbox_attempts` | PK `id`; `outbox_id`, `attempt_number`, `event`, `error_code`, `created_at` |
-| `notifications` | PK `id`; `outbox_id`, `recipient_id`, `task_id`, `object_id`, `event_type`, `title`, `body`, `created_at`, `read_at` |
+| `notifications` | PK `id`; `outbox_id`, `recipient_id`, `task_id`, `object_id`, `invoice_id`, `event_type`, `title`, `body`, `created_at`, `read_at` |
 | `physical_keys` | PK `id`; `key_number`, `description`, `object_id`, `status`, `current_employee_id`, `created_by_id`, `archived_at`, `created_at`, `updated_at` |
 | `key_movements` | PK `id`; `key_id`, `object_id`, `employee_id`, `actor_id`, `movement_type`, `key_status_after`, `acknowledged_at`, `acknowledgement_note`, `note`, `created_at` |
 | `incidents` | PK `id`; `title`, `report`, `incident_type`, `severity`, `object_id`, `status`, `due_at`, `assigned_to_id`, `owks_event_id`, `created_by_id`, `created_at`, `updated_at` |
@@ -230,6 +230,7 @@ Alle nicht in dieser Liste enthaltenen Spalten sind in den Modellen `nullable=Fa
 | `automation_rules` | `description`, `deleted_at`, `created_by_id`, `updated_by_id` |
 | `automation_runs` | `action_event_id`, `last_error` |
 | `notification_worker_heartbeats` | — |
+| `notifications` | `task_id`, `object_id`, `invoice_id` |
 | `inventory_assets` | `serial_number`, `object_id`, `current_employee_id`, `created_by_id`, `archived_at` |
 | `inventory_events` | `object_id`, `from_object_id`, `to_object_id`, `from_employee_id`, `to_employee_id`, `acknowledged_at`, `acknowledgement_note`, `note` |
 
@@ -288,6 +289,8 @@ Alle nicht in dieser Liste enthaltenen Spalten sind in den Modellen `nullable=Fa
 | `notifications.outbox_id` | `notification_outbox.id` | `RESTRICT` |
 | `notification_outbox_attempts.outbox_id` | `notification_outbox.id` | `RESTRICT` |
 | `notifications.recipient_id` | `users.id` | `CASCADE` |
+| `notifications.object_id` | `objects.id` | `RESTRICT` |
+| `notifications.invoice_id` | `billing_invoices.id` | `RESTRICT` |
 | `notifications.task_id` | `tasks.id` | `RESTRICT` |
 | `physical_keys.object_id`, `key_movements.object_id` | `objects.id` | jeweils `RESTRICT` |
 | `physical_keys.current_employee_id`, `key_movements.employee_id` | `employees.id` | jeweils `RESTRICT` |
@@ -379,7 +382,7 @@ Primärschlüssel sind in der Tabellenübersicht aufgeführt. Die folgenden bena
 | `task_history` | Index `ix_task_history_task_created` |
 | `notification_outbox` | Unique `uq_notification_outbox_dedupe_key`; Checks `ck_notification_outbox_status` (`pending/processing/completed/failed/dead_letter`), `ck_notification_outbox_attempt_count`, `ck_notification_outbox_failure_count`, `ck_notification_outbox_manual_retry_count` (0–3); Indizes `ix_notification_outbox_status_available`, `ix_notification_outbox_status_locked(status, locked_at)` |
 | `notification_outbox_attempts` | Unique `uq_notification_outbox_attempt_event(outbox_id, attempt_number, event)`; Checks `ck_notification_outbox_attempt_event` (`claimed/succeeded/retry_scheduled/dead_lettered`), `ck_notification_outbox_attempt_number` (`> 0`); Index `ix_notification_outbox_attempts_outbox_created(outbox_id, created_at)`; Trigger `notification_outbox_attempts_append_only` blockiert UPDATE/DELETE |
-| `notifications` | Unique `uq_notifications_event_recipient`; Check `ck_notifications_target` (genau ein Ziel aus Aufgabe oder Objekt); Index `ix_notifications_recipient_created` |
+| `notifications` | Unique `uq_notifications_event_recipient`; Check `ck_notifications_target` (genau ein Ziel aus Aufgabe, Objekt oder Rechnung); Index `ix_notifications_recipient_created` |
 | `physical_keys` | Unique `key_number`; Checks `ck_physical_keys_status`, `ck_physical_keys_number`, `ck_physical_keys_description`, `ck_physical_keys_holder_status`, `ck_physical_keys_archived_at`; Indizes `ix_physical_keys_object_status`, `ix_physical_keys_holder_status` |
 | `key_movements` | Checks `ck_key_movements_type`, `ck_key_movements_status_after`, `ck_key_movements_issue_acknowledged`, `ck_key_movements_type_status`; Indizes `ix_key_movements_key_created`, `ix_key_movements_object_created`, `ix_key_movements_employee_created`; PostgreSQL-Trigger `key_movements_append_only` verhindert UPDATE/DELETE |
 | `incidents` | Checks `ck_incidents_type`, `ck_incidents_severity`, `ck_incidents_status`, `ck_incidents_title`, `ck_incidents_report`; Indizes `ix_incidents_object_status_due`, `ix_incidents_assignee_status` und partieller Unique-Index `uq_incidents_owks_event_id` bei `owks_event_id IS NOT NULL` |
@@ -399,7 +402,7 @@ Primärschlüssel sind in der Tabellenübersicht aufgeführt. Die folgenden bena
 | `audit_log_integrity` | Unique `previous_hash`, `entry_hash`; Checks `ck_audit_log_integrity_previous_hash_length`, `ck_audit_log_integrity_entry_hash_length`; PostgreSQL-Trigger `audit_log_integrity_append_only`; `audit_logs` hat `audit_logs_append_only` und den Insert-Trigger `audit_logs_integrity_chain` |
 | `inventory_assets` | Checks `ck_inventory_assets_archived_at`, `ck_inventory_assets_category`, `ck_inventory_assets_condition`, `ck_inventory_assets_holder_status`, `ck_inventory_assets_location`, `ck_inventory_assets_name`, `ck_inventory_assets_number`, `ck_inventory_assets_serial`, `ck_inventory_assets_status`; Indizes `ix_inventory_assets_category_condition`, `ix_inventory_assets_holder_status`, `ix_inventory_assets_object_status` |
 | `inventory_events` | Checks `ck_inventory_events_condition`, `ck_inventory_events_issue_acknowledged`, `ck_inventory_events_location`, `ck_inventory_events_status`, `ck_inventory_events_transfer_acknowledged`, `ck_inventory_events_type`, `ck_inventory_events_type_status`; Indizes `ix_inventory_events_asset_created`, `ix_inventory_events_employee_created`, `ix_inventory_events_object_created`; PostgreSQL-Trigger `inventory_events_append_only` verhindert UPDATE/DELETE |
-| `automation_rules` | Checks `ck_automation_rules_action_type`, `ck_automation_rules_name`, `ck_automation_rules_trigger_type`; Index `ix_automation_rules_trigger_active` |
+| `automation_rules` | Checks `ck_automation_rules_action_type`, `ck_automation_rules_name`, `ck_automation_rules_trigger_type` (einschließlich `billing.invoice_approved`); Index `ix_automation_rules_trigger_active` |
 | `automation_runs` | Unique `uq_automation_runs_action_event`, `uq_automation_runs_rule_source`; Checks `ck_automation_runs_manual_retry_count` (0–3), `ck_automation_runs_status`; Index `ix_automation_runs_created` |
 | `employee_portal_document_grants` | Check `ck_employee_portal_document_grants_revocation`; partieller Unique-Index `uq_employee_portal_document_grants_active` bei `revoked_at IS NULL`; Index `ix_employee_portal_document_grants_employee` |
 | `employee_portal_document_grant_history` | Check `ck_employee_portal_document_grant_history_action`; Index `ix_employee_portal_document_grant_history_created`; PostgreSQL-Trigger `employee_portal_document_grant_history_append_only` verhindert UPDATE/DELETE |
@@ -562,8 +565,13 @@ erDiagram
 | `0033_encrypted_document_storage` | `0032_employee_portal` | `storage_key` und nullable Legacy-BLOBs für Qualifikations- und OWKS-Dateien; CHECK erzwingt genau eine Ablageform. |
 | `0034_owks_automation_events` | `0033_encrypted_document_storage` | Erlaubt OWKS-Automationsereignisse; Benachrichtigungen können optional auf Objekt statt Aufgabe verweisen, mit CHECK auf genau ein Ziel. |
 | `0035_worker_monitoring` | `0034_owks_automation_events` | Worker-Heartbeat-Tabelle und Monitoring-Berechtigung. |
+| `0036_billing_approval_automation` | `0035_worker_monitoring` | Erlaubt `billing.invoice_approved` als Automatisierungsauslöser; ergänzt `notifications.invoice_id` mit FK `RESTRICT` und erweitert den Ziel-Check auf genau ein Aufgaben-, Objekt- oder Rechnungsziel. |
+
+Die Migration `0033_encrypted_document_storage` wurde mit PR #57 in `main` integriert. Sie ergänzt optionale `storage_key`-Spalten und nullable Legacy-BLOBs für OWKS-/Personalanhänge. Die Migration ändert keine vorhandenen Inhalte; ein expliziter Wartungsbefehl schreibt verschlüsselte Dateien atomar in den privaten Speicher und löscht den BLOB erst zusammen mit dem Datenbankverweis innerhalb einer Transaktion. Der OWKS-Append-only-Trigger erlaubt ausschließlich diesen eng begrenzten Umzug. Downgrade wird abgelehnt, sobald ein Datensatz auf den Dateispeicher verweist. Die Integration belegt keine durchgeführte Betreiber-Bestandsmigration oder Rotation; den aktuellen Issue- und Betriebsstatus dokumentiert [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
 Neue Schemaänderungen benötigen eine neue Alembic-Migration. Ein `Base.metadata.create_all` ist nur in Tests zulässig. Migrationen sollten vor Rollout in PostgreSQL geprüft werden; Daten-destruktive Downgrades sind keine sichere Rollbackstrategie. Release-Migrationen und verschlüsselte Backup-/Restore-Skripte sind vorhanden; produktive Rollouts und Wiederherstellungen sind nicht unabhängig nachgewiesen.
+
+Historischer Hinweis zum ursprünglichen Outbox-PR: PR #39 und die Dokumentationsänderung PR #25 sind gemergt; PR #40 ist ebenfalls gemergt und Bestandteil von `main`. PR #39 fügte `0024_notification_outbox_worker` mit einer Attempt-Tabelle sowie Lock-/Lease-Feldern und einem Index hinzu. Issue #7 bleibt trotz des Billing-Merges offen zur fachlichen Abnahme. Die Migrationskette reicht inzwischen bis `0036_billing_approval_automation`; den aktuellen Live-PR- und Migrationsstatus dokumentiert [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
 ## Datenhaltungsgrenzen
 
@@ -575,7 +583,7 @@ Neue Schemaänderungen benötigen eine neue Alembic-Migration. Ein `Base.metadat
 - Revision `0033` erhält den OWKS-Append-only-Schutz bis auf die eng begrenzte Umstellung eines unveränderten BLOBs auf seinen deterministischen storage key. `sha256` bleibt auf den Klartext bezogen und ist keine Verschlüsselung oder Garantie vollständiger Malware-Erkennung.
 - Dokumentversionen speichern einen privaten `storage_key`, Metadaten und SHA-256; der AES-GCM-verschlüsselte Dateiinhalt liegt im konfigurierten privaten Dateispeicher und nicht in `document_versions`. Neue Dokumente und Versionen werden vor Speicherung durch ClamAV geprüft. Der Hash bleibt auf den Klartext bezogen und ist keine Verschlüsselung oder Garantie vollständiger Malware-Erkennung. Das Dateisystem und die dazugehörigen Schlüssel müssen zusätzlich konsistent gesichert werden.
 - `tasks` referenziert den verantwortlichen Benutzer verpflichtend sowie Ersteller, Kunden und Objekt optional. Kommentare und Verlauf hängen mit `CASCADE` an Aufgaben; personenbezogene Autoren-/Akteur-FKs werden bei Benutzerlöschung `SET NULL`. Historie und App-Audit werden mit Aufgabenänderungen transaktional erzeugt; Beziehungen zu fachlichen Aufgabenereignissen oder automatische Folgeaufgaben bestehen nicht.
-- `notification_outbox` persistiert Ereignisse für spätere Verarbeitung, `notification_outbox_attempts` protokolliert Claims/Ergebnisse append-only, und `notifications` speichert empfängergebundene In-App-Einträge samt Lesestatus. Der separate Worker verarbeitet ausschließlich `task.assigned` und `task.status_changed` idempotent, mit PostgreSQL-Claims, Lease/Wiederaufnahme, Backoff/Retry und Dead-Letter-Status. `notifications` verweist auf Outbox, Empfänger und Aufgabe; Attempt-Zeilen verweisen mit `RESTRICT` auf die Outbox. Empfängerzeilen werden bei Benutzerlöschung mit `CASCADE` gelöscht, Aufgabe und Outbox dürfen wegen `RESTRICT` nicht gelöscht werden, solange Benachrichtigungen referenzieren. E-Mail/Push, Task-Erinnerungen/Eskalationen und Ereignisse aus anderen Modulen sind nicht enthalten.
+- `notification_outbox` persistiert Ereignisse für spätere Verarbeitung, `notification_outbox_attempts` protokolliert Claims/Ergebnisse append-only, und `notifications` speichert empfängergebundene In-App-Einträge samt Lesestatus. Der separate Worker verarbeitet unterstützte Aufgaben-, OWKS- und Rechnungsfreigabe-Ereignisse sowie daraus erzeugte Automatisierungsbenachrichtigungen mit PostgreSQL-Claims, Lease/Wiederaufnahme, Backoff/Retry und Dead-Letter-Status. `notifications` verweist auf Outbox und Empfänger sowie genau eines der Ziele Aufgabe, Objekt oder Rechnung; Attempt-Zeilen verweisen mit `RESTRICT` auf die Outbox. Empfängerzeilen werden bei Benutzerlöschung mit `CASCADE` gelöscht, referenzierte Aufgaben, Objekte, Rechnungen und Outbox-Ereignisse mit `RESTRICT` geschützt. E-Mail/Push und Task-Erinnerungen/Eskalationen sind nicht enthalten.
 - Die Revision verlagert den OWKS-Prüfzyklus aus dem API-Lifespan in den separaten Worker; der PostgreSQL-Advisory-Lock bleibt bestehen. Retry- und Attempt-Daten enthalten Fehlercodes, nicht Fehlertexte oder Payloads. Die CI bzw. Merge-PR-Checks belegen weder produktive Verfügbarkeit noch Zustell-/Restorebetrieb.
 - `physical_keys` hält Nummer, Beschreibung, Pflichtobjekt, Status und optionalen aktuellen Mitarbeiter; `key_movements` hält Ausgabe, Rückgabe, Verlust, Defekt und Inventur als append-only Historie. Änderungen am Schlüsselstatus, Bewegung und Audit werden transaktional gespeichert; der PostgreSQL-Trigger blockiert UPDATE/DELETE auf Bewegungen. Ausgabe verlangt aktive Mitarbeiter mit aktiver Objektzuweisung und bestätigter Quittierung. Die Quittierung ist keine qualifizierte elektronische Signatur oder ein physischer Verwahrnachweis. Freitext-Zutrittsangaben bestehender Objekte werden weder migriert noch als Schlüsselbestand übernommen.
 - `incidents` speichert objektbezogene Vorfälle mit verantwortlicher Person, Status, Frist und optionaler OWKS-Ereignisreferenz desselben Objekts. `incident_sensitive_details` trennt Hergang und Abschlussbericht; `incident_people` schützt Beteiligte/Zeugen; `incident_attachments` enthält nur private Speicherreferenz und Datei-Metadaten. Maßnahmen und Statuswechsel werden zusammen mit Audit und `incident_history` transaktional protokolliert. PostgreSQL-Trigger blockieren UPDATE/DELETE auf Verlauf, Personenbezügen und Dateireferenzen; privilegierte Datenbankadministration bleibt außerhalb der Anwendungsschutzgrenze. Dateiinhalte liegen im privaten Dokumentenspeicher, werden vor Ablage fail-closed mit ClamAV geprüft und über separate Berechtigungsprüfungen ausgeliefert. OWKS wird nur referenziert; es gibt keine automatische Aufgabenanlage, Benachrichtigung, Fristerinnerung oder Eskalationsregel.
@@ -583,9 +591,9 @@ Neue Schemaänderungen benötigen eine neue Alembic-Migration. Ein `Base.metadat
 - Abwesenheitsdaten und sensible Personal-/Objektdaten sind personenbezogen/sensibel; Verschlüsselung at rest, Aufbewahrung und Löschung müssen für die konkrete Betriebsumgebung entschieden werden.
 - Lokale API-Tests laufen standardmäßig gegen SQLite. PostgreSQL-Constraints, Migrationen und konkurrierende Schreibvorgänge benötigen PostgreSQL-Prüfungen. Backup-/Restore-Skripte und ein synthetischer Restoretest in CI sind vorhanden; das belegt keine Wiederherstellung produktiver Sicherungen.
 
-## Aktuelle Schemaergänzung auf `main` (Revision 0035)
+## Aktuelle Schemaergänzung auf `main` (Revision 0036)
 
-Die vorhergehenden Abschnitte bleiben als vollständiger Spaltenkatalog und Betriebs-/Migrationsreferenz erhalten. Die folgende Übersicht ergänzt ihn um alle PK/FK-Beziehungen des aktuellen Schemas einschließlich der später hinzugekommenen Tabellen. `PK` steht für Primärschlüssel; Fremdschlüssel nennen auch die tatsächliche `ON DELETE`-Regel. `audit_log_integrity` wird von Migration 0029 direkt in PostgreSQL angelegt und hat kein ORM-Modell. Spalten- und Constraint-Details der ursprünglichen Tabellen bleiben im obigen Katalog; neuere Tabellen und Spaltenänderungen der Revisionen 0025–0035 sind dort ergänzt.
+Der bisherige Tabellen-/Spaltenkatalog und die Betriebs-/Migrationshinweise bleiben erhalten; die folgende Übersicht ergänzt sie um alle PK/FK-Beziehungen des aktuellen Schemas einschließlich der später hinzugekommenen Tabellen. `PK` steht für Primärschlüssel; Fremdschlüssel nennen auch die tatsächliche `ON DELETE`-Regel. `audit_log_integrity` wird von Migration 0029 direkt in PostgreSQL angelegt und hat kein ORM-Modell. Neuere Tabellen und Spaltenänderungen der Revisionen 0025–0036 sind in den folgenden Katalogen ergänzt. Der aktuelle PR- und Migrationsstatus steht in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
 | Bereich | Tabelle | PK | Fremdschlüssel |
 |---|---|---|---|
@@ -672,7 +680,7 @@ Die vorhergehenden Abschnitte bleiben als vollständiger Spaltenkatalog und Betr
 | Aufgaben/Benachrichtigungen | `notification_outbox` | `id` | — (`aggregate_type`/`aggregate_id` ohne FK) |
 | Aufgaben/Benachrichtigungen | `notification_outbox_attempts` | `id` | `outbox_id` → `notification_outbox.id` (RESTRICT) |
 | Aufgaben/Benachrichtigungen | `notification_worker_heartbeats` | `worker_name` | — |
-| Aufgaben/Benachrichtigungen | `notifications` | `id` | `outbox_id` → `notification_outbox.id` (RESTRICT); `recipient_id` → `users.id` (CASCADE); `task_id` → `tasks.id` (RESTRICT); `object_id` → `objects.id` (RESTRICT) |
+| Aufgaben/Benachrichtigungen | `notifications` | `id` | `outbox_id` → `notification_outbox.id` (RESTRICT); `recipient_id` → `users.id` (CASCADE); `task_id` → `tasks.id` (RESTRICT); `object_id` → `objects.id` (RESTRICT); `invoice_id` → `billing_invoices.id` (RESTRICT) |
 | Automatisierungen | `automation_rules` | `id` | `created_by_id`, `updated_by_id` → `users.id` (SET NULL) |
 | Automatisierungen | `automation_runs` | `id` | `rule_id` → `automation_rules.id` (RESTRICT); `source_event_id`, `action_event_id` → `notification_outbox.id` (RESTRICT) |
 | Inventar/Schlüssel | `physical_keys` | `id` | `object_id` → `objects.id` (RESTRICT); `current_employee_id` → `employees.id` (RESTRICT); `created_by_id` → `users.id` (SET NULL) |
@@ -692,6 +700,7 @@ Die Basistabellen `customers`/`objects`/`employees` und die vorangehenden Tabell
 | `0033_encrypted_document_storage` | `employee_qualification_documents`, `owks_attachments` | Ergänzt nullable `storage_key`; `content` wird nullable; DB-Check verlangt genau eine der beiden Ablageformen |
 | `0034_owks_automation_events` | `notifications` | `task_id` wird nullable; ergänzt nullable `object_id` mit FK auf `objects.id`; Check verlangt genau eines von `task_id` oder `object_id` |
 | `0035_worker_monitoring` | `notification_worker_heartbeats` | PK `worker_name`; `heartbeat_at` |
+| `0036_billing_approval_automation` | `notifications` | Ergänzt nullable `invoice_id` mit FK auf `billing_invoices.id` (`RESTRICT`); der Ziel-Check erlaubt genau eines von `task_id`, `object_id` oder `invoice_id`; `automation_rules.trigger_type` erlaubt `billing.invoice_approved` |
 
 ### Ergänzende aktuelle ER-Diagramme
 
@@ -828,6 +837,7 @@ erDiagram
     USERS ||--o{ NOTIFICATIONS : recipient
     TASKS o|--o{ NOTIFICATIONS : optional_task
     OBJECTS o|--o{ NOTIFICATIONS : optional_object
+    BILLING_INVOICES o|--o{ NOTIFICATIONS : optional_invoice
     AUTOMATION_RULES ||--o{ AUTOMATION_RUNS : executions
     NOTIFICATION_OUTBOX ||--o{ AUTOMATION_RUNS : source_event
     NOTIFICATION_OUTBOX o|--o| AUTOMATION_RUNS : optional_action_event

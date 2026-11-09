@@ -19,11 +19,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.automation_events import (
     AUTOMATION_NOTIFICATION_EVENT,
+    BILLING_INVOICE_APPROVED_EVENT,
     EVENT_REGISTRY,
     OWKS_AUTOMATION_EVENT_TYPES,
     OWKS_EVENT_MESSAGES,
     TASK_EVENT_TYPES,
     AutomationNotificationPayload,
+    BillingInvoiceApprovedEventPayload,
     OWKSAutomationEventPayload,
     TaskNotificationEventPayload,
 )
@@ -32,6 +34,7 @@ from app.database import SessionLocal, engine
 from app.models import (
     AutomationRule,
     AutomationRun,
+    BillingInvoice,
     Notification,
     NotificationOutbox,
     NotificationOutboxAttempt,
@@ -46,6 +49,7 @@ from app.notification_monitoring import (
     WORKER_NAME,
     write_worker_heartbeat,
 )
+from app.notifications_service import billing_notification_recipient_ids
 from app.owks_scheduler import run_monitoring_scheduler
 
 logger = logging.getLogger("app.notification_worker")
@@ -249,14 +253,51 @@ class NotificationOutboxWorker:
             )
             return
 
+        if event.event_type == BILLING_INVOICE_APPROVED_EVENT:
+            if not isinstance(payload, BillingInvoiceApprovedEventPayload):
+                raise InvalidOutboxEvent("invalid_payload")
+            invoice = db.get(BillingInvoice, payload.invoice_id)
+            if (
+                event.aggregate_type != "billing_invoice"
+                or payload.invoice_id != event.aggregate_id
+                or invoice is None
+                or invoice.status not in {"approved", "archived"}
+                or invoice.approved_at is None
+            ):
+                raise InvalidOutboxEvent("invalid_payload")
+            recipient_ids = set(payload.recipient_ids)
+            if not recipient_ids.issubset(billing_notification_recipient_ids(db)):
+                raise InvalidOutboxEvent("unauthorized_recipient")
+            self._evaluate_automation_rules(
+                db,
+                event,
+                task_id=None,
+                object_id=None,
+                invoice_id=payload.invoice_id,
+                event_status=None,
+                recipient_ids=recipient_ids,
+                body="Eine Rechnung wurde manuell freigegeben.",
+            )
+            return
+
         if event.event_type != AUTOMATION_NOTIFICATION_EVENT:
             raise InvalidOutboxEvent("unsupported_event")
         if not isinstance(payload, AutomationNotificationPayload):
             raise InvalidOutboxEvent("invalid_payload")
-        target_id = payload.task_id or payload.object_id
-        expected_aggregate_type = "task" if payload.task_id is not None else "object"
+        target_id = payload.task_id or payload.object_id or payload.invoice_id
+        expected_aggregate_type = (
+            "task"
+            if payload.task_id is not None
+            else "object"
+            if payload.object_id is not None
+            else "billing_invoice"
+        )
         if event.aggregate_type != expected_aggregate_type or event.aggregate_id != target_id:
             raise InvalidOutboxEvent("invalid_payload")
+        if payload.invoice_id is not None:
+            invoice = db.get(BillingInvoice, payload.invoice_id)
+            if invoice is None:
+                raise InvalidOutboxEvent("invalid_payload")
         run = db.scalar(
             select(AutomationRun).where(
                 AutomationRun.id == payload.automation_run_id,
@@ -269,6 +310,8 @@ class NotificationOutboxWorker:
         recipient_ids = set(payload.recipient_ids)
         if payload.object_id is not None:
             recipient_ids.intersection_update(self._object_recipient_ids(db, payload.object_id))
+        if payload.invoice_id is not None:
+            recipient_ids.intersection_update(billing_notification_recipient_ids(db))
         if recipient_ids:
             self._deliver_notifications(
                 db,
@@ -276,6 +319,7 @@ class NotificationOutboxWorker:
                 recipient_ids=recipient_ids,
                 task_id=payload.task_id,
                 object_id=payload.object_id,
+                invoice_id=payload.invoice_id,
                 title=payload.title,
                 body=payload.body,
             )
@@ -314,6 +358,7 @@ class NotificationOutboxWorker:
         recipient_ids: set[UUID],
         task_id: UUID | None,
         object_id: UUID | None,
+        invoice_id: UUID | None = None,
         title: str,
         body: str,
     ) -> None:
@@ -337,6 +382,7 @@ class NotificationOutboxWorker:
                     recipient_id=recipient_id,
                     task_id=task_id,
                     object_id=object_id,
+                    invoice_id=invoice_id,
                     event_type=event.event_type,
                     title=title,
                     body=body,
@@ -351,6 +397,7 @@ class NotificationOutboxWorker:
         *,
         task_id: UUID | None,
         object_id: UUID | None,
+        invoice_id: UUID | None = None,
         event_status: str | None,
         recipient_ids: set[UUID],
         body: str,
@@ -413,13 +460,19 @@ class NotificationOutboxWorker:
 
             action_event_id = uuid4()
             run.action_event_id = action_event_id
+            is_billing_trigger = event.event_type == BILLING_INVOICE_APPROVED_EVENT
             action_payload = AutomationNotificationPayload(
                 schema_version=1,
                 automation_run_id=run_id,
                 task_id=task_id,
                 object_id=object_id,
+                invoice_id=invoice_id,
                 recipient_ids=sorted(recipient_ids, key=str),
-                title=f"Automatisierung: {rule.name}"[:200],
+                title=(
+                    "Rechnungsfreigabe erfasst"
+                    if is_billing_trigger
+                    else f"Automatisierung: {rule.name}"[:200]
+                ),
                 body=body[:500],
             )
             db.add(
@@ -427,8 +480,14 @@ class NotificationOutboxWorker:
                     id=action_event_id,
                     dedupe_key=f"automation:{rule.id}:{event.id}",
                     event_type=AUTOMATION_NOTIFICATION_EVENT,
-                    aggregate_type="task" if task_id is not None else "object",
-                    aggregate_id=task_id or object_id,
+                    aggregate_type=(
+                        "task"
+                        if task_id is not None
+                        else "object"
+                        if object_id is not None
+                        else "billing_invoice"
+                    ),
+                    aggregate_id=task_id or object_id or invoice_id,
                     payload=action_payload.model_dump(mode="json"),
                 )
             )

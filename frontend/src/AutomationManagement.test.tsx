@@ -78,4 +78,27 @@ describe("Automatisierungen", () => {
       });
     });
   });
+
+  it("bietet die manuelle Rechnungsfreigabe ohne Aufgabenbedingung an", async () => {
+    vi.mocked(api.getAutomationRules).mockResolvedValue([]);
+    render(<AutomationManagement />);
+
+    fireEvent.change(await screen.findByLabelText("Regelname"), {
+      target: { value: "Freigabehinweis" },
+    });
+    fireEvent.change(screen.getByLabelText("Auslöser"), {
+      target: { value: "billing.invoice_approved" },
+    });
+    expect(screen.queryByLabelText("Bedingung: Aufgabenstatus")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Regel anlegen" }));
+
+    await waitFor(() => {
+      expect(api.createAutomationRule).toHaveBeenCalledWith({
+        name: "Freigabehinweis",
+        description: undefined,
+        trigger_type: "billing.invoice_approved",
+        conditions: {},
+      });
+    });
+  });
 });
