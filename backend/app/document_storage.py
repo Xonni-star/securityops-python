@@ -243,18 +243,18 @@ def _fsync_directory(path: Path) -> None:
 
 def store_file(storage_key: str, content: bytes) -> None:
     path = _storage_path(storage_key, create_root=True)
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    completed = False
+    encrypted_content = _encrypt_content(storage_key, content)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".rekey-{storage_key}-", dir=path.parent)
+    temporary_path = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "wb") as file:
-            file.write(_encrypt_content(storage_key, content))
+            file.write(encrypted_content)
             file.flush()
             os.fsync(file.fileno())
+        os.link(temporary_path, path)
         _fsync_directory(path.parent)
-        completed = True
     finally:
-        if not completed:
-            path.unlink(missing_ok=True)
+        temporary_path.unlink(missing_ok=True)
 
 
 def remove_file(storage_key: str) -> None:
