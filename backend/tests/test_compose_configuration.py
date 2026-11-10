@@ -60,6 +60,24 @@ def test_production_api_uses_shared_redis_and_explicit_release_migration() -> No
     assert 'CMD ["uvicorn"' in (root / "backend" / "Dockerfile").read_text(encoding="utf-8")
 
 
+def test_only_frontend_and_api_publish_loopback_ports() -> None:
+    compose_path = Path(__file__).resolve().parents[2] / "docker-compose.yml"
+    compose = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    published_ports = {
+        service_name: service["ports"]
+        for service_name, service in compose["services"].items()
+        if service.get("ports")
+    }
+
+    assert set(published_ports) == {"api", "frontend"}
+    assert all(
+        port.startswith("127.0.0.1:")
+        for service_ports in published_ports.values()
+        for port in service_ports
+    )
+    assert compose["networks"]["data"]["internal"] is True
+
+
 def test_mfa_encryption_key_is_passed_only_to_api() -> None:
     root = Path(__file__).resolve().parents[2]
     compose = yaml.safe_load((root / "docker-compose.yml").read_text(encoding="utf-8"))

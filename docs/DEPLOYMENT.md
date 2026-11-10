@@ -106,6 +106,30 @@ Für Releases:
 
 Die konkreten Image-Tags/-Digests, Freigaben, Reihenfolge im Change-Management und Rollback-Automation sind zielumgebungsspezifisch und im Repository nicht implementiert.
 
+### Rollout- und Restore-Nachweis
+
+Für jeden Test- oder Produktionsrollout und jede Restore-Übung einen Eintrag im zugriffsbeschränkten Change-/Betriebsprotokoll führen. Nicht ausgeführte Prüfungen als offen kennzeichnen; CI-Ergebnisse getrennt von Zielumgebungsprüfungen dokumentieren. Eine sichere Vorlage:
+
+```text
+Vorgang / Change-ID:
+Umgebung: Test | Produktion
+Zeitfenster (UTC) / Verantwortliche / Freigabe:
+Quell-Commit und freigegebene Image-Digests:
+Prüfungen mit Ergebnis (bestanden / fehlgeschlagen / offen) und Verweis auf redigierten Nachweis:
+  Compose-Konfiguration und veröffentlichte Ports:
+  DNS, TLS, HTTPS-Weiterleitung und Proxy-Header:
+  Secret-Bereitstellung und Zugriffstrennung:
+  Migration, Readiness, Frontend, API und Worker:
+  Backup-ID, getrennte Ablage und Alter:
+  Restore-Datensatz: synthetische CI-Daten | isolierter Test aus Betreiber-Backup
+  Restore-Integrität, Dokumentenzugriff und Anwendungstests:
+  Monitoring, Alarmzustellung und Wiederanlauf:
+Abweichungen, Risiko-Verantwortliche und Folgetermin:
+Rollback-/Wiederherstellungsentscheidung und Ergebnis:
+```
+
+Keine Secrets, privaten Schlüssel, Tokens, personenbezogenen oder produktiven Einsatzdaten in diesem Nachweis oder in Git ablegen. Verweise müssen auf getrennt verwahrte, zugriffskontrollierte und nötigenfalls redigierte Belege zeigen. Ein grüner CI-Lauf belegt nur die dort ausgeführten Prüfungen mit synthetischen Daten; er füllt keinen Betreiber-Nachweis aus. Der Compose-Regressionstest `backend/tests/test_compose_configuration.py` prüft, dass nur API und Frontend Host-Ports veröffentlichen, beide an Loopback gebunden bleiben und das Daten-Netz intern ist. Auch dieser Quellcodecheck belegt keine Firewall-, Proxy- oder TLS-Konfiguration der Zielumgebung.
+
 ## Notfallwiederherstellung
 
 Die vorhandenen `scripts/restore-test.sh`-Schritte sind absichtlich auf ein isoliertes Testprojekt, eine `_test`-Quelldatenbank und die fest benannte Testdatenbank `securityops_restore_test` begrenzt. Sie sind kein Produktions-Restore-Befehl. Für eine Notfallwiederherstellung müssen Betreiber vorab ein eigenes, zugriffsbeschränktes Verfahren für die ausgewählte PostgreSQL- und Dokumenten-Zielumgebung festlegen und in einer isolierten Zielumgebung testen:
