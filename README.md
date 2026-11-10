@@ -114,16 +114,16 @@ Bei direktem Backend-Start außerhalb von Docker: Python 3.12+, `cd backend`, `p
 
 ## Frontend ohne Docker (Monorepo)
 
-Das Repository ist ein Monorepo: `backend/` enthält die FastAPI-Anwendung, `frontend/` die React-Oberfläche mit Vite und TypeScript. Im Wurzelverzeichnis liegt ein schlanker `package.json`, damit `npm install` und `npm run …` direkt am Repo-Root funktionieren und die Befehle an `frontend/` weitergereicht werden. Voraussetzung ist Node.js ≥ 22.22.2; die Frontend-Abhängigkeiten verlangen aktuelle Node-Versionen (`vite` ≥ 20.19/22.12, `vitest` und `jsdom` ≥ 22.22).
+Das Repository ist ein Monorepo: `backend/` enthält die FastAPI-Anwendung, `frontend/` die React-Oberfläche mit Vite und TypeScript. `frontend/` ist als npm-Workspace im Wurzel-`package.json` eingetragen, damit `npm install` und `npm run …` direkt am Repo-Root funktionieren und alle Abhängigkeiten in `node_modules/` im Wurzelverzeichnis landen. Voraussetzung ist Node.js ≥ 22.22.2; die Frontend-Abhängigkeiten verlangen aktuelle Node-Versionen (`vite` ≥ 20.19/22.12, `vitest` und `jsdom` ≥ 22.22).
 
 ```sh
-npm install     # installiert die Frontend-Abhängigkeiten aus frontend/package-lock.json
+npm install     # installiert alle Workspace-Abhängigkeiten
 npm run dev     # Vite-Entwicklungsserver auf http://localhost:5173
 npm run build   # Typprüfung und Produktionsbuild nach frontend/dist
 npm test        # Vitest
 ```
 
-Damit lässt sich das Frontend auch in Umgebungen starten, die ausschließlich ein Node-Projekt im Wurzelverzeichnis erwarten. Der Vite-Entwicklungsserver proxyt `/api` und `/health` auf `http://api:8000`, also auf den API-Container; ohne Compose rendert die Oberfläche, die API-Aufrufe laufen jedoch ins Leere. Für die vollständige Anwendung bleibt Docker Compose der vorgesehene Weg. Die CI prüft weiterhin direkt in `frontend/`.
+Damit lässt sich das Frontend auch in Umgebungen starten, die ausschließlich ein Node-Projekt im Wurzelverzeichnis erwarten. Der Vite-Entwicklungsserver proxyt `/api` und `/health` auf `http://api:8000`, also auf den API-Container; ohne Compose rendert die Oberfläche, die API-Aufrufe laufen jedoch ins Leere. Für die vollständige Anwendung bleibt Docker Compose der vorgesehene Weg. Die CI installiert unverändert direkt in `frontend/` und nutzt dort weiterhin `frontend/package-lock.json`; bei Änderungen an den Frontend-Abhängigkeiten müssen beide Lockfiles aktuell sein.
 
 ## Tests
 
