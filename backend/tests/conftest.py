@@ -87,6 +87,8 @@ from app.models import (
     OWKSEventStatus,
     OWKSRoute,
     OWKSRoutePoint,
+    OWKSShiftHandover,
+    OWKSShiftHandoverConfirmation,
     Permission,
     PhysicalKey,
     PolicyAssignment,
@@ -167,6 +169,8 @@ def client() -> Generator[TestClient, None, None]:
                 "incident_history",
                 "incident_people",
                 "incident_attachments",
+                "owks_shift_handover_confirmations",
+                "owks_shift_handovers",
                 "owks_events",
                 "owks_event_statuses",
                 "owks_attachments",
@@ -213,6 +217,8 @@ def client() -> Generator[TestClient, None, None]:
         db.execute(delete(PhysicalKey))
         db.execute(delete(InventoryEvent))
         db.execute(delete(InventoryAsset))
+        db.execute(delete(OWKSShiftHandoverConfirmation))
+        db.execute(delete(OWKSShiftHandover))
         db.execute(delete(OWKSAttachment))
         db.execute(delete(OWKSEventStatus))
         db.execute(delete(OWKSEvent))
@@ -284,6 +290,8 @@ def client() -> Generator[TestClient, None, None]:
                 "incident_history",
                 "incident_people",
                 "incident_attachments",
+                "owks_shift_handover_confirmations",
+                "owks_shift_handovers",
                 "owks_events",
                 "owks_event_statuses",
                 "owks_attachments",

@@ -86,6 +86,9 @@ import type {
   OWKSEvent,
   OWKSSyncResult,
   OWKSAttachment,
+  OWKSShiftHandover,
+  OWKSShiftHandoverContext,
+  OWKSStructuredHandoverItem,
   BillingRate,
   BillingInvoice,
   TaskAssignee,
@@ -1906,6 +1909,29 @@ export const getOWKSObjects = () => request<OWKSObject[]>("/owks/objects");
 
 export const getOWKSEvents = (objectId: string) =>
   request<OWKSEvent[]>(`/owks/objects/${objectId}/events`);
+
+export const getOWKSShiftHandoverContext = (objectId: string) =>
+  request<OWKSShiftHandoverContext>(`/owks/objects/${objectId}/handovers/context`);
+
+export const getOWKSShiftHandovers = (objectId: string) =>
+  request<OWKSShiftHandover[]>(`/owks/objects/${objectId}/handovers`);
+
+export const createOWKSShiftHandover = (objectId: string, data: {
+  shift_id: string;
+  recipient_employee_id: string;
+  handover_text: string;
+  structured_items: OWKSStructuredHandoverItem[];
+}) =>
+  request<OWKSShiftHandover>(`/owks/objects/${objectId}/handovers`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const confirmOWKSShiftHandover = (handoverId: string, note: string) =>
+  request<OWKSShiftHandover>(`/owks/handovers/${handoverId}/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
 
 export const getOWKSEvent = (eventId: string) =>
   request<OWKSEvent>(`/owks/events/${eventId}`);

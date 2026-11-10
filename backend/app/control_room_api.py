@@ -6,12 +6,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import and_, case, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.auth import AuthPrincipal, require_permission
 from app.control_room_schemas import (
     ControlRoomAbsence,
     ControlRoomBillingApproval,
+    ControlRoomHandover,
     ControlRoomIncident,
     ControlRoomObject,
     ControlRoomOWKSEvent,
@@ -34,6 +35,8 @@ from app.models import (
     ObjectQualificationRequirement,
     OWKSEvent,
     OWKSEventStatus,
+    OWKSShiftHandover,
+    OWKSShiftHandoverConfirmation,
     ScheduleSettings,
     ScheduleShift,
     SecurityObject,
@@ -226,6 +229,63 @@ def get_control_room(
                 status=status_value or "open",
             )
             for event, event_object_name, status_value in event_rows
+        ]
+        sender_employee = aliased(Employee)
+        recipient_employee = aliased(Employee)
+        handover_query = (
+            select(
+                OWKSShiftHandover,
+                SecurityObject.name,
+                sender_employee.full_name,
+                recipient_employee.full_name,
+            )
+            .join(SecurityObject, SecurityObject.id == OWKSShiftHandover.object_id)
+            .join(sender_employee, sender_employee.id == OWKSShiftHandover.sender_employee_id)
+            .join(
+                recipient_employee, recipient_employee.id == OWKSShiftHandover.recipient_employee_id
+            )
+            .where(
+                OWKSShiftHandover.object_id.in_(scoped_object_ids),
+                ~select(OWKSShiftHandoverConfirmation.id)
+                .where(OWKSShiftHandoverConfirmation.handover_id == OWKSShiftHandover.id)
+                .exists(),
+            )
+            .order_by(OWKSShiftHandover.created_at, OWKSShiftHandover.id)
+        )
+        can_read_employee_names = "employees.read" in permissions
+        current_employee_id = None
+        if not can_read_employee_names:
+            current_employee_id = db.scalar(
+                select(Employee.id).where(
+                    Employee.user_id == principal.user.id,
+                    Employee.archived_at.is_(None),
+                    Employee.employment_status == "active",
+                )
+            )
+            if current_employee_id is None:
+                handover_query = handover_query.where(False)
+            else:
+                handover_query = handover_query.where(
+                    or_(
+                        OWKSShiftHandover.sender_employee_id == current_employee_id,
+                        OWKSShiftHandover.recipient_employee_id == current_employee_id,
+                    )
+                )
+        handover_rows = db.execute(handover_query.limit(MAX_ITEMS)).all()
+        counts["pending_handovers"] = _count(db, handover_query)
+        result["pending_handovers"] = [
+            ControlRoomHandover(
+                id=handover.id,
+                object_id=handover.object_id,
+                object_name=handover_object_name,
+                shift_id=handover.shift_id,
+                sender_employee_id=handover.sender_employee_id,
+                sender_name=sender_name if can_read_employee_names else None,
+                recipient_employee_id=handover.recipient_employee_id,
+                recipient_name=recipient_name if can_read_employee_names else None,
+                created_at=handover.created_at,
+            )
+            for handover, handover_object_name, sender_name, recipient_name in handover_rows
         ]
 
     if {"incidents.read", "incidents.read_all", "incidents.manage_all"} & permissions:

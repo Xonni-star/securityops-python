@@ -33,6 +33,18 @@ class ControlRoomOWKSEvent(BaseModel):
     status: Literal["open", "in_progress"]
 
 
+class ControlRoomHandover(BaseModel):
+    id: UUID
+    object_id: UUID
+    object_name: str
+    shift_id: UUID
+    sender_employee_id: UUID
+    sender_name: str | None
+    recipient_employee_id: UUID
+    recipient_name: str | None
+    created_at: datetime
+
+
 class ControlRoomIncident(BaseModel):
     id: UUID
     title: str
@@ -90,6 +102,7 @@ class ControlRoomRead(BaseModel):
     objects: list[ControlRoomObject] | None = None
     shifts: list[ControlRoomShift] | None = None
     owks_events: list[ControlRoomOWKSEvent] | None = None
+    pending_handovers: list[ControlRoomHandover] | None = None
     incidents: list[ControlRoomIncident] | None = None
     tasks: list[ControlRoomTask] | None = None
     absences: list[ControlRoomAbsence] | None = None

@@ -18,10 +18,14 @@ vi.mock("./api", () => ({
   createOWKSChallenge: vi.fn(),
   createOWKSControlPoint: vi.fn(),
   createOWKSEvent: vi.fn(),
+  createOWKSShiftHandover: vi.fn(),
+  confirmOWKSShiftHandover: vi.fn(),
   createOWKSRoute: vi.fn(),
   getOWKSControlPoints: vi.fn(),
   getOWKSAttachments: vi.fn(),
   getOWKSEvents: vi.fn(),
+  getOWKSShiftHandoverContext: vi.fn(),
+  getOWKSShiftHandovers: vi.fn(),
   getOWKSObjects: vi.fn(),
   getOWKSRoutes: vi.fn(),
   getIncidentChoices: vi.fn(),
@@ -74,6 +78,13 @@ describe("OWKS-NFC-Fallback", () => {
       { id: "object-1", code: "OBJ-1", name: "Testobjekt" },
     ]);
     vi.mocked(api.getOWKSEvents).mockResolvedValue([]);
+    vi.mocked(api.getOWKSShiftHandovers).mockResolvedValue([]);
+    vi.mocked(api.getOWKSShiftHandoverContext).mockResolvedValue({
+      current_employee_id: null,
+      shifts: [],
+      recipients: [],
+      source_items: [],
+    });
     vi.mocked(api.getOWKSControlPoints).mockResolvedValue([]);
     vi.mocked(api.getOWKSRoutes).mockResolvedValue([]);
     vi.mocked(api.getIncidentChoices).mockResolvedValue({
@@ -505,5 +516,91 @@ describe("OWKS-NFC-Fallback", () => {
     expect((await screen.findByRole("alert")).textContent)
       .toContain("Bitte Titel und Bericht ausfüllen");
     expect(api.createIncident).not.toHaveBeenCalled();
+  });
+
+  it("erstellt eine Schichtübergabe mit strukturiertem und automatisch übernommenem Punkt", async () => {
+    vi.mocked(api.getOWKSShiftHandoverContext).mockResolvedValue({
+      current_employee_id: "employee-1",
+      shifts: [{
+        id: "shift-1",
+        starts_at: "2026-11-09T06:00:00Z",
+        ends_at: "2026-11-09T14:00:00Z",
+      }],
+      recipients: [{ id: "employee-2", full_name: "Nachfolger" }],
+      source_items: [{
+        source_type: "owks_event",
+        source_id: "event-source-1",
+        title: "Offene Zugangsstörung",
+        status: "open",
+        severity: "warning",
+        occurred_at: "2026-11-09T12:00:00Z",
+      }, {
+        source_type: "instruction",
+        source_id: "instruction-source-1",
+        title: "Zutrittskontrolle",
+        status: "overdue",
+        severity: "warning",
+        occurred_at: "2026-11-09T10:00:00Z",
+      }],
+    });
+    vi.mocked(api.createOWKSShiftHandover).mockResolvedValue({
+      id: "handover-1",
+      object_id: "object-1",
+      event_id: "event-1",
+      shift_id: "shift-1",
+      shift_starts_at: "2026-11-09T06:00:00Z",
+      shift_ends_at: "2026-11-09T14:00:00Z",
+      sender_employee_id: "employee-1",
+      sender_name: "Testwache",
+      recipient_employee_id: "employee-2",
+      recipient_name: "Nachfolger",
+      handover_text: "Zugang prüfen",
+      structured_items: [{ category: "disturbance", text: "Türschließer prüfen" }],
+      source_items: [],
+      status: "pending",
+      created_at: "2026-11-09T14:00:00Z",
+      confirmed_at: null,
+      confirmation_note: null,
+      history: [{
+        action: "submitted",
+        employee_id: "employee-1",
+        actor_id: "user-1",
+        note: "",
+        occurred_at: "2026-11-09T14:00:00Z",
+      }],
+    });
+    render(<OWKSManagement user={user} />);
+
+    expect(await screen.findByText(/Offene Zugangsstörung/)).toBeTruthy();
+    expect(await screen.findByText(
+      /Anweisung: Zutrittskontrolle · Überfällig · Warnung/,
+    )).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Eigene veröffentlichte Schicht"), {
+      target: { value: "shift-1" },
+    });
+    fireEvent.change(screen.getByLabelText("Übernehmende Person"), {
+      target: { value: "employee-2" },
+    });
+    fireEvent.change(screen.getByLabelText("Übergabetext"), {
+      target: { value: "Zugang prüfen" },
+    });
+    fireEvent.change(screen.getByLabelText("Text Übergabepunkt 1"), {
+      target: { value: "Türschließer prüfen" },
+    });
+    fireEvent.change(screen.getByLabelText("Kategorie Übergabepunkt 1"), {
+      target: { value: "disturbance" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Übergabe speichern" }));
+
+    await waitFor(() => expect(api.createOWKSShiftHandover).toHaveBeenCalledWith(
+      "object-1",
+      {
+        shift_id: "shift-1",
+        recipient_employee_id: "employee-2",
+        handover_text: "Zugang prüfen",
+        structured_items: [{ category: "disturbance", text: "Türschließer prüfen" }],
+      },
+    ));
+    expect(await screen.findByText(/wurde unveränderlich gespeichert/)).toBeTruthy();
   });
 });

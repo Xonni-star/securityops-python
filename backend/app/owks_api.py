@@ -16,7 +16,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -25,6 +25,9 @@ from app.database import get_db
 from app.document_storage import read_attachment, remove_file, store_file
 from app.models import (
     Employee,
+    Incident,
+    IncidentMeasure,
+    InventoryAsset,
     ObjectAssignment,
     OWKSAttachment,
     OWKSChallenge,
@@ -33,7 +36,17 @@ from app.models import (
     OWKSEventStatus,
     OWKSRoute,
     OWKSRoutePoint,
+    OWKSShiftHandover,
+    OWKSShiftHandoverConfirmation,
+    PhysicalKey,
+    PolicyAssignment,
+    PolicyItem,
+    PolicyReceipt,
+    PolicyVersion,
+    PolicyVersionClosure,
+    ScheduleShift,
     SecurityObject,
+    Task,
 )
 from app.notifications_service import enqueue_owks_automation_event
 from app.schemas import (
@@ -45,12 +58,21 @@ from app.schemas import (
     OWKSEventCreate,
     OWKSEventRead,
     OWKSEventStateUpdate,
+    OWKSHandoverEmployeeOption,
+    OWKSHandoverShiftOption,
+    OWKSHandoverSourceRead,
     OWKSRouteCreate,
     OWKSRouteRead,
     OWKSScanCreate,
+    OWKSShiftHandoverConfirmationCreate,
+    OWKSShiftHandoverContextRead,
+    OWKSShiftHandoverCreate,
+    OWKSShiftHandoverHistoryRead,
+    OWKSShiftHandoverRead,
     OWKSSyncEventCreate,
     OWKSSyncResult,
 )
+from app.task_access import task_visibility
 from app.upload_scanning import scan_upload_or_reject
 
 router = APIRouter(prefix="/owks", tags=["OWKS-Wachbuch"])
@@ -164,6 +186,344 @@ def event_read(db: Session, event: OWKSEvent) -> OWKSEventRead:
         presence_verified=event.presence_verified,
         status=latest_status(db, event.id),  # type: ignore[arg-type]
         created_at=as_utc(event.created_at),
+    )
+
+
+def handover_source_permissions(source_type: str) -> set[str]:
+    return {
+        "owks_event": {"owks.read"},
+        "task": {"tasks.read_own", "tasks.read_all", "tasks.manage_all"},
+        "incident": {"incidents.read", "incidents.read_all", "incidents.manage_all"},
+        "incident_measure": {"incidents.read", "incidents.read_all", "incidents.manage_all"},
+        "key": {"keys.read"},
+        "inventory_asset": {"inventory.read"},
+        "instruction": {"policies.read_own"},
+    }.get(source_type, set())
+
+
+def handover_sources(
+    db: Session,
+    object_id: UUID,
+    principal: AuthPrincipal,
+    recipient_employee_id: UUID | None = None,
+) -> list[OWKSHandoverSourceRead]:
+    sources: list[OWKSHandoverSourceRead] = []
+    permissions = principal.permission_codes
+    incidents_allowed = bool(
+        {"incidents.read", "incidents.read_all", "incidents.manage_all"} & permissions
+    )
+
+    def add_source(
+        source_type: str,
+        source_id: UUID,
+        title: str,
+        source_status: str,
+        severity: str | None,
+        occurred_at: datetime,
+    ) -> None:
+        sources.append(
+            OWKSHandoverSourceRead(
+                source_type=source_type,
+                source_id=source_id,
+                title=title,
+                status=source_status,
+                severity=severity,
+                occurred_at=as_utc(occurred_at),
+            )
+        )
+
+    latest_event_status = (
+        select(OWKSEventStatus.status)
+        .where(OWKSEventStatus.event_id == OWKSEvent.id)
+        .order_by(OWKSEventStatus.sequence_no.desc())
+        .limit(1)
+        .correlate(OWKSEvent)
+        .scalar_subquery()
+    )
+    if "owks.read" in permissions:
+        linked_incident = select(Incident.id).where(Incident.owks_event_id == OWKSEvent.id).exists()
+        rows = db.execute(
+            select(OWKSEvent, latest_event_status)
+            .where(
+                OWKSEvent.object_id == object_id,
+                OWKSEvent.event_type.in_(("deviation", "missed", "notification", "manipulation")),
+                latest_event_status.in_(("open", "in_progress")),
+                ~linked_incident,
+            )
+            .order_by(OWKSEvent.occurred_at, OWKSEvent.id)
+            .limit(500)
+        ).all()
+        for event, event_status in rows:
+            add_source(
+                "owks_event",
+                event.id,
+                event.title,
+                event_status,
+                event.severity,
+                event.occurred_at,
+            )
+
+    if permissions & {"tasks.read_own", "tasks.read_all", "tasks.manage_all"}:
+        tasks = db.scalars(
+            select(Task)
+            .where(
+                Task.object_id == object_id,
+                Task.status.in_(("open", "in_progress", "blocked")),
+                task_visibility(principal),
+            )
+            .order_by(Task.due_at, Task.id)
+            .limit(500)
+        ).all()
+        for task in tasks:
+            priority = {"urgent": "critical", "high": "warning"}.get(task.priority, "info")
+            add_source(
+                "task",
+                task.id,
+                task.title,
+                task.status,
+                priority,
+                task.due_at or task.updated_at,
+            )
+
+    if incidents_allowed:
+        incidents = db.scalars(
+            select(Incident)
+            .where(
+                Incident.object_id == object_id,
+                Incident.status.in_(("reported", "investigating", "action_required")),
+            )
+            .order_by(Incident.due_at, Incident.id)
+            .limit(500)
+        ).all()
+        for incident in incidents:
+            add_source(
+                "incident",
+                incident.id,
+                incident.title,
+                incident.status,
+                incident.severity,
+                incident.due_at or incident.updated_at,
+            )
+
+        measures = db.execute(
+            select(IncidentMeasure, Incident)
+            .join(Incident, Incident.id == IncidentMeasure.incident_id)
+            .where(
+                Incident.object_id == object_id,
+                Incident.status != "closed",
+                IncidentMeasure.status.in_(("open", "in_progress")),
+            )
+            .order_by(IncidentMeasure.due_at, IncidentMeasure.id)
+            .limit(500)
+        ).all()
+        for measure, incident in measures:
+            add_source(
+                "incident_measure",
+                measure.id,
+                measure.title,
+                measure.status,
+                incident.severity,
+                measure.due_at or measure.updated_at,
+            )
+
+    if "keys.read" in permissions:
+        keys = db.scalars(
+            select(PhysicalKey)
+            .where(
+                PhysicalKey.object_id == object_id,
+                PhysicalKey.status.in_(("issued", "lost", "defective")),
+                PhysicalKey.archived_at.is_(None),
+            )
+            .order_by(PhysicalKey.key_number, PhysicalKey.id)
+            .limit(500)
+        ).all()
+        for key in keys:
+            severity = {"lost": "critical", "defective": "warning"}.get(key.status, "info")
+            add_source(
+                "key",
+                key.id,
+                f"Schlüssel {key.key_number}",
+                key.status,
+                severity,
+                key.updated_at,
+            )
+
+    if "inventory.read" in permissions:
+        assets = db.scalars(
+            select(InventoryAsset)
+            .where(
+                InventoryAsset.object_id == object_id,
+                InventoryAsset.status.in_(("maintenance", "lost", "damaged")),
+                InventoryAsset.archived_at.is_(None),
+            )
+            .order_by(InventoryAsset.asset_number, InventoryAsset.id)
+            .limit(500)
+        ).all()
+        for asset in assets:
+            severity = {"lost": "critical", "damaged": "warning"}.get(asset.status, "info")
+            add_source(
+                "inventory_asset",
+                asset.id,
+                f"{asset.asset_number}: {asset.name}",
+                asset.status,
+                severity,
+                asset.updated_at,
+            )
+
+    current_employee_id = db.scalar(
+        select(Employee.id).where(
+            Employee.user_id == principal.user.id,
+            Employee.archived_at.is_(None),
+            Employee.employment_status == "active",
+        )
+    )
+    employee_id = recipient_employee_id or current_employee_id
+    can_read_policy_assignments = "policies.manage" in permissions or (
+        "policies.read_own" in permissions
+        and employee_id is not None
+        and employee_id == current_employee_id
+    )
+    if employee_id is not None and can_read_policy_assignments:
+        now = now_utc()
+        effective_until = func.coalesce(
+            select(PolicyVersionClosure.valid_until)
+            .where(PolicyVersionClosure.policy_version_id == PolicyVersion.id)
+            .scalar_subquery(),
+            PolicyVersion.valid_until,
+        )
+        confirmed_assignment = (
+            select(PolicyReceipt.id)
+            .where(
+                PolicyReceipt.assignment_id == PolicyAssignment.id,
+                PolicyReceipt.action == "confirmed",
+            )
+            .exists()
+        )
+        assignments = db.execute(
+            select(PolicyAssignment, PolicyItem, PolicyVersion)
+            .join(PolicyVersion, PolicyVersion.id == PolicyAssignment.policy_version_id)
+            .join(PolicyItem, PolicyItem.id == PolicyVersion.policy_item_id)
+            .where(
+                PolicyAssignment.employee_id == employee_id,
+                PolicyItem.kind == "instruction",
+                PolicyItem.archived_at.is_(None),
+                or_(PolicyItem.object_id.is_(None), PolicyItem.object_id == object_id),
+                PolicyVersion.valid_from <= now,
+                or_(effective_until.is_(None), effective_until > now),
+                ~confirmed_assignment,
+            )
+            .order_by(PolicyAssignment.due_at, PolicyAssignment.id)
+            .limit(500)
+        ).all()
+        seen_policy_versions: set[UUID] = set()
+        for assignment, policy, version in assignments:
+            if version.id in seen_policy_versions:
+                continue
+            seen_policy_versions.add(version.id)
+            overdue = assignment.due_at is not None and as_utc(assignment.due_at) < now
+            add_source(
+                "instruction",
+                assignment.id,
+                policy.title,
+                "overdue" if overdue else "pending",
+                "warning" if overdue else "info",
+                assignment.due_at or assignment.assigned_at,
+            )
+
+    sources.sort(key=lambda item: (item.occurred_at, item.source_type, str(item.source_id)))
+    return sources[:500]
+
+
+def handover_read(
+    db: Session, handover: OWKSShiftHandover, principal: AuthPrincipal
+) -> OWKSShiftHandoverRead:
+    sender = db.get(Employee, handover.sender_employee_id)
+    recipient = db.get(Employee, handover.recipient_employee_id)
+    shift = db.get(ScheduleShift, handover.shift_id)
+    if sender is None or recipient is None or shift is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Mitarbeiterdaten der Übergabe sind nicht verfügbar"
+        )
+    confirmation = db.scalar(
+        select(OWKSShiftHandoverConfirmation).where(
+            OWKSShiftHandoverConfirmation.handover_id == handover.id
+        )
+    )
+    submitted = OWKSShiftHandoverHistoryRead(
+        action="submitted",
+        employee_id=handover.sender_employee_id,
+        actor_id=handover.created_by_id,
+        note="",
+        occurred_at=as_utc(handover.created_at),
+    )
+    history = [submitted]
+    if confirmation is not None:
+        history.append(
+            OWKSShiftHandoverHistoryRead(
+                action="confirmed",
+                employee_id=confirmation.employee_id,
+                actor_id=confirmation.actor_id,
+                note=confirmation.note,
+                occurred_at=as_utc(confirmation.created_at),
+            )
+        )
+    current_employee_id = db.scalar(
+        select(Employee.id).where(
+            Employee.user_id == principal.user.id,
+            Employee.archived_at.is_(None),
+            Employee.employment_status == "active",
+        )
+    )
+    task_source_ids = {
+        UUID(str(item["source_id"]))
+        for item in handover.source_items
+        if item.get("source_type") == "task"
+    }
+    visible_task_ids: set[UUID] = set()
+    if task_source_ids and handover_source_permissions("task") & principal.permission_codes:
+        visible_task_ids = set(
+            db.scalars(
+                select(Task.id).where(
+                    Task.id.in_(task_source_ids),
+                    Task.object_id == handover.object_id,
+                    task_visibility(principal),
+                )
+            ).all()
+        )
+    visible_sources = []
+    for item in handover.source_items:
+        source_type = item.get("source_type", "")
+        if source_type == "task":
+            if UUID(str(item["source_id"])) in visible_task_ids:
+                visible_sources.append(item)
+        elif source_type == "instruction":
+            can_read_instruction = "policies.manage" in principal.permission_codes or (
+                "policies.read_own" in principal.permission_codes
+                and current_employee_id == handover.recipient_employee_id
+            )
+            if can_read_instruction:
+                visible_sources.append(item)
+        elif handover_source_permissions(source_type) & principal.permission_codes:
+            visible_sources.append(item)
+    return OWKSShiftHandoverRead(
+        id=handover.id,
+        object_id=handover.object_id,
+        event_id=handover.event_id,
+        shift_id=handover.shift_id,
+        shift_starts_at=as_utc(shift.starts_at),
+        shift_ends_at=as_utc(shift.ends_at),
+        sender_employee_id=handover.sender_employee_id,
+        sender_name=sender.full_name,
+        recipient_employee_id=handover.recipient_employee_id,
+        recipient_name=recipient.full_name,
+        handover_text=handover.handover_text,
+        structured_items=handover.structured_items,
+        source_items=visible_sources,
+        status="confirmed" if confirmation is not None else "pending",
+        created_at=as_utc(handover.created_at),
+        confirmed_at=as_utc(confirmation.created_at) if confirmation else None,
+        confirmation_note=confirmation.note if confirmation else None,
+        history=history,
     )
 
 
@@ -736,6 +1096,242 @@ def list_events(
         .offset(offset)
     ).all()
     return [event_read(db, event) for event in events]
+
+
+@router.get(
+    "/objects/{object_id}/handovers/context",
+    response_model=OWKSShiftHandoverContextRead,
+)
+def get_handover_context(
+    object_id: UUID,
+    db: Session = Depends(get_db),
+    principal=Depends(require_owks_write),
+) -> OWKSShiftHandoverContextRead:
+    get_object_or_404(db, object_id, principal, for_write=True)
+    employee = db.scalar(
+        select(Employee).where(
+            Employee.user_id == principal.user.id,
+            Employee.archived_at.is_(None),
+            Employee.employment_status == "active",
+        )
+    )
+    shifts = (
+        db.scalars(
+            select(ScheduleShift)
+            .where(
+                ScheduleShift.object_id == object_id,
+                ScheduleShift.employee_id == employee.id,
+                ScheduleShift.status == "published",
+                ~select(OWKSShiftHandover.id)
+                .where(OWKSShiftHandover.shift_id == ScheduleShift.id)
+                .exists(),
+            )
+            .order_by(ScheduleShift.starts_at.desc(), ScheduleShift.id)
+            .limit(100)
+        ).all()
+        if employee is not None
+        else []
+    )
+    recipients = (
+        db.scalars(
+            select(Employee)
+            .join(ObjectAssignment, ObjectAssignment.user_id == Employee.user_id)
+            .where(
+                ObjectAssignment.object_id == object_id,
+                Employee.id != employee.id,
+                Employee.archived_at.is_(None),
+                Employee.employment_status == "active",
+            )
+            .order_by(Employee.full_name, Employee.id)
+        ).all()
+        if employee is not None
+        else []
+    )
+    return OWKSShiftHandoverContextRead(
+        current_employee_id=employee.id if employee else None,
+        shifts=[
+            OWKSHandoverShiftOption(
+                id=shift.id,
+                starts_at=as_utc(shift.starts_at),
+                ends_at=as_utc(shift.ends_at),
+            )
+            for shift in shifts
+        ],
+        recipients=[
+            OWKSHandoverEmployeeOption(id=item.id, full_name=item.full_name) for item in recipients
+        ],
+        source_items=handover_sources(db, object_id, principal, employee.id if employee else None),
+    )
+
+
+@router.get(
+    "/objects/{object_id}/handovers",
+    response_model=list[OWKSShiftHandoverRead],
+)
+def list_handovers(
+    object_id: UUID,
+    db: Session = Depends(get_db),
+    principal=Depends(require_permission("owks.read")),
+) -> list[OWKSShiftHandoverRead]:
+    get_object_or_404(db, object_id, principal)
+    handovers = db.scalars(
+        select(OWKSShiftHandover)
+        .where(OWKSShiftHandover.object_id == object_id)
+        .order_by(OWKSShiftHandover.created_at.desc(), OWKSShiftHandover.id)
+        .limit(200)
+    ).all()
+    return [handover_read(db, handover, principal) for handover in handovers]
+
+
+@router.post(
+    "/objects/{object_id}/handovers",
+    response_model=OWKSShiftHandoverRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_handover(
+    object_id: UUID,
+    payload: OWKSShiftHandoverCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    principal=Depends(require_owks_write),
+) -> OWKSShiftHandoverRead:
+    get_object_or_404(db, object_id, principal, for_write=True)
+    sender = get_active_employee(db, principal.user.id)
+    shift = db.scalar(
+        select(ScheduleShift)
+        .where(
+            ScheduleShift.id == payload.shift_id,
+            ScheduleShift.object_id == object_id,
+        )
+        .with_for_update()
+    )
+    if shift is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Schicht nicht gefunden")
+    if shift.status != "published":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Nur veröffentlichte Schichten können übergeben werden"
+        )
+    if shift.employee_id != sender.id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Die Schicht ist nicht der angemeldeten Person zugeordnet"
+        )
+    if db.scalar(select(OWKSShiftHandover.id).where(OWKSShiftHandover.shift_id == shift.id)):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Für diese Schicht wurde bereits eine Übergabe erfasst"
+        )
+    recipient = db.scalar(
+        select(Employee)
+        .join(ObjectAssignment, ObjectAssignment.user_id == Employee.user_id)
+        .where(
+            Employee.id == payload.recipient_employee_id,
+            ObjectAssignment.object_id == object_id,
+            Employee.archived_at.is_(None),
+            Employee.employment_status == "active",
+        )
+    )
+    if recipient is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "Nachfolger für dieses Objekt nicht gefunden"
+        )
+    if recipient.id == sender.id:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Die übernehmende Person muss eine andere Person sein",
+        )
+
+    sources = handover_sources(db, object_id, principal, recipient.id)
+    event = create_event(
+        db,
+        object_id=object_id,
+        employee_id=sender.id,
+        actor_id=principal.user.id,
+        event_type="handover",
+        title=f"Schichtübergabe {as_utc(shift.starts_at).strftime('%d.%m.%Y %H:%M')} UTC",
+        description=payload.handover_text,
+        severity="info",
+        occurred_at=now_utc(),
+        request=request,
+    )
+    handover = OWKSShiftHandover(
+        event_id=event.id,
+        object_id=object_id,
+        shift_id=shift.id,
+        sender_employee_id=sender.id,
+        recipient_employee_id=recipient.id,
+        handover_text=payload.handover_text,
+        structured_items=[item.model_dump() for item in payload.structured_items],
+        source_items=[item.model_dump(mode="json") for item in sources],
+        created_by_id=principal.user.id,
+    )
+    db.add(handover)
+    db.flush()
+    add_audit_entry(
+        db,
+        actor_id=principal.user.id,
+        action="owks.shift_handover_submitted",
+        entity_type="owks_shift_handover",
+        entity_id=str(handover.id),
+        ip_address=request.client.host if request.client else None,
+        details={
+            "object_id": str(object_id),
+            "shift_id": str(shift.id),
+            "recipient_employee_id": str(recipient.id),
+            "event_id": str(event.id),
+            "source_item_count": len(sources),
+        },
+    )
+    commit_or_conflict(db)
+    return handover_read(db, handover, principal)
+
+
+@router.post(
+    "/handovers/{handover_id}/confirm",
+    response_model=OWKSShiftHandoverRead,
+)
+def confirm_handover(
+    handover_id: UUID,
+    payload: OWKSShiftHandoverConfirmationCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    principal=Depends(require_owks_write),
+) -> OWKSShiftHandoverRead:
+    handover = db.scalar(
+        select(OWKSShiftHandover).where(OWKSShiftHandover.id == handover_id).with_for_update()
+    )
+    if handover is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Schichtübergabe nicht gefunden")
+    get_object_or_404(db, handover.object_id, principal, for_write=True)
+    employee = get_active_employee(db, principal.user.id)
+    if employee.id != handover.recipient_employee_id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Nur die eingetragene übernehmende Person kann die Übergabe bestätigen",
+        )
+    existing = db.scalar(
+        select(OWKSShiftHandoverConfirmation).where(
+            OWKSShiftHandoverConfirmation.handover_id == handover.id
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Die Schichtübergabe wurde bereits bestätigt")
+    confirmation = OWKSShiftHandoverConfirmation(
+        handover_id=handover.id,
+        employee_id=employee.id,
+        actor_id=principal.user.id,
+        note=payload.note.strip(),
+    )
+    db.add(confirmation)
+    add_audit_entry(
+        db,
+        actor_id=principal.user.id,
+        action="owks.shift_handover_confirmed",
+        entity_type="owks_shift_handover",
+        entity_id=str(handover.id),
+        ip_address=request.client.host if request.client else None,
+        details={"object_id": str(handover.object_id), "employee_id": str(employee.id)},
+    )
+    commit_or_conflict(db)
+    return handover_read(db, handover, principal)
 
 
 @router.get("/events/{event_id}", response_model=OWKSEventRead)

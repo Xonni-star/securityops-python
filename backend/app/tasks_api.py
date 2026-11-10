@@ -19,6 +19,7 @@ from app.models import (
     User,
 )
 from app.notifications_service import enqueue_task_event
+from app.task_access import task_visibility
 from app.task_schemas import (
     TaskAssigneeRead,
     TaskCommentCreate,
@@ -58,19 +59,6 @@ def task_query():
         selectinload(Task.creator),
         selectinload(Task.customer),
         selectinload(Task.object),
-    )
-
-
-def task_visibility(principal: AuthPrincipal):
-    if {"tasks.read_all", "tasks.manage_all"} & principal.permission_codes:
-        return True
-    object_ids = select(ObjectAssignment.object_id).where(
-        ObjectAssignment.user_id == principal.user.id
-    )
-    return or_(
-        Task.assigned_to_id == principal.user.id,
-        Task.created_by_id == principal.user.id,
-        Task.object_id.in_(object_ids),
     )
 
 
