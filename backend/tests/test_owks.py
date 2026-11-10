@@ -9,7 +9,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from conftest import ADMIN_PASSWORD, TestingSessionLocal, test_engine
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app import owks_scheduler
@@ -811,6 +811,148 @@ def test_handover_snapshots_module_sources_with_object_and_permission_scopes(
     )
     assert handovers.status_code == 200
     assert handovers.json()[0]["source_items"] == []
+
+
+def test_handover_task_sources_respect_individual_task_visibility(client: TestClient) -> None:
+    admin_headers = {"X-CSRF-Token": sign_in(client)}
+    object_id = create_object(client, admin_headers, "OWKS-HANDOVER-TASK-SCOPE")
+    create_assigned_employee(object_id, "handover-task-scope-sender")
+    create_assigned_employee(object_id, "handover-task-scope-recipient")
+
+    with TestingSessionLocal() as db:
+        sender = db.scalar(
+            select(Employee)
+            .join(User, Employee.user_id == User.id)
+            .where(User.username == "handover-task-scope-sender")
+        )
+        recipient = db.scalar(
+            select(Employee)
+            .join(User, Employee.user_id == User.id)
+            .where(User.username == "handover-task-scope-recipient")
+        )
+        admin = db.scalar(select(User).where(User.username == "admin"))
+        assert sender is not None and recipient is not None and admin is not None
+        role = db.scalar(select(Role).where(Role.code == "handover_task_scope_test"))
+        if role is None:
+            role = Role(
+                code="handover_task_scope_test",
+                name="Übergabe-Aufgabenscope",
+                description="Isolierter Berechtigungstest für Aufgabenquellen",
+            )
+        permission_codes = {
+            "objects.read_all",
+            "objects.manage_all",
+            "owks.read",
+            "owks.write",
+            "tasks.read_own",
+            "tasks.read_all",
+        }
+        permissions = db.scalars(
+            select(Permission).where(Permission.code.in_(permission_codes))
+        ).all()
+        assert {permission.code for permission in permissions} == permission_codes
+        role.permissions = permissions
+        sender_user = db.get(User, sender.user_id)
+        obj = db.get(SecurityObject, UUID(object_id))
+        assert sender_user is not None and obj is not None
+        sender_user.roles = [role]
+        db.execute(
+            delete(ObjectAssignment).where(
+                ObjectAssignment.object_id == obj.id,
+                ObjectAssignment.user_id == sender_user.id,
+            )
+        )
+        task = Task(
+            title="Vertrauliche Aufgabe auf nicht zugewiesenem Objekt",
+            assigned_to_id=recipient.user_id,
+            created_by_id=admin.id,
+            object_id=obj.id,
+            status="open",
+        )
+        db.add(task)
+        shifts = [
+            ScheduleShift(
+                employee_id=sender.id,
+                object_id=obj.id,
+                starts_at=datetime(2026, 11, 9, hour, tzinfo=UTC),
+                ends_at=datetime(2026, 11, 9, hour + 1, tzinfo=UTC),
+                status="published",
+                created_by_id=admin.id,
+            )
+            for hour in (6, 8)
+        ]
+        db.add_all(shifts)
+        db.commit()
+        task_id = task.id
+        shift_ids = [str(shift.id) for shift in shifts]
+        recipient_id = recipient.id
+
+    sender_headers = {
+        "X-CSRF-Token": sign_in(
+            client,
+            "handover-task-scope-sender",
+            "wachkraft-test-passwort-2026",
+        )
+    }
+    privileged_snapshot = client.post(
+        f"/api/v1/owks/objects/{object_id}/handovers",
+        headers=sender_headers,
+        json={
+            "shift_id": shift_ids[0],
+            "recipient_employee_id": str(recipient_id),
+            "handover_text": "Übergabe mit berechtigtem Aufgabenüberblick.",
+            "structured_items": [],
+        },
+    )
+    assert privileged_snapshot.status_code == 201, privileged_snapshot.text
+    assert task_id in {
+        UUID(item["source_id"]) for item in privileged_snapshot.json()["source_items"]
+    }
+
+    with TestingSessionLocal() as db:
+        role = db.scalar(select(Role).where(Role.code == "handover_task_scope_test"))
+        task_read_all = db.scalar(select(Permission).where(Permission.code == "tasks.read_all"))
+        assert role is not None and task_read_all is not None
+        role.permissions = [
+            permission for permission in role.permissions if permission.code != "tasks.read_all"
+        ]
+        db.commit()
+
+    sender_headers = {
+        "X-CSRF-Token": sign_in(
+            client,
+            "handover-task-scope-sender",
+            "wachkraft-test-passwort-2026",
+        )
+    }
+    context = client.get(
+        f"/api/v1/owks/objects/{object_id}/handovers/context",
+        headers=sender_headers,
+    )
+    assert context.status_code == 200
+    assert all(item["source_id"] != str(task_id) for item in context.json()["source_items"])
+
+    historical = client.get(
+        f"/api/v1/owks/objects/{object_id}/handovers",
+        headers=sender_headers,
+    )
+    assert historical.status_code == 200
+    assert all(item["source_id"] != str(task_id) for item in historical.json()[0]["source_items"])
+
+    own_scope_snapshot = client.post(
+        f"/api/v1/owks/objects/{object_id}/handovers",
+        headers=sender_headers,
+        json={
+            "shift_id": shift_ids[1],
+            "recipient_employee_id": str(recipient_id),
+            "handover_text": "Übergabe ohne fremde Aufgabenquelle.",
+            "structured_items": [],
+        },
+    )
+    assert own_scope_snapshot.status_code == 201, own_scope_snapshot.text
+    assert all(
+        item["source_id"] != str(task_id) for item in own_scope_snapshot.json()["source_items"]
+    )
 
 
 def test_owks_permission_and_foreign_object_attachment_are_denied(client: TestClient) -> None:

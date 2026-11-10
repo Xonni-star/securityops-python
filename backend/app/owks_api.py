@@ -72,6 +72,7 @@ from app.schemas import (
     OWKSSyncEventCreate,
     OWKSSyncResult,
 )
+from app.task_access import task_visibility
 from app.upload_scanning import scan_upload_or_reject
 
 router = APIRouter(prefix="/owks", tags=["OWKS-Wachbuch"])
@@ -268,6 +269,7 @@ def handover_sources(
             .where(
                 Task.object_id == object_id,
                 Task.status.in_(("open", "in_progress", "blocked")),
+                task_visibility(principal),
             )
             .order_by(Task.due_at, Task.id)
             .limit(500)
@@ -472,10 +474,29 @@ def handover_read(
             Employee.employment_status == "active",
         )
     )
+    task_source_ids = {
+        UUID(str(item["source_id"]))
+        for item in handover.source_items
+        if item.get("source_type") == "task"
+    }
+    visible_task_ids: set[UUID] = set()
+    if task_source_ids and handover_source_permissions("task") & principal.permission_codes:
+        visible_task_ids = set(
+            db.scalars(
+                select(Task.id).where(
+                    Task.id.in_(task_source_ids),
+                    Task.object_id == handover.object_id,
+                    task_visibility(principal),
+                )
+            ).all()
+        )
     visible_sources = []
     for item in handover.source_items:
         source_type = item.get("source_type", "")
-        if source_type == "instruction":
+        if source_type == "task":
+            if UUID(str(item["source_id"])) in visible_task_ids:
+                visible_sources.append(item)
+        elif source_type == "instruction":
             can_read_instruction = "policies.manage" in principal.permission_codes or (
                 "policies.read_own" in principal.permission_codes
                 and current_employee_id == handover.recipient_employee_id
