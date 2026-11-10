@@ -2,9 +2,11 @@
 
 **Historische Live-Prüfung:** 09.11.2026, 19:40 Uhr CET · Checkout und `origin/main` stimmten bei dieser Prüfung überein · **Alembic-Head:** `0035_worker_monitoring` · **Alembic-Migrationen:** 35 · **Offene Pull Requests zu diesem Zeitpunkt:** #62, #64, #65, #66, #68–#77.
 
-**Aktueller Main-/GitHub-Abgleich:** 09.11.2026, 21:10 Uhr CET · **Alembic-Head:** `0038_digital_policies` · **Alembic-Migrationen:** 38 · PRs #77, #65, #79 und #78 sind in `main` integriert · **Offene Pull Requests:** #84–#88. Die detaillierte GitHub-Statusaufnahme weiter unten bleibt eine ausdrücklich datierte historische Momentaufnahme.
+**Aktueller Main-/GitHub-Abgleich:** 10.11.2026, 08:34 Uhr CET · **Alembic-Head:** `0038_digital_policies` · **Alembic-Migrationen:** 38 · PRs #84 und #86 sind in `main` integriert · **Offene Pull Requests:** #85, #87, #88 und #89. Die detaillierte GitHub-Statusaufnahme weiter unten bleibt eine ausdrücklich datierte historische Momentaufnahme.
 
 **Vorgeschlagener Stand des offenen PR #85 (nicht in `main`):** **Alembic-Head:** `0039_unique_billing_corrections` · **Alembic-Migrationen:** 39. Die additive Migration ergänzt die Eindeutigkeitssicherung für Rechnungskorrekturen. Issue #7 bleibt offen für fachliche Regeln und Abnahmen.
+
+**Historische GitHub-Nachprüfung:** 09.11.2026, 20:53 Uhr CET · zu diesem Zeitpunkt keine offenen Pull Requests · offene Issues: #7, #9, #51 und #56. Issue #63 war geschlossen. Der Repository-Owner meldete dort am 09.11.2026 die Aktivierung von Dependabot alerts und automated security fixes und deren Verifikation über die REST API. Das in jener Sitzung verfügbare Konto hatte keine Admin-Rechte; seine REST-Abfragen konnten die Einstellungen nicht unabhängig bestätigen. In jener Sitzung wurden keine Repository-Sicherheitseinstellungen geändert.
 
 Diese Momentaufnahme wurde mit dem `main`-Quellcode und einer Live-Abfrage von GitHub abgeglichen. Die Momentaufnahme enthält absichtlich keinen Commit-SHA, der nach dem nächsten Merge veraltet wäre. Implementierung, erfolgreiche CI, fachliche Abnahme und produktiver Betrieb sind getrennte Nachweise. Ein Merge oder grüner CI-Lauf belegt für sich weder fachliche, rechtliche oder steuerliche Abnahme noch einen produktiven Rollout. Der CI-Validator prüft lokale Projektfakten; er fragt GitHub nicht ab. GitHub-Statusangaben müssen bei einer Aktualisierung erneut live geprüft werden.
 
@@ -91,7 +93,7 @@ PR #76 enthält den zuvor separat gemeldeten MFA-Compose-Key-Forwarding-Commit; 
 | [#51](https://github.com/Xonni-star/securityops-python/issues/51) | Offen | Beschränkte Task- und OWKS-Automatisierung ist implementiert (PRs #54/#59); weitere Trigger und fachlicher Abgleich des Gesamtumfangs bleiben offen. |
 | [#52](https://github.com/Xonni-star/securityops-python/issues/52) | Geschlossen am 09.11.2026 | Antragsrücknahme und Freigabe von Qualifikationsdateien wurden mit PR #55 integriert. Allgemeine Personal-/Vertragsdokumente bleiben ausgeschlossen. |
 | [#56](https://github.com/Xonni-star/securityops-python/issues/56) | Offen · Betreiber-Nachweise fehlen | Verschlüsselter Dateispeicher und expliziter Rekey-Befehl sind mit gemergtem PR #57 in `main` vorhanden. Die Issue-Beschreibung ist hinsichtlich „nicht anwendungsseitig verschlüsselt“ und „Rekey fehlt“ teilweise überholt. Die test-only-Abdeckung für Vorfallanhänge liegt in offenem PR #69 und ist noch nicht Teil von `main`. Nicht belegt sind Betreiber-Schlüsselbereitstellung, Rekey/Migration bestehender Dateien in einer Zielumgebung und deren Abnahme; das Issue bleibt dafür offen. |
-| [#63](https://github.com/Xonni-star/securityops-python/issues/63) | Offen · Maintainer-Aktion erforderlich | Dependabot alerts sind laut GitHub deaktiviert; das verfügbare Konto erhielt HTTP 403 und konnte die Einstellung nicht ändern. Ein Repository-Maintainer muss Dependabot alerts unter **Settings → Security → Code security and analysis** aktivieren und den Status verifizieren. Security updates sind gemäß Repository-/Branch-Schutzrichtlinien zu aktivieren, sofern verfügbar. Die vorhandene CI-SCA mit `pip-audit` und `npm audit` ersetzt diese Repository-Einstellung nicht; für Code Scanning wurden keine offenen Alerts gemeldet. |
+| [#63](https://github.com/Xonni-star/securityops-python/issues/63) | Geschlossen am 09.11.2026 | Der Repository-Owner meldete die Aktivierung von Dependabot alerts und automated security fixes sowie deren Verifikation über die GitHub REST API. Das in dieser Sitzung verfügbare Konto hat keine Admin-Rechte und konnte den Einstellungsstatus nicht unabhängig abrufen; es wurden keine Einstellungen geändert. |
 
 Die Issues #2–#6 und #8 sind ebenfalls geschlossen. Geschlossene Issues und gemergte PRs werden nicht als offene Arbeit oder als außerhalb von `main` dargestellt. Offene Issues beschreiben verbleibende fachliche beziehungsweise betriebliche Arbeit, nicht zwingend fehlende Grundfunktionen.
 
@@ -122,7 +124,7 @@ Für das Repository ist keine Lizenz ausgewählt oder hinterlegt (GitHub-Metadat
 |---|---|
 | Implementiert | Die oben aufgeführten Funktionen und Migrationen sind im geprüften `main`-Quellcode vorhanden. |
 | CI | Die Checks der genannten Merge-PRs waren laut Live-Abfrage erfolgreich. Das gilt jeweils für die geprüften PR-Heads. |
-| Fachlich abgenommen | Issue #10 wurde nach dokumentiertem Abgleich der Issue-Akzeptanzkriterien geschlossen; Issue #52 nach Merge von PR #55. Eine externe rechtliche, steuerliche oder arbeitsrechtliche Abnahme ist damit nicht belegt; Issues #7, #9, #51, #56 und #63 bleiben offen. Issue #63 ist eine separate Repository-Administration-Aufgabe. |
+| Fachlich abgenommen | Issue #10 wurde nach dokumentiertem Abgleich der Issue-Akzeptanzkriterien geschlossen; Issue #52 nach Merge von PR #55. Eine externe rechtliche, steuerliche oder arbeitsrechtliche Abnahme ist damit nicht belegt; Issues #7, #9, #51 und #56 bleiben offen. Issue #63 ist eine abgeschlossene Repository-Administration-Aufgabe. |
 | Produktiv geprüft | Kein produktiver Rollout, Betreiber-Restore oder Rekey ist belegt; Issue #9 bleibt offen. |
 
 ## Verweise

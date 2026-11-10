@@ -35,6 +35,7 @@ def upgrade() -> None:
         ["correction_of_id"],
         unique=True,
         postgresql_where=sa.text("correction_of_id IS NOT NULL"),
+        sqlite_where=sa.text("correction_of_id IS NOT NULL"),
     )
 
 

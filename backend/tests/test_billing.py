@@ -1,13 +1,16 @@
+import importlib
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from threading import Barrier
 from uuid import UUID
 
 import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from conftest import ADMIN_PASSWORD, TestingSessionLocal, app, test_engine
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import create_engine, func, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from test_time_tracking import setup_tracking
 
@@ -23,6 +26,64 @@ from app.models import (
     User,
 )
 from app.notification_worker import NotificationOutboxWorker
+
+
+def test_billing_corrections_migration_refuses_existing_duplicates() -> None:
+    migration = importlib.import_module("migrations.versions.0039_unique_billing_corrections")
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("CREATE TABLE billing_invoices (correction_of_id TEXT)")
+            connection.exec_driver_sql(
+                "INSERT INTO billing_invoices (correction_of_id) VALUES ('original'), ('original')"
+            )
+            context = MigrationContext.configure(connection)
+            with (
+                Operations.context(context),
+                pytest.raises(RuntimeError, match="mehrere Korrektur- oder Stornobelege"),
+            ):
+                migration.upgrade()
+            assert connection.scalar(text("SELECT COUNT(*) FROM billing_invoices")) == 2
+            assert not inspect(connection).get_indexes("billing_invoices")
+    finally:
+        engine.dispose()
+
+
+def test_billing_corrections_migration_creates_partial_unique_index() -> None:
+    migration = importlib.import_module("migrations.versions.0039_unique_billing_corrections")
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("CREATE TABLE billing_invoices (correction_of_id TEXT)")
+            context = MigrationContext.configure(connection)
+            with Operations.context(context):
+                migration.upgrade()
+
+        with engine.begin() as connection:
+            index = inspect(connection).get_indexes("billing_invoices")[0]
+            assert index["name"] == "uq_billing_invoices_correction_of"
+            assert index["unique"] == 1
+            assert "correction_of_id IS NOT NULL" in str(index["dialect_options"]["sqlite_where"])
+            connection.exec_driver_sql(
+                "INSERT INTO billing_invoices (correction_of_id) VALUES (NULL), (NULL), ('original')"
+            )
+
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.exec_driver_sql(
+                "INSERT INTO billing_invoices (correction_of_id) VALUES ('original')"
+            )
+
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT COUNT(*) FROM billing_invoices WHERE correction_of_id = 'original'"
+                    )
+                )
+                == 1
+            )
+    finally:
+        engine.dispose()
 
 
 def sign_in(client: TestClient, username: str = "admin", password: str = ADMIN_PASSWORD):

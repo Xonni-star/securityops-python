@@ -16,6 +16,7 @@ from app.models import (
     EmployeeQualification,
     Incident,
     ObjectAssignment,
+    ObjectQualificationRequirement,
     OWKSEvent,
     OWKSEventStatus,
     Permission,
@@ -269,6 +270,10 @@ def setup_control_room_scope() -> tuple[str, str, str]:
                 note="",
             )
         )
+        assert object_a is not None
+        object_a.qualification_requirement_records.append(
+            ObjectQualificationRequirement(name="Synthetischer Nachweis")
+        )
         db.commit()
         return str(user.id), str(object_a.id), str(object_b.id)
 
@@ -484,6 +489,7 @@ def test_object_operations_report_aggregates_date_bounded_data_without_narrative
     assert item["incidents_created"] == 1
     assert item["control_events"] == 1
     assert item["missed_controls"] == 2
+    assert item["qualification_conflict_shifts"] == 1
     assert item["task_status_counts"]["open"] == 1
     assert item["task_status_counts"]["completed"] == 1
     assert object_b_id not in response.text
@@ -566,6 +572,8 @@ def test_object_operations_report_requires_object_read_and_bounds_pages_and_csv(
         'attachment; filename="objektbetriebsbericht.csv"' in export.headers["content-disposition"]
     )
     assert "Objektnummer;Objekt;" in export.text
+    assert "Veröffentlichte Schichten mit Qualifikationslücken" in export.text
+    assert ";0;" in export.text
     assert "'=1+1" in export.text
     assert "Dieser Text darf nicht im Bericht stehen." not in export.text
 
@@ -590,3 +598,26 @@ def test_object_operations_report_requires_object_read_and_bounds_pages_and_csv(
         ).status_code
         == 403
     )
+
+
+def test_object_operations_report_omits_qualification_metric_without_employee_permission(
+    client: TestClient,
+) -> None:
+    _, object_a_id, _ = setup_control_room_scope()
+    headers = sign_in(client, "control_room_operator", "leitstelle-test-passwort-2026")
+    today = datetime.now(UTC).date()
+    with TestingSessionLocal() as db:
+        role = db.scalar(select(Role).where(Role.code == "object_manager"))
+        assert role is not None
+        role.permissions = [
+            permission for permission in role.permissions if permission.code != "employees.read"
+        ]
+        db.commit()
+
+    response = client.get(
+        "/api/v1/object-operations-report",
+        headers=headers,
+        params={"object_id": object_a_id, "from_date": today, "to_date": today},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["items"][0]["qualification_conflict_shifts"] is None
