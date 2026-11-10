@@ -691,6 +691,30 @@ export const exportBillingInvoice = (id: string, idempotencyKey: string) =>
     { method: "POST" },
   );
 
+export async function exportBillingInvoiceCsv(
+  id: string,
+  idempotencyKey: string,
+): Promise<Blob> {
+  const csrf = document.cookie.split("; ").find((cookie) =>
+    cookie.startsWith("securityops_csrf="),
+  )?.split("=")[1];
+  const response = await fetch(
+    `/api/v1/billing/invoices/${id}/exports/csv?idempotency_key=${encodeURIComponent(idempotencyKey)}`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {},
+    },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(
+      typeof body?.detail === "string" ? body.detail : `Serverfehler (${response.status})`,
+    );
+  }
+  return response.blob();
+}
+
 export const addBillingPayment = (id: string, amount: string) =>
   request(`/billing/invoices/${id}/payments`, {
     method: "POST",

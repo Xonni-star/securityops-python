@@ -1,4 +1,6 @@
+import csv
 import hashlib
+import io
 import json
 import unicodedata
 from datetime import UTC, date, datetime
@@ -43,6 +45,33 @@ router = APIRouter()
 CENT = Decimal("0.01")
 QUANTITY = Decimal("0.0001")
 EXPORT_VERSION = "securityops-accounting-v1"
+CSV_EXPORT_VERSION = "securityops-accounting-csv-v1"
+CSV_EXPORT_COLUMNS = (
+    "export_version",
+    "invoice_number",
+    "kind",
+    "issued_on",
+    "due_on",
+    "currency",
+    "customer_number",
+    "customer_name",
+    "payment_status",
+    "dunning_status",
+    "line_position",
+    "description",
+    "quantity",
+    "unit",
+    "unit_price",
+    "tax_code",
+    "tax_rate",
+    "line_net_amount",
+    "line_tax_amount",
+    "line_gross_amount",
+    "invoice_net_amount",
+    "invoice_tax_amount",
+    "invoice_gross_amount",
+)
+CSV_TEXT_COLUMNS = {"customer_number", "customer_name", "description", "unit", "tax_code"}
 
 
 def rounded(value: Decimal) -> Decimal:
@@ -780,27 +809,102 @@ def export_payload(invoice: BillingInvoice) -> dict[str, object]:
     }
 
 
-@router.post(
-    "/billing/invoices/{invoice_id}/exports", response_model=BillingExportRead, status_code=201
-)
-def export_invoice(
-    request: Request,
-    invoice_id: UUID,
-    idempotency_key: str,
-    db: Annotated[Session, Depends(get_db)],
-    principal: Annotated[AuthPrincipal, Depends(require_permission("billing.exports.create"))],
-) -> BillingExport:
-    if (
-        len(idempotency_key) < 8
-        or len(idempotency_key) > 100
-        or not all(char.isalnum() or char in "._:-" for char in idempotency_key)
-    ):
-        raise HTTPException(status_code=422, detail="Ungültiger Idempotenzschlüssel.")
-    invoice = get_invoice(db, invoice_id, lock=True)
-    if invoice.status not in {"approved", "archived"}:
-        raise HTTPException(
-            status_code=409, detail="Nur freigegebene Rechnungen können exportiert werden."
+def spreadsheet_safe_text(value: object) -> str:
+    text = "" if value is None else str(value)
+    if text.lstrip().startswith(("=", "+", "-", "@")):
+        return f"'{text}"
+    return text
+
+
+def render_csv_export(payload: dict[str, object]) -> bytes:
+    def invalid_payload() -> HTTPException:
+        return HTTPException(
+            status_code=409, detail="Gespeicherter Rechnungsexport ist fehlerhaft."
         )
+
+    def required_text(source: dict[str, object], key: str) -> str:
+        value = source.get(key)
+        if not isinstance(value, str):
+            raise invalid_payload()
+        return value
+
+    customer = payload.get("customer")
+    totals = payload.get("totals")
+    raw_lines = payload.get("lines")
+    if not isinstance(customer, dict) or not isinstance(totals, dict):
+        raise invalid_payload()
+    if not isinstance(raw_lines, list) or not raw_lines:
+        raise invalid_payload()
+    invoice_values = {
+        "invoice_number": required_text(payload, "invoice_number"),
+        "kind": required_text(payload, "kind"),
+        "issued_on": required_text(payload, "issued_on"),
+        "due_on": required_text(payload, "due_on"),
+        "currency": required_text(payload, "currency"),
+        "payment_status": required_text(payload, "payment_status"),
+        "dunning_status": required_text(payload, "dunning_status"),
+    }
+    customer_values = {
+        "customer_number": customer.get("customer_number"),
+        "customer_name": customer.get("company_name"),
+    }
+    if any(value is not None and not isinstance(value, str) for value in customer_values.values()):
+        raise invalid_payload()
+    total_values = {
+        "invoice_net_amount": required_text(totals, "net_amount"),
+        "invoice_tax_amount": required_text(totals, "tax_amount"),
+        "invoice_gross_amount": required_text(totals, "gross_amount"),
+    }
+    lines: list[dict[str, object]] = []
+    for raw_line in raw_lines:
+        if not isinstance(raw_line, dict):
+            raise invalid_payload()
+        position = raw_line.get("position")
+        if isinstance(position, bool) or not isinstance(position, int):
+            raise invalid_payload()
+        line = {
+            "line_position": position,
+            "description": required_text(raw_line, "description"),
+            "quantity": required_text(raw_line, "quantity"),
+            "unit": required_text(raw_line, "unit"),
+            "unit_price": required_text(raw_line, "unit_price"),
+            "tax_code": required_text(raw_line, "tax_code"),
+            "tax_rate": required_text(raw_line, "tax_rate"),
+            "line_net_amount": required_text(raw_line, "net_amount"),
+            "line_tax_amount": required_text(raw_line, "tax_amount"),
+            "line_gross_amount": required_text(raw_line, "gross_amount"),
+        }
+        lines.append(line)
+
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, dialect="excel", lineterminator="\r\n")
+    writer.writerow(CSV_EXPORT_COLUMNS)
+    for line in lines:
+        values: dict[str, object] = {
+            "export_version": CSV_EXPORT_VERSION,
+            **invoice_values,
+            **customer_values,
+            "payment_status": invoice_values["payment_status"],
+            "dunning_status": invoice_values["dunning_status"],
+            **line,
+            **total_values,
+        }
+        writer.writerow(
+            spreadsheet_safe_text(values[column]) if column in CSV_TEXT_COLUMNS else values[column]
+            for column in CSV_EXPORT_COLUMNS
+        )
+    return output.getvalue().encode("utf-8")
+
+
+def create_or_get_export(
+    request: Request,
+    invoice: BillingInvoice,
+    idempotency_key: str,
+    db: Session,
+    principal: AuthPrincipal,
+    *,
+    reuse_existing: bool = False,
+) -> BillingExport:
     existing = db.scalar(
         select(BillingExport).where(
             BillingExport.invoice_id == invoice.id,
@@ -808,7 +912,7 @@ def export_invoice(
         )
     )
     if existing:
-        if existing.idempotency_key != idempotency_key:
+        if not reuse_existing and existing.idempotency_key != idempotency_key:
             raise HTTPException(
                 status_code=409,
                 detail="Für diese Rechnung existiert bereits ein Export dieser Version.",
@@ -838,6 +942,96 @@ def export_invoice(
     )
     commit_or_conflict(db, "Buchhaltungsexport wurde parallel oder bereits erzeugt.")
     return export
+
+
+def validate_export_snapshot(export: BillingExport) -> dict[str, object]:
+    payload = export.payload
+    if not isinstance(payload, dict) or payload.get("schema_version") != EXPORT_VERSION:
+        raise HTTPException(status_code=409, detail="Gespeicherter Rechnungsexport ist fehlerhaft.")
+    try:
+        serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409, detail="Gespeicherter Rechnungsexport ist fehlerhaft."
+        ) from exc
+    digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+    if digest != export.payload_sha256:
+        raise HTTPException(status_code=409, detail="Gespeicherter Rechnungsexport ist fehlerhaft.")
+    return payload
+
+
+@router.post(
+    "/billing/invoices/{invoice_id}/exports", response_model=BillingExportRead, status_code=201
+)
+def export_invoice(
+    request: Request,
+    invoice_id: UUID,
+    idempotency_key: str,
+    db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[AuthPrincipal, Depends(require_permission("billing.exports.create"))],
+) -> BillingExport:
+    if (
+        len(idempotency_key) < 8
+        or len(idempotency_key) > 100
+        or not all(char.isalnum() or char in "._:-" for char in idempotency_key)
+    ):
+        raise HTTPException(status_code=422, detail="Ungültiger Idempotenzschlüssel.")
+    invoice = get_invoice(db, invoice_id, lock=True)
+    if invoice.status not in {"approved", "archived"}:
+        raise HTTPException(
+            status_code=409, detail="Nur freigegebene Rechnungen können exportiert werden."
+        )
+    return create_or_get_export(request, invoice, idempotency_key, db, principal)
+
+
+@router.post("/billing/invoices/{invoice_id}/exports/csv", status_code=200)
+def export_invoice_csv(
+    request: Request,
+    invoice_id: UUID,
+    idempotency_key: str,
+    db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[AuthPrincipal, Depends(require_permission("billing.exports.create"))],
+) -> Response:
+    if (
+        len(idempotency_key) < 8
+        or len(idempotency_key) > 100
+        or not all(char.isalnum() or char in "._:-" for char in idempotency_key)
+    ):
+        raise HTTPException(status_code=422, detail="Ungültiger Idempotenzschlüssel.")
+    invoice = get_invoice(db, invoice_id, lock=True)
+    if invoice.status not in {"approved", "archived"}:
+        raise HTTPException(
+            status_code=409, detail="Nur freigegebene Rechnungen können exportiert werden."
+        )
+    export = create_or_get_export(
+        request, invoice, idempotency_key, db, principal, reuse_existing=True
+    )
+    content = render_csv_export(validate_export_snapshot(export))
+    csv_digest = hashlib.sha256(content).hexdigest()
+    add_audit_entry(
+        db,
+        actor_id=principal.user.id,
+        action="billing.invoice.csv_exported",
+        entity_type="billing_invoice",
+        entity_id=str(invoice.id),
+        ip_address=request.client.host if request.client else None,
+        details={
+            "format_version": CSV_EXPORT_VERSION,
+            "source_format_version": export.format_version,
+            "source_payload_sha256": export.payload_sha256,
+            "csv_sha256": csv_digest,
+        },
+    )
+    db.commit()
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{invoice.invoice_number}.csv"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 def build_pdf(invoice: BillingInvoice) -> bytes:

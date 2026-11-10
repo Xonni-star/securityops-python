@@ -7,6 +7,7 @@ import {
   createBillingInvoice,
   createBillingRate,
   exportBillingInvoice,
+  exportBillingInvoiceCsv,
   getBillingInvoices,
   getBillingRates,
   getCustomers,
@@ -155,6 +156,25 @@ export default function BillingManagement({ user }: { user: AuthUser }) {
     }
   }
 
+  async function downloadCsv(invoice: BillingInvoice) {
+    setBusy(true);
+    setError("");
+    try {
+      const blob = await exportBillingInvoiceCsv(invoice.id, crypto.randomUUID());
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${invoice.invoice_number}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setNotice("CSV-Rechnungsexport heruntergeladen.");
+    } catch (reason) {
+      setError(messageFrom(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const statusLabel = { draft: "Entwurf", approved: "Freigegeben", archived: "Archiviert" };
 
   return (
@@ -235,8 +255,10 @@ export default function BillingManagement({ user }: { user: AuthUser }) {
                     {invoice.status === "approved" && canExport && <button disabled={busy}
                       onClick={() => void runAction(
                         () => exportBillingInvoice(invoice.id, crypto.randomUUID()),
-                        "Buchhaltungsexport erstellt.",
-                      )}>Export</button>}
+                        "JSON-Export erstellt.",
+                      )}>JSON-Export</button>}
+                    {invoice.status !== "draft" && canExport && <button disabled={busy}
+                      onClick={() => void downloadCsv(invoice)}>CSV herunterladen</button>}
                     {invoice.status === "approved" && invoice.payment_status !== "paid" && canManagePayments &&
                       <button disabled={busy} onClick={() => {
                         const amount = window.prompt("Zahlungseingang in EUR");
