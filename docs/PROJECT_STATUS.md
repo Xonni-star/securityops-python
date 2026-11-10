@@ -2,7 +2,7 @@
 
 **Historische Live-Prüfung:** 09.11.2026, 19:40 Uhr CET · Checkout und `origin/main` stimmten bei dieser Prüfung überein · **Alembic-Head:** `0035_worker_monitoring` · **Alembic-Migrationen:** 35 · **Offene Pull Requests zu diesem Zeitpunkt:** #62, #64, #65, #66, #68–#77.
 
-**Aktueller Main-/GitHub-Abgleich:** 10.11.2026 · `main` enthält PR #85 und steht auf **Alembic-Head** `0039_unique_billing_corrections` (39 Migrationen). PR #88 ist offen gegen `main` gestapelt und ergänzt `0040_key_issue_automation`; sein Head ist `a920bd0e01c94a09aeeba10b317bcbd528c51b0b`. PR #89 baut mit `0041_owks_shift_handovers` darauf auf und ist nicht Bestandteil von `main`. Die detaillierte GitHub-Statusaufnahme weiter unten bleibt eine ausdrücklich datierte historische Momentaufnahme.
+**Aktueller Arbeitsbranch-/GitHub-Abgleich (10.11.2026):** **Alembic-Head:** `0041_owks_shift_handovers` · **Alembic-Migrationen:** 41. `main` enthält PR #85 und steht auf `0039_unique_billing_corrections` (39 Migrationen). PR #88 ist wieder offen gegen `main` und ergänzt `0040_key_issue_automation`; die aktuellen CI- und Security-Prüfungen waren erfolgreich. PR #89 baut darauf mit Migration `0041_owks_shift_handovers` auf und ist nicht Bestandteil von `main`. Die detaillierte GitHub-Statusaufnahme weiter unten bleibt eine ausdrücklich datierte historische Momentaufnahme.
 
 Issue #51 bleibt offen, bis der Gesamtumfang fachlich abgeglichen ist.
 
