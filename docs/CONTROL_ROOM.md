@@ -17,6 +17,8 @@ Die Leitstelle ist eine serverseitig berechnete Momentaufnahme (`GET /api/v1/con
 
 Die Datumsauswahl wird als UTC-Kalendertag interpretiert. Sie filtert OWKS-Ereignisse und Abwesenheiten; offene Vorfälle und Aufgaben bleiben unabhängig vom Erstellungsdatum sichtbar. Laufende Schichten sind eine Momentaufnahme zum Zeitpunkt der Antwort. `generated_at` kennzeichnet diesen serverseitigen Berechnungszeitpunkt; es gibt weder WebSocket noch automatisches Polling.
 
+Der Objektbetriebsbericht (`GET /api/v1/object-operations-report` und `.csv`) enthält zusätzlich je zugänglichem Objekt die Zahl veröffentlichter Schichten, die den UTC-Berichtszeitraum berühren, zum Berechnungszeitpunkt noch nicht beendet sind und deren aktuelle Nachweise mindestens eine Schicht- oder Objektqualifikation nicht über den gesamten Dienstzeitraum abdecken. Die Qualifikationsprüfung verwendet dieselbe Gültigkeits- und Anforderungslogik wie die Dienstplanung sowie deren konfigurierte IANA-Zeitzone. Der Wert wird nur mit `employees.read` berechnet; ohne dieses Recht ist er `null` (im CSV leer). Er beschreibt den aktuellen Planungsstand und belegt weder eine historische Dienstfreigabe noch einen tatsächlichen Einsatz.
+
 ## Operative Aktionen
 
 Die Leitstelle bietet zusätzlich Aktionsbereiche für Mitarbeitersuche, Dienstplanung, Aufgaben und Vorfälle. Es werden die bestehenden Fachmodule und deren APIs eingebettet; die Leitstellenoberfläche ersetzt keine Berechtigungs- oder Objektbereichsprüfung. Die Aktionsbereiche bleiben auch verfügbar, wenn die Momentaufnahme nicht geladen werden kann. Mitarbeitersuche benötigt `employees.read`. Dienstbearbeitung und Vertretung verwenden die bestehenden `scheduling.*`-Endpunkte, Aufgabenaktionen die `tasks.*`-Rechte und Vorfalländerungen die abgestuften `incidents.*`-Rechte einschließlich separater Rechte für sensible Abschlussdaten.
@@ -27,7 +29,7 @@ Aufgabenabschluss verlangt weiterhin den serverseitig geprüften Erledigungsnach
 
 ## Nicht enthaltene Kategorien
 
-Es gibt keine belastbare Quelle für Alarmmeldungen außerhalb der OWKS-Ereignisse, fehlende Dienstbesetzungen, Qualifikationskonflikte mit konkreten Schichten, Eskalationsstufen, Kundenfreigaben, allgemeine Personalfehlzeiten ohne eingetragene Abwesenheit oder dringende Aufgaben aus nicht erfassten Systemen. Diese Kategorien werden nicht als leere Kennzahlen oder simulierte Meldungen dargestellt. Der separate Worker verarbeitet nur Aufgaben-Zuweisungs- und Statusereignisse zu In-App-Benachrichtigungen und speist die Leitstellenübersicht nicht; es gibt keine automatische Dashboard-Aktualisierung oder Alarmierung.
+Es gibt keine belastbare Quelle für Alarmmeldungen außerhalb der OWKS-Ereignisse, fehlende Dienstbesetzungen, Eskalationsstufen, Kundenfreigaben, allgemeine Personalfehlzeiten ohne eingetragene Abwesenheit oder dringende Aufgaben aus nicht erfassten Systemen. Diese Kategorien werden nicht als leere Kennzahlen oder simulierte Meldungen dargestellt. Der separate Worker verarbeitet nur Aufgaben-Zuweisungs- und Statusereignisse zu In-App-Benachrichtigungen und speist die Leitstellenübersicht nicht; es gibt keine automatische Dashboard-Aktualisierung oder Alarmierung.
 
 ## Berechtigungen und Migration
 
