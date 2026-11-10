@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import HTTPException
 from pydantic import SecretStr
+from pydantic_settings.exceptions import SettingsError
 from sqlalchemy import Uuid, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -19,7 +20,7 @@ from app.document_storage import (
     store_file,
     validate_production_document_encryption,
 )
-from scripts import rekey_document_storage
+from scripts import rekey_document_storage, validate_document_encryption
 
 TEST_KEY_V1 = base64.urlsafe_b64encode(bytes([17]) * 32).decode()
 TEST_KEY_V2 = base64.urlsafe_b64encode(bytes([34]) * 32).decode()
@@ -261,6 +262,46 @@ def test_invalid_configured_key_is_rejected() -> None:
         validate_production_document_encryption(settings)
 
 
+def test_document_encryption_config_command_reports_active_version(monkeypatch, capsys) -> None:
+    set_keys(monkeypatch, ("test-v1", TEST_KEY_V1), active="test-v1")
+
+    assert validate_document_encryption.main() == 0
+
+    output = capsys.readouterr().out
+    assert output == "Dokumentenschlüssel-Konfiguration gültig (aktive Version: test-v1).\n"
+    assert TEST_KEY_V1 not in output
+
+
+def test_document_encryption_config_command_fails_without_printing_key(monkeypatch, capsys) -> None:
+    secret = "synthetic-invalid-key"
+    set_keys(monkeypatch, ("test-v1", secret), active="test-v1")
+
+    assert validate_document_encryption.main() == 1
+
+    output = capsys.readouterr().err
+    assert "Dokumentenschlüssel-Konfiguration ungültig" in output
+    assert secret not in output
+
+
+def test_document_encryption_config_command_redacts_settings_parse_errors(
+    monkeypatch, capsys
+) -> None:
+    secret = "synthetic-settings-error-value"
+
+    def fail_validation() -> str:
+        raise SettingsError(secret)
+
+    monkeypatch.setattr(
+        validate_document_encryption, "validate_document_encryption", fail_validation
+    )
+
+    assert validate_document_encryption.main() == 1
+
+    output = capsys.readouterr().err
+    assert "Eingabewerte werden nicht ausgegeben" in output
+    assert secret not in output
+
+
 def test_rekey_is_atomic_resumable_and_preserves_mode(monkeypatch) -> None:
     storage_key = uuid4().hex
     set_keys(monkeypatch, ("test-v1", TEST_KEY_V1), active="test-v1")
@@ -374,6 +415,22 @@ def test_database_attachment_rekey_is_explicit_and_resumable(monkeypatch) -> Non
         assert migrated.content is None
     assert read_file(storage_key) == PDF_CONTENT
     engine.dispose()
+
+
+def test_rekey_command_redacts_settings_parse_errors(monkeypatch, capsys) -> None:
+    secret = "synthetic-settings-error-value"
+
+    def fail_validation() -> str:
+        raise SettingsError(secret)
+
+    monkeypatch.setattr(rekey_document_storage, "validate_document_encryption", fail_validation)
+
+    assert rekey_document_storage.main(["--dry-run"]) == 1
+
+    output = capsys.readouterr().err
+    assert "Schlüssel-/Umgebungskonfiguration ungültig" in output
+    assert "Eingabewerte werden nicht ausgegeben" in output
+    assert secret not in output
 
 
 def test_legacy_database_attachment_is_not_served_in_production(monkeypatch) -> None:

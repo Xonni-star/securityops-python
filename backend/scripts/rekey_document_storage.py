@@ -6,6 +6,8 @@ import sys
 from collections.abc import Iterable
 from uuid import UUID
 
+from pydantic import ValidationError
+from pydantic_settings.exceptions import SettingsError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -185,6 +187,13 @@ def main(argv: Iterable[str] | None = None) -> int:
     try:
         file_count, current_count = rekey_files(dry_run=args.dry_run)
         attachment_count = rekey_database_attachments(dry_run=args.dry_run)
+    except (SettingsError, ValidationError):
+        print(
+            "Dokumenten-Rekey abgebrochen: Schlüssel-/Umgebungskonfiguration ungültig; "
+            "Eingabewerte werden nicht ausgegeben.",
+            file=sys.stderr,
+        )
+        return 1
     except (OSError, RuntimeError, ValueError, SQLAlchemyError) as exc:
         print(f"Dokumenten-Rekey abgebrochen: {exc}", file=sys.stderr)
         return 1
