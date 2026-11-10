@@ -409,6 +409,7 @@ export default function ControlRoom() {
                 <th scope="col">Erstellte Vorfälle</th>
                 <th scope="col">Kontrollereignisse</th>
                 <th scope="col">Versäumte Kontrollen</th>
+                <th scope="col">Schichten mit Qualifikationslücken</th>
                 <th scope="col">Aufgaben offen</th>
                 <th scope="col">In Bearbeitung</th>
                 <th scope="col">Blockiert</th>
@@ -422,6 +423,7 @@ export default function ControlRoom() {
                   <td>{item.incidents_created}</td>
                   <td>{item.control_events}</td>
                   <td>{item.missed_controls}</td>
+                  <td>{item.qualification_conflict_shifts ?? "–"}</td>
                   <td>{item.task_status_counts.open}</td>
                   <td>{item.task_status_counts.in_progress}</td>
                   <td>{item.task_status_counts.blocked}</td>
@@ -451,6 +453,8 @@ export default function ControlRoom() {
             Schichten sind veröffentlichte und im Modell einer Person zugewiesene Dienste, die den Zeitraum berühren.
             Vorfälle zählen nach Erstellungszeit; Kontrollereignisse und versäumte Kontrollen nach OWKS-Ereigniszeit.
             Aufgaben zählen nach Erstellungszeit und ihrem aktuellen Status. Personen- oder Vorfalltexte werden nicht ausgegeben.
+            Qualifikationslücken zählen veröffentlichte Dienste, die zum Berechnungszeitpunkt noch nicht beendet sind und deren aktuelle Nachweise nicht alle Schicht- und Objektanforderungen über den gesamten Dienst abdecken.
+            Die Kennzahl erfordert Mitarbeiter-Leserecht und ist keine rückwirkende Aussage über die damalige Besetzungsfreigabe.
             Eine Besetzungs- oder Ausfallquote wird mangels fachlich bestätigter Sollbesetzung und Ausfalldefinition nicht berechnet.
           </p>
         </>}

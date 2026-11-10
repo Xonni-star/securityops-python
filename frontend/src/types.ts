@@ -324,6 +324,7 @@ export interface ObjectOperationsReportItem {
   incidents_created: number;
   control_events: number;
   missed_controls: number;
+  qualification_conflict_shifts: number | null;
   task_status_counts: Record<TaskStatus, number>;
 }
 
