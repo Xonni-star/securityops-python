@@ -60,6 +60,14 @@ Für freigegebene Buchungen kann die Verwaltung einen versionierten Zuschlagsnac
 
 Eine Periode kann nach vollständigem Ablauf endgültig gesperrt werden, wenn jede Buchung freigegeben ist, keine Buchung die Periodengrenze schneidet und jeder veröffentlichte Dienst eine freigegebene Zeiterfassung besitzt. Beim Sperren werden Berechnungssnapshots gesichert. Nach der Sperre sind Korrektur und Neuberechnung ausgeschlossen; es gibt keine Entsperr-Funktion.
 
+## Rechnungswesen
+
+Benutzer mit den passenden Rechnungsrechten können Preise mit Art, Einheit, Währung und konfigurierten Steuerwerten anlegen und Rechnungsentwürfe mit mehreren Positionen erstellen. Freigegebene Arbeitszeiten können die Menge einer Stundenposition bestimmen; die Rechnung speichert dazu einen reproduzierbaren Eingabe- und Zeiterfassungssnapshot. Pauschal- und Zuschlagspositionen werden manuell konfiguriert. Preise sind derzeit nicht automatisch einem Vertrag zugeordnet, und die Zeit-Zuschlagsberechnung erzeugt keine Rechnungsbeträge.
+
+Ein Entwurf wird separat freigegeben; dabei werden Statuswechsel und Audit transaktional gespeichert. Erst danach sind PDF und versionierter JSON-Export verfügbar. Der Export ist eine nachvollziehbare Schnittstelle, keine bestätigte DATEV- oder sonstige Buchhaltungskonformität. Zahlungen und Mahnstatus werden manuell erfasst; automatische Zahlungserinnerungen gibt es nicht.
+
+Ein freigegebenes Original bleibt unverändert. Dafür kann genau ein Korrektur- oder Stornobeleg als neuer Entwurf angelegt werden; ein weiterer Folgebeleg für dasselbe Original wird abgewiesen, da eine versionierte Korrekturfolge noch nicht umgesetzt ist. Ein eindeutiger Datenbankindex sichert diese Begrenzung auch bei parallelen Anfragen ab. Steuerbehandlung, Rundungsregeln, Tarifzuordnung und Buchhaltungsformat benötigen fachliche Festlegung und unabhängige Prüfung. Das Rechnungswesen bestätigt keine steuerliche, buchhalterische oder rechtliche Konformität.
+
 ## Online-Wachbuch und Kontrollgänge
 
 Im Modul „Wachbuch“ erscheinen nur aktive Objekte, die dem angemeldeten Konto zugewiesen sind oder für die ein globales Leserecht besteht. Wachkräfte können Ereignisse, Abweichungen, kritische Vorkommnisse, Schichtübergaben und Meldungen an die Einsatzleitung erfassen. Der Server ordnet Einträge dem angemeldeten Konto und der damit verknüpften aktiven Personalakte zu. Anhänge akzeptieren PDF, PNG und JPEG bis 10 MiB und werden ausschließlich über geschützte Wachbuch-Endpunkte bereitgestellt.

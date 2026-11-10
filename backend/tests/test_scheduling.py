@@ -936,7 +936,7 @@ def test_postgresql_object_qualification_requirements_migration_preserves_data(
         ):
             migration.downgrade()
         connection.rollback()
-        assert context.get_current_revision() == "0038_digital_policies"
+        assert context.get_current_revision() == "0039_unique_billing_corrections"
         assert inspect(connection).has_table("object_qualification_requirements")
 
 

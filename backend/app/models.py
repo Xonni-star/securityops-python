@@ -2469,6 +2469,13 @@ class BillingInvoice(Base):
         ),
         Index("ix_billing_invoices_customer_date", "customer_id", "issued_on"),
         Index("ix_billing_invoices_status_due", "status", "payment_status", "due_on"),
+        Index(
+            "uq_billing_invoices_correction_of",
+            "correction_of_id",
+            unique=True,
+            postgresql_where=text("correction_of_id IS NOT NULL"),
+            sqlite_where=text("correction_of_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
