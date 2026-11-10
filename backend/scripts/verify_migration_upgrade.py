@@ -29,6 +29,7 @@ BILLING_AUTOMATION_REVISION = "0036_billing_approval_automation"
 OBJECT_QUALIFICATION_REVISION = "0037_object_qual_requirements"
 DIGITAL_POLICIES_REVISION = "0038_digital_policies"
 BILLING_CORRECTIONS_REVISION = "0039_unique_billing_corrections"
+KEY_ISSUE_AUTOMATION_REVISION = "0040_key_issue_automation"
 
 
 def admin_connection_options() -> dict[str, str | int]:
@@ -129,7 +130,15 @@ def verify_revision_chain() -> None:
         raise RuntimeError(
             f"{BILLING_CORRECTIONS_REVISION} folgt nicht auf {DIGITAL_POLICIES_REVISION}."
         )
-    if script.get_heads() != [BILLING_CORRECTIONS_REVISION]:
+    key_issue_automation_revision = script.get_revision(KEY_ISSUE_AUTOMATION_REVISION)
+    if (
+        key_issue_automation_revision is None
+        or key_issue_automation_revision.down_revision != BILLING_CORRECTIONS_REVISION
+    ):
+        raise RuntimeError(
+            f"{KEY_ISSUE_AUTOMATION_REVISION} folgt nicht auf {BILLING_CORRECTIONS_REVISION}."
+        )
+    if script.get_heads() != [KEY_ISSUE_AUTOMATION_REVISION]:
         raise RuntimeError(f"Unerwartete Alembic-Heads: {script.get_heads()}")
 
 
@@ -238,7 +247,7 @@ def main() -> None:
         with engine.connect() as connection:
             if (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                != BILLING_CORRECTIONS_REVISION
+                != KEY_ISSUE_AUTOMATION_REVISION
             ):
                 raise RuntimeError("Die Upgrade-Kette hat nicht beim aktuellen Head geendet.")
             if (

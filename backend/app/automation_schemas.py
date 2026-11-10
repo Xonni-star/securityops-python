@@ -6,11 +6,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.automation_events import (
     BILLING_AUTOMATION_EVENT_TYPES,
+    KEY_AUTOMATION_EVENT_TYPES,
     OWKS_AUTOMATION_EVENT_TYPES,
     AutomationTrigger,
 )
 
-NO_CONDITION_AUTOMATION_EVENT_TYPES = OWKS_AUTOMATION_EVENT_TYPES | BILLING_AUTOMATION_EVENT_TYPES
+NO_CONDITION_AUTOMATION_EVENT_TYPES = (
+    OWKS_AUTOMATION_EVENT_TYPES | BILLING_AUTOMATION_EVENT_TYPES | KEY_AUTOMATION_EVENT_TYPES
+)
 
 AutomationAction = Literal["notify_event_recipients"]
 TaskStatus = Literal["open", "in_progress", "blocked", "completed", "cancelled"]

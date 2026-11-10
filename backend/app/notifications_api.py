@@ -6,6 +6,7 @@ from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth import AuthPrincipal, require_permission
+from app.automation_events import KEY_ISSUED_AUTOMATION_EVENT, OWKS_AUTOMATION_EVENT_TYPES
 from app.database import get_db
 from app.models import Notification, ObjectAssignment, SecurityObject, Task
 from app.notifications_schemas import NotificationPage, NotificationRead
@@ -24,6 +25,7 @@ def require_notification_reader(
             "tasks.manage_all",
             "owks.read",
             "billing.invoices.read",
+            "keys.read",
         }
     ):
         raise HTTPException(
@@ -34,6 +36,13 @@ def require_notification_reader(
 
 
 def visible_notification_query(principal: AuthPrincipal):
+    object_permissions = []
+    if "owks.read" in principal.permission_codes:
+        object_permissions.append(
+            Notification.event_type.in_(OWKS_AUTOMATION_EVENT_TYPES | {"automation.notification"})
+        )
+    if "keys.read" in principal.permission_codes:
+        object_permissions.append(Notification.event_type == KEY_ISSUED_AUTOMATION_EVENT)
     object_scope = (
         and_(
             Notification.object_id.is_not(None),
@@ -43,8 +52,9 @@ def visible_notification_query(principal: AuthPrincipal):
                     ObjectAssignment.user_id == principal.user.id
                 )
             ),
+            or_(*object_permissions),
         )
-        if "owks.read" in principal.permission_codes
+        if object_permissions
         else false()
     )
     invoice_scope = (

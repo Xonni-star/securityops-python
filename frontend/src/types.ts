@@ -795,7 +795,8 @@ export type AutomationTrigger =
   | "owks.missed_control"
   | "owks.deviation_reported"
   | "owks.offline_event_synced"
-  | "billing.invoice_approved";
+  | "billing.invoice_approved"
+  | "key.issued";
 export type AutomationTaskStatus = TaskStatus;
 
 export interface AutomationRule {
@@ -1087,10 +1088,7 @@ export interface TaskPage {
   offset: number;
 }
 
-export type NotificationEventType =
-  | "task.assigned"
-  | "task.status_changed"
-  | "automation.notification";
+export type NotificationEventType = AutomationTrigger | "automation.notification";
 
 export interface NotificationItem {
   id: string;

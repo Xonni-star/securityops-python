@@ -10,11 +10,15 @@ AutomationTrigger = Literal[
     "owks.deviation_reported",
     "owks.offline_event_synced",
     "billing.invoice_approved",
+    "key.issued",
 ]
 
 TASK_EVENT_TYPES = frozenset({"task.assigned", "task.status_changed"})
 BILLING_INVOICE_APPROVED_EVENT = "billing.invoice_approved"
 BILLING_AUTOMATION_EVENT_TYPES = frozenset({BILLING_INVOICE_APPROVED_EVENT})
+KEY_ISSUED_AUTOMATION_EVENT = "key.issued"
+KEY_AUTOMATION_EVENT_TYPES = frozenset({KEY_ISSUED_AUTOMATION_EVENT})
+KEY_ISSUED_EVENT_MESSAGE = "An einem zugewiesenen Objekt wurde ein Schlüssel ausgegeben."
 OWKS_EVENT_MESSAGES = {
     "owks.missed_control": "An einem zugewiesenen Objekt wurde eine Kontrolle als versäumt protokolliert.",
     "owks.deviation_reported": "An einem zugewiesenen Objekt wurde eine OWKS-Auffälligkeit gemeldet.",
@@ -70,9 +74,16 @@ class BillingInvoiceApprovedEventPayload(EventPayload):
     invoice_id: UUID
 
 
+class KeyIssuedAutomationEventPayload(EventPayload):
+    schema_version: Literal[1]
+    movement_id: UUID
+    object_id: UUID
+
+
 class AutomationNotificationPayload(EventPayload):
     schema_version: Literal[1] | None = None
     automation_run_id: UUID
+    source_event_type: AutomationTrigger | None = None
     task_id: UUID | None = None
     object_id: UUID | None = None
     invoice_id: UUID | None = None
@@ -94,5 +105,6 @@ EVENT_REGISTRY: dict[str, type[EventPayload]] = {
     "task.status_changed": TaskNotificationEventPayload,
     **{event_type: OWKSAutomationEventPayload for event_type in OWKS_AUTOMATION_EVENT_TYPES},
     BILLING_INVOICE_APPROVED_EVENT: BillingInvoiceApprovedEventPayload,
+    **{event_type: KeyIssuedAutomationEventPayload for event_type in KEY_AUTOMATION_EVENT_TYPES},
     AUTOMATION_NOTIFICATION_EVENT: AutomationNotificationPayload,
 }

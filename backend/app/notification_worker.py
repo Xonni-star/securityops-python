@@ -21,11 +21,14 @@ from app.automation_events import (
     AUTOMATION_NOTIFICATION_EVENT,
     BILLING_INVOICE_APPROVED_EVENT,
     EVENT_REGISTRY,
+    KEY_AUTOMATION_EVENT_TYPES,
+    KEY_ISSUED_EVENT_MESSAGE,
     OWKS_AUTOMATION_EVENT_TYPES,
     OWKS_EVENT_MESSAGES,
     TASK_EVENT_TYPES,
     AutomationNotificationPayload,
     BillingInvoiceApprovedEventPayload,
+    KeyIssuedAutomationEventPayload,
     OWKSAutomationEventPayload,
     TaskNotificationEventPayload,
 )
@@ -35,6 +38,7 @@ from app.models import (
     AutomationRule,
     AutomationRun,
     BillingInvoice,
+    KeyMovement,
     Notification,
     NotificationOutbox,
     NotificationOutboxAttempt,
@@ -49,7 +53,10 @@ from app.notification_monitoring import (
     WORKER_NAME,
     write_worker_heartbeat,
 )
-from app.notifications_service import billing_notification_recipient_ids
+from app.notifications_service import (
+    billing_notification_recipient_ids,
+    key_notification_recipient_ids,
+)
 from app.owks_scheduler import run_monitoring_scheduler
 
 logger = logging.getLogger("app.notification_worker")
@@ -280,6 +287,33 @@ class NotificationOutboxWorker:
             )
             return
 
+        if event.event_type in KEY_AUTOMATION_EVENT_TYPES:
+            if not isinstance(payload, KeyIssuedAutomationEventPayload):
+                raise InvalidOutboxEvent("invalid_payload")
+            movement = db.get(KeyMovement, payload.movement_id)
+            if (
+                event.aggregate_type != "key_movement"
+                or payload.movement_id != event.aggregate_id
+                or movement is None
+                or movement.movement_type != "issued"
+                or movement.key_status_after != "issued"
+                or movement.object_id != payload.object_id
+            ):
+                raise InvalidOutboxEvent("invalid_payload")
+            recipient_ids = set(payload.recipient_ids)
+            if not recipient_ids.issubset(key_notification_recipient_ids(db, payload.object_id)):
+                raise InvalidOutboxEvent("unauthorized_recipient")
+            self._evaluate_automation_rules(
+                db,
+                event,
+                task_id=None,
+                object_id=payload.object_id,
+                event_status=None,
+                recipient_ids=recipient_ids,
+                body=KEY_ISSUED_EVENT_MESSAGE,
+            )
+            return
+
         if event.event_type != AUTOMATION_NOTIFICATION_EVENT:
             raise InvalidOutboxEvent("unsupported_event")
         if not isinstance(payload, AutomationNotificationPayload):
@@ -304,7 +338,14 @@ class NotificationOutboxWorker:
                 AutomationRun.action_event_id == event.id,
             )
         )
-        if run is None or run.status not in {"queued", "dead_letter"}:
+        if (
+            run is None
+            or run.status not in {"queued", "dead_letter"}
+            or (
+                payload.source_event_type is not None
+                and run.trigger_type != payload.source_event_type
+            )
+        ):
             raise InvalidOutboxEvent("invalid_automation_run")
 
         recipient_ids = set(payload.recipient_ids)
@@ -322,6 +363,7 @@ class NotificationOutboxWorker:
                 invoice_id=payload.invoice_id,
                 title=payload.title,
                 body=payload.body,
+                notification_event_type=payload.source_event_type or event.event_type,
             )
             run.status = "succeeded"
         else:
@@ -361,6 +403,7 @@ class NotificationOutboxWorker:
         invoice_id: UUID | None = None,
         title: str,
         body: str,
+        notification_event_type: str | None = None,
     ) -> None:
         existing_recipient_ids = set(
             db.scalars(
@@ -383,7 +426,7 @@ class NotificationOutboxWorker:
                     task_id=task_id,
                     object_id=object_id,
                     invoice_id=invoice_id,
-                    event_type=event.event_type,
+                    event_type=notification_event_type or event.event_type,
                     title=title,
                     body=body,
                 )
@@ -464,6 +507,7 @@ class NotificationOutboxWorker:
             action_payload = AutomationNotificationPayload(
                 schema_version=1,
                 automation_run_id=run_id,
+                source_event_type=event.event_type,
                 task_id=task_id,
                 object_id=object_id,
                 invoice_id=invoice_id,
@@ -471,6 +515,8 @@ class NotificationOutboxWorker:
                 title=(
                     "Rechnungsfreigabe erfasst"
                     if is_billing_trigger
+                    else "Schlüssel ausgegeben"
+                    if event.event_type in KEY_AUTOMATION_EVENT_TYPES
                     else f"Automatisierung: {rule.name}"[:200]
                 ),
                 body=body[:500],

@@ -5,13 +5,16 @@ from sqlalchemy.orm import Session
 
 from app.automation_events import (
     BILLING_INVOICE_APPROVED_EVENT,
+    KEY_ISSUED_AUTOMATION_EVENT,
     OWKS_EVENT_TRIGGER_TYPES,
     OWKS_OFFLINE_SYNC_TRIGGER,
     BillingInvoiceApprovedEventPayload,
+    KeyIssuedAutomationEventPayload,
     OWKSAutomationEventPayload,
 )
 from app.models import (
     BillingInvoice,
+    KeyMovement,
     NotificationOutbox,
     ObjectAssignment,
     OWKSEvent,
@@ -143,6 +146,47 @@ def enqueue_invoice_approved_event(db: Session, invoice: BillingInvoice) -> None
             event_type=BILLING_INVOICE_APPROVED_EVENT,
             aggregate_type="billing_invoice",
             aggregate_id=invoice.id,
+            payload=payload.model_dump(mode="json"),
+        )
+    )
+
+
+def key_notification_recipient_ids(db: Session, object_id: UUID) -> set[UUID]:
+    return set(
+        db.scalars(
+            select(User.id)
+            .join(User.roles)
+            .join(Role.permissions)
+            .join(ObjectAssignment, ObjectAssignment.user_id == User.id)
+            .join(SecurityObject, SecurityObject.id == ObjectAssignment.object_id)
+            .where(
+                ObjectAssignment.object_id == object_id,
+                SecurityObject.archived_at.is_(None),
+                User.is_active.is_(True),
+                Permission.code.in_({"keys.read", "notifications.read_own"}),
+            )
+            .group_by(User.id)
+            .having(func.count(distinct(Permission.code)) == 2)
+        ).all()
+    )
+
+
+def enqueue_key_issued_event(db: Session, movement: KeyMovement) -> None:
+    if movement.movement_type != "issued":
+        return
+    payload = KeyIssuedAutomationEventPayload(
+        schema_version=1,
+        movement_id=movement.id,
+        object_id=movement.object_id,
+        recipient_ids=sorted(key_notification_recipient_ids(db, movement.object_id), key=str),
+    )
+    db.add(
+        NotificationOutbox(
+            id=uuid4(),
+            dedupe_key=f"{KEY_ISSUED_AUTOMATION_EVENT}:{movement.id}",
+            event_type=KEY_ISSUED_AUTOMATION_EVENT,
+            aggregate_type="key_movement",
+            aggregate_id=movement.id,
             payload=payload.model_dump(mode="json"),
         )
     )
