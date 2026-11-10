@@ -54,6 +54,14 @@ Die Checkliste ist eine Vorgabe, kein im Repository automatisch eingerichteter K
 
 Die API verschlüsselt neue Dateien und Anhänge vor dem Schreiben mit AES-256-GCM. Das versionierte Binärformat enthält Nonce und Schlüsselversion; die Storage-ID ist an die Authentifizierung gebunden. Größen und SHA-256 bleiben auf den Klartext bezogen. Der Produktionsstart der API schlägt fehl, wenn `DOCUMENT_ENCRYPTION_ACTIVE_VERSION` nicht auf einen gültigen Schlüssel in `DOCUMENT_ENCRYPTION_KEYS` verweist. Schlüssel werden nicht in der Datenbank oder im Image abgelegt: `DOCUMENT_ENCRYPTION_KEYS` ist ein JSON-Objekt aus Versionskennung und Base64url-kodiertem 32-Byte-Schlüssel, zum Beispiel `{"v1":"<extern bereitgestellter Schlüssel>"}`. Beide Variablen müssen über die Secret-Verwaltung an jede API-Instanz und den Wartungsbefehl gelangen; Worker erhalten sie nicht.
 
+Nach Bereitstellung der Secrets kann die Installation die Konfiguration vor dem API-Start prüfen. Der Befehl nutzt dieselbe Compose-Umgebung wie die API, gibt keine Schlüsselwerte aus, verbindet sich nicht mit der Datenbank und ändert keine Dateien:
+
+```sh
+docker compose run --rm --no-deps api python -m scripts.validate_document_encryption
+```
+
+Ein Exitcode ungleich null bedeutet, dass Schlüsselring oder aktive Version ungültig sind. Die Prüfung belegt weder, dass alle Instanzen dieselben Secrets erhalten, noch die Entschlüsselbarkeit vorhandener Dateien oder eine erfolgreiche Wiederherstellung.
+
 Für einen erstmaligen Wechsel eines bestehenden Speichers oder eine Schlüsselrotation zuerst Datenbank und komplettes Dokumentenvolume sichern und einen Restore einschließlich aller benötigten alten Schlüssel prüfen. Die Alembic-Migration muss vor dem Datenlauf angewendet sein. Alte Schlüssel bleiben im Schlüsselring, bis Dateien und wiederherzustellende Sicherungen sie nicht mehr benötigen. Dann die API stoppen, Datenbank verfügbar lassen und zunächst ohne Änderungen prüfen:
 
 ```sh
