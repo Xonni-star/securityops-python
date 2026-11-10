@@ -750,6 +750,7 @@ export default function App() {
         </div>
       </aside>
       <main className="main">
+        {!["objects", "employees", "scheduling", "time_tracking", "documents", "owks", "customer_portal"].includes(activeModule) && (
         <section className="page-head">
           <div>
             <p className="eyebrow">{isEmployeePortal ? "MITARBEITERPORTAL" : "SECURITYOPS VERWALTUNG"}</p>
@@ -759,6 +760,7 @@ export default function App() {
               : "Kunden, Objekte, Personal, Schlüssel, Inventar, Aufgaben, Dienste und Arbeitszeiten zentral verwalten."}</p>
           </div>
         </section>
+        )}
 
       {searchableTypes.length > 0 && (
         <GlobalSearch

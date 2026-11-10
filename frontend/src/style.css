@@ -750,3 +750,86 @@ footer { color: var(--muted); }
 .sidebar .module-tab { display: block; }
 .sidebar .module-tab:hover { text-decoration: none; }
 html { scroll-behavior: smooth; }
+
+/* ===== Größen-/Layout-Korrekturen (Audit) ===== */
+.page-head { margin-bottom: 16px; }
+.page-head h1 { font-size: 20px; }
+.page-head p { font-size: 13px; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; }
+
+.content-grid > *,
+.detail-grid > *,
+.task-columns > *,
+.scheduling-lower > *,
+.scheduling-support > *,
+.owks-lower > *,
+.incident-layout > *,
+.document-detail-grid > *,
+.portal-request-grid > * { min-width: 0; }
+
+.form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-row > * { min-width: 0; }
+.content-grid .form-panel .form-row,
+.detail-side .form-row { grid-template-columns: 1fr; }
+
+input, select, textarea { min-width: 0; max-width: 100%; }
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+select { height: 40px; }
+textarea { height: auto; }
+
+.primary-button, .secondary-button, .danger-button,
+.form-panel button, .security-form button, .portal-request-grid button {
+  min-height: 36px;
+}
+.table-scroll button, .panel table button {
+  min-height: 30px; padding: 4px 9px; font-size: 13px;
+}
+.text-button, .form-panel .text-button { min-height: 0; }
+
+h3 { font-size: 15px; font-weight: 650; }
+
+.object-intro, .document-intro { padding-top: 0; padding-bottom: 14px; }
+.object-intro h1, .document-intro h1 { margin-bottom: 2px; }
+
+@media (max-width: 900px) {
+  .sidebar { padding: 12px 14px; }
+  .sidebar .brand { margin-bottom: 10px; }
+  .sidebar .module-tabs {
+    flex-direction: row; flex-wrap: nowrap; overflow-x: auto;
+    gap: 4px; padding-bottom: 4px; scrollbar-width: thin;
+  }
+  .sidebar .module-tab { width: auto; white-space: nowrap; padding: 8px 10px; }
+  .sidebar-foot { margin-top: 10px; flex-direction: row; align-items: center; justify-content: space-between; }
+  .page-head h1 { font-size: 19px; }
+}
+
+/* Nachschärfung: komponentenspezifische Größen vereinheitlichen */
+.main input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.main select {
+  height: 40px;
+  min-height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.main textarea { min-height: 76px; height: auto; }
+.main h3 { font-size: 15px; }
+.main .page-head h1 { font-size: 20px; }
+
+/* Mobile: Filter-/Suchzeilen umbrechen statt Überlauf */
+@media (max-width: 560px) {
+  .global-search-controls { flex-wrap: wrap; }
+  .global-search-controls input,
+  .global-search-controls select { flex: 1 1 100%; width: 100%; }
+  .document-filter-row > label,
+  .document-filter-row .search-field,
+  .document-version-form label,
+  .task-filters .search-field,
+  .filter-row > label,
+  .key-filters label,
+  .key-form label,
+  .time-filter-row label,
+  .control-room-filters label,
+  .incident-list > label { flex: 1 1 100%; min-width: 0; }
+  .module-tabs { max-width: 100%; }
+}
+.document-module .module-tabs { flex-wrap: wrap; max-width: 100%; }
