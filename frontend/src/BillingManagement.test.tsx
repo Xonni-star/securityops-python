@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import BillingManagement from "./BillingManagement";
@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   getBillingRates: vi.fn(),
   getBillingInvoices: vi.fn(),
   getCustomers: vi.fn(),
+  exportBillingInvoiceCsv: vi.fn(),
 }));
 
 vi.mock("./api", () => api);
@@ -19,7 +20,12 @@ const user: AuthUser = {
   full_name: "Test Buchhaltung",
   is_active: true,
   roles: ["accounting"],
-  permissions: ["billing.invoices.read", "billing.invoices.approve", "customers.read"],
+  permissions: [
+    "billing.invoices.read",
+    "billing.invoices.approve",
+    "billing.exports.create",
+    "customers.read",
+  ],
 };
 
 const customer: Customer = {
@@ -67,13 +73,18 @@ const invoice: BillingInvoice = {
 };
 
 describe("Rechnungswesen", () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
     api.getBillingRates.mockResolvedValue([]);
     api.getBillingInvoices.mockResolvedValue([invoice]);
     api.getCustomers.mockResolvedValue({ items: [customer], total: 1 });
+    api.exportBillingInvoiceCsv.mockResolvedValue(new Blob(["csv"], { type: "text/csv" }));
   });
 
   it("zeigt Rechnungsentwürfe und Freigabe nur mit passender Berechtigung", async () => {
@@ -84,6 +95,49 @@ describe("Rechnungswesen", () => {
     expect(screen.getByText("Entwurf")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Freigeben" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "PDF" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "CSV herunterladen" })).toBeNull();
     expect(api.getBillingInvoices).toHaveBeenCalledOnce();
+  });
+
+  it("lädt den CSV-Export für archivierte Rechnungen als Datei herunter", async () => {
+    api.getBillingInvoices.mockResolvedValue([{ ...invoice, status: "archived" }]);
+    const clickedAnchors: HTMLAnchorElement[] = [];
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:rechnung"),
+      revokeObjectURL: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clickedAnchors.push(this);
+    });
+    vi.spyOn(crypto, "randomUUID").mockReturnValue("00000000-0000-4000-8000-000000000001");
+
+    render(<BillingManagement user={user} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "CSV herunterladen" }));
+    await waitFor(() => {
+      expect(api.exportBillingInvoiceCsv).toHaveBeenCalledWith(
+        invoice.id,
+        "00000000-0000-4000-8000-000000000001",
+      );
+    });
+    expect(clickedAnchors).toHaveLength(1);
+    expect(clickedAnchors[0].download).toBe(`${invoice.invoice_number}.csv`);
+    expect(clickedAnchors[0].href).toBe("blob:rechnung");
+    expect((await screen.findByRole("status")).textContent).toContain(
+      "CSV-Rechnungsexport heruntergeladen.",
+    );
+  });
+
+  it("zeigt CSV-Downloads ohne Exportberechtigung nicht an", async () => {
+    api.getBillingInvoices.mockResolvedValue([{ ...invoice, status: "approved" }]);
+    const userWithoutExport = {
+      ...user,
+      permissions: user.permissions.filter((permission) => permission !== "billing.exports.create"),
+    };
+
+    render(<BillingManagement user={userWithoutExport} />);
+
+    expect(await screen.findByText("R-2026-TEST-0001")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "CSV herunterladen" })).toBeNull();
   });
 });

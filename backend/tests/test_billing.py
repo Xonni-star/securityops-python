@@ -1,4 +1,8 @@
+import csv
+import hashlib
 import importlib
+import io
+import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from threading import Barrier
@@ -16,6 +20,7 @@ from test_time_tracking import setup_tracking
 
 from app.models import (
     AuditLog,
+    BillingExport,
     BillingInvoice,
     BillingInvoiceLine,
     Notification,
@@ -135,6 +140,18 @@ def test_invoice_rounding_state_machine_correction_and_export(client: TestClient
     assert invoice["gross_amount"] == "0.06"
     assert invoice["lines"][0]["tax_code"] == "TEST"
     assert client.get(f"/api/v1/billing/invoices/{invoice['id']}/pdf").status_code == 409
+    draft_export = client.post(
+        f"/api/v1/billing/invoices/{invoice['id']}/exports",
+        headers=headers,
+        params={"idempotency_key": "draft-export-test-001"},
+    )
+    assert draft_export.status_code == 409
+    draft_csv_export = client.post(
+        f"/api/v1/billing/invoices/{invoice['id']}/exports/csv",
+        headers=headers,
+        params={"idempotency_key": "draft-csv-export-001"},
+    )
+    assert draft_csv_export.status_code == 409
 
     repeated = client.post(
         "/api/v1/billing/invoices",
@@ -217,8 +234,16 @@ def test_invoice_rounding_state_machine_correction_and_export(client: TestClient
         params={"idempotency_key": "export-test-key-001"},
     )
     assert exported.status_code == 201, exported.text
-    assert exported.json()["payload"]["schema_version"] == "securityops-accounting-v1"
-    assert len(exported.json()["payload_sha256"]) == 64
+    exported_data = exported.json()
+    assert exported_data["payload"]["schema_version"] == "securityops-accounting-v1"
+    serialized_payload = json.dumps(
+        exported_data["payload"],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    expected_digest = hashlib.sha256(serialized_payload.encode("utf-8")).hexdigest()
+    assert exported_data["payload_sha256"] == expected_digest
     duplicate_export = client.post(
         f"/api/v1/billing/invoices/{invoice['id']}/exports",
         headers=headers,
@@ -386,10 +411,189 @@ def test_postgresql_concurrent_correction_requests_create_one_followup(client: T
 
 
 def test_billing_routes_require_finance_permissions(client: TestClient):
+    admin_headers = sign_in(client)
+    invoice = create_invoice(client, admin_headers)
     headers = sign_in(client, "geschaeftsfuehrung", "management-test-passwort-2026")
     assert client.get("/api/v1/billing/invoices", headers=headers).status_code == 403
-    employee_headers = sign_in(client, "admin")
-    client.post("/api/v1/auth/logout", headers=employee_headers)
+    assert (
+        client.post(
+            f"/api/v1/billing/invoices/{invoice['id']}/exports",
+            headers=headers,
+            params={"idempotency_key": "unauthorized-export-001"},
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            f"/api/v1/billing/invoices/{invoice['id']}/exports/csv",
+            headers=headers,
+            params={"idempotency_key": "unauthorized-csv-001"},
+        ).status_code
+        == 403
+    )
+
+
+def test_csv_export_uses_saved_snapshot_and_escapes_spreadsheet_formulas(
+    client: TestClient,
+):
+    headers = sign_in(client)
+    invoice = create_invoice(client, headers)
+    invoice_id = UUID(invoice["id"])
+    dangerous_name = "\t+SUM(1,1)"
+    dangerous_description = (
+        '\u00a0=HYPERLINK("https://example.invalid","Klick"), Zeile 1\r\nZeile 2'
+    )
+    with TestingSessionLocal() as db:
+        stored_invoice = db.get(BillingInvoice, invoice_id)
+        assert stored_invoice is not None
+        stored_invoice.customer_snapshot = {
+            **stored_invoice.customer_snapshot,
+            "company_name": dangerous_name,
+        }
+        line = db.scalar(
+            select(BillingInvoiceLine).where(BillingInvoiceLine.invoice_id == invoice_id)
+        )
+        assert line is not None
+        line.description = dangerous_description
+        db.commit()
+
+    approved = client.post(f"/api/v1/billing/invoices/{invoice['id']}/approve", headers=headers)
+    assert approved.status_code == 200
+    snapshot = client.post(
+        f"/api/v1/billing/invoices/{invoice['id']}/exports",
+        headers=headers,
+        params={"idempotency_key": "existing-json-snapshot-001"},
+    )
+    assert snapshot.status_code == 201
+    params = {"idempotency_key": "csv-snapshot-test-001"}
+    response = client.post(
+        f"/api/v1/billing/invoices/{invoice['id']}/exports/csv",
+        headers=headers,
+        params=params,
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "text/csv; charset=utf-8"
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.content.endswith(b"\r\n")
+    rows = list(csv.DictReader(io.StringIO(response.content.decode("utf-8"), newline="")))
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["export_version"] == "securityops-accounting-csv-v1"
+    assert row["invoice_number"] == invoice["invoice_number"]
+    assert row["customer_name"] == f"'{dangerous_name}"
+    assert row["description"] == f"'{dangerous_description}"
+    assert row["quantity"] == "1.0000"
+    assert row["unit_price"] == "0.0500"
+    assert row["line_net_amount"] == "0.05"
+    assert row["line_tax_amount"] == "0.01"
+    assert row["line_gross_amount"] == "0.06"
+    assert row["invoice_net_amount"] == "0.05"
+    assert row["invoice_tax_amount"] == "0.01"
+    assert row["invoice_gross_amount"] == "0.06"
+
+    with TestingSessionLocal() as db:
+        export = db.scalar(
+            select(BillingExport).where(
+                BillingExport.invoice_id == invoice_id,
+                BillingExport.format_version == "securityops-accounting-v1",
+            )
+        )
+        assert export is not None
+        assert export.payload["customer"]["company_name"] == dangerous_name
+        assert export.payload["lines"][0]["description"] == dangerous_description
+        csv_audit = db.scalar(
+            select(AuditLog)
+            .where(
+                AuditLog.entity_id == str(invoice_id),
+                AuditLog.action == "billing.invoice.csv_exported",
+            )
+            .order_by(AuditLog.created_at.desc())
+        )
+        assert csv_audit is not None
+        assert csv_audit.details["format_version"] == "securityops-accounting-csv-v1"
+        assert csv_audit.details["source_payload_sha256"] == export.payload_sha256
+        assert csv_audit.details["csv_sha256"] == hashlib.sha256(response.content).hexdigest()
+        stored_invoice = db.get(BillingInvoice, invoice_id)
+        assert stored_invoice is not None
+        stored_invoice.customer_snapshot = {
+            **stored_invoice.customer_snapshot,
+            "company_name": "Später geänderter Livewert",
+        }
+        live_line = db.scalar(
+            select(BillingInvoiceLine).where(BillingInvoiceLine.invoice_id == invoice_id)
+        )
+        assert live_line is not None
+        live_line.description = "Später geänderter Livewert"
+        db.commit()
+
+    repeated = client.post(
+        f"/api/v1/billing/invoices/{invoice['id']}/exports/csv",
+        headers=headers,
+        params={"idempotency_key": "csv-repeat-request-002"},
+    )
+    assert repeated.status_code == 200
+    assert repeated.content == response.content
+    assert "Später geänderter Livewert" not in repeated.text
+
+
+def test_csv_export_rejects_malformed_saved_snapshot(client: TestClient):
+    headers = sign_in(client)
+    invoice = create_invoice(client, headers)
+    invoice_id = UUID(invoice["id"])
+    approved = client.post(f"/api/v1/billing/invoices/{invoice['id']}/approve", headers=headers)
+    assert approved.status_code == 200
+    export = client.post(
+        f"/api/v1/billing/invoices/{invoice['id']}/exports",
+        headers=headers,
+        params={"idempotency_key": "csv-invalid-snapshot-001"},
+    )
+    assert export.status_code == 201
+    with TestingSessionLocal() as db:
+        stored_export = db.scalar(
+            select(BillingExport).where(
+                BillingExport.invoice_id == invoice_id,
+                BillingExport.format_version == "securityops-accounting-v1",
+            )
+        )
+        assert stored_export is not None
+        stored_export.payload = {
+            "customer": [],
+            "totals": {},
+            "lines": [{"position": "one"}],
+        }
+        db.commit()
+
+    response = client.post(
+        f"/api/v1/billing/invoices/{invoice['id']}/exports/csv",
+        headers=headers,
+        params={"idempotency_key": "csv-invalid-snapshot-001"},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Gespeicherter Rechnungsexport ist fehlerhaft."
+    with TestingSessionLocal() as db:
+        stored_export = db.scalar(
+            select(BillingExport).where(
+                BillingExport.invoice_id == invoice_id,
+                BillingExport.format_version == "securityops-accounting-v1",
+            )
+        )
+        assert stored_export is not None
+        serialized = json.dumps(
+            stored_export.payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        stored_export.payload_sha256 = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+        db.commit()
+    malformed_but_hashed = client.post(
+        f"/api/v1/billing/invoices/{invoice['id']}/exports/csv",
+        headers=headers,
+        params={"idempotency_key": "csv-invalid-snapshot-001"},
+    )
+    assert malformed_but_hashed.status_code == 409
+    assert malformed_but_hashed.json()["detail"] == "Gespeicherter Rechnungsexport ist fehlerhaft."
 
 
 def test_invoice_approval_emits_minimal_idempotent_notification(client: TestClient):
