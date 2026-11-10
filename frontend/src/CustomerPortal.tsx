@@ -201,23 +201,32 @@ export default function CustomerPortal({
   }
 
   return (
-    <main className="shell">
-      <header className="topbar">
+    <div className="app">
+      <aside className="sidebar">
         <a className="brand" href="/" aria-label="SecurityOps Startseite">
-          <span className="brand-mark">S</span>
-          <span>SECURITY<span className="brand-light">OPS</span></span>
+          <span className="brand-mark">SO</span>
+          <span className="brand-text">SecurityOps<small>Kundenportal</small></span>
         </a>
-        <div className="account">
-          <span className="topbar-label">{user.full_name}</span>
+        <nav className="module-tabs" aria-label="Kundenportal">
+          <a className="module-tab active" href="#portal-customer-title">Übersicht</a>
+          <a className="module-tab" href="#portal-objects-title">Objekte</a>
+          <a className="module-tab" href="#portal-invoices-title">Rechnungen</a>
+          <a className="module-tab" href="#portal-documents-title">Dokumente</a>
+          <a className="module-tab" href="#portal-requests-title">Anträge</a>
+        </nav>
+        <div className="sidebar-foot">
+          <span className="sidebar-user">{user.full_name}</span>
           <button className="sign-out" onClick={() => void signOut()}>Abmelden</button>
         </div>
-      </header>
-
-      <section className="intro">
-        <p className="eyebrow">KUNDENPORTAL</p>
-        <h1>Willkommen, {portal?.contact.first_name ?? user.full_name}.</h1>
-        <p>Hier sehen Sie die für Ihr Konto freigegebenen Kundeninformationen.</p>
-      </section>
+      </aside>
+      <main className="main">
+        <section className="page-head">
+          <div>
+            <p className="eyebrow">KUNDENPORTAL</p>
+            <h1>Willkommen, {portal?.contact.first_name ?? user.full_name}.</h1>
+            <p>Hier sehen Sie die für Ihr Konto freigegebenen Kundeninformationen.</p>
+          </div>
+        </section>
 
       {error && <p className="alert page-alert" role="alert">{error}</p>}
       {notice && <p className="success page-alert" role="status">{notice}</p>}
@@ -386,6 +395,7 @@ export default function CustomerPortal({
             </div>}
         </section>
       </>}
-    </main>
+      </main>
+    </div>
   );
 }

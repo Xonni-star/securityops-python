@@ -10,3 +10,5 @@ backend/*.egg-info/
 *.tsbuildinfo
 frontend/node_modules/
 frontend/dist/
+
+.admin-password

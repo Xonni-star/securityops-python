@@ -608,19 +608,17 @@ export default function App() {
   }
 
   if (authLoading) {
-    return <main className="shell auth-shell"><p className="muted">Sitzung wird geprüft …</p></main>;
+    return <div className="login-wrap"><p className="muted">Sitzung wird geprüft …</p></div>;
   }
 
   if (!user) {
     return (
-      <main className="shell auth-shell">
-        <header className="topbar">
-          <a className="brand" href="/" aria-label="SecurityOps Startseite">
-            <span className="brand-mark">S</span>
-            <span>SECURITY<span className="brand-light">OPS</span></span>
+      <div className="login-wrap">
+        <section className="panel login-card">
+          <a className="brand login-brand" href="/" aria-label="SecurityOps Startseite">
+            <span className="brand-mark">SO</span>
+            <span className="brand-text">SecurityOps<small>Verwaltung</small></span>
           </a>
-        </header>
-        <section className="panel login-panel">
           <p className="eyebrow">SICHERER ZUGANG</p>
           <h1>Anmelden</h1>
           <p className="muted">Melde dich mit deinem SecurityOps-Konto an.</p>
@@ -638,14 +636,14 @@ export default function App() {
             <button type="submit" disabled={busy}>{busy ? "Anmeldung läuft …" : "Anmelden"}</button>
           </form>
         </section>
-      </main>
+      </div>
     );
   }
 
   if (passwordChangeRequired) {
     return (
-      <main className="shell auth-shell">
-        <section className="panel login-panel">
+      <div className="login-wrap">
+        <section className="panel login-card">
           <p className="eyebrow">SICHERER ZUGANG</p>
           <h1>Passwort ändern</h1>
           <p className="muted">Das bereitgestellte Übergangspasswort muss vor der Nutzung geändert werden.</p>
@@ -663,7 +661,7 @@ export default function App() {
             <button type="submit" disabled={busy}>{busy ? "Passwort wird geändert …" : "Passwort ändern"}</button>
           </form>
         </section>
-      </main>
+      </div>
     );
   }
 
@@ -672,27 +670,13 @@ export default function App() {
   }
 
   return (
-    <main className="shell">
-      <header className="topbar">
+    <div className="app">
+      <aside className="sidebar">
         <a className="brand" href="/" aria-label="SecurityOps Startseite">
-          <span className="brand-mark">S</span>
-          <span>SECURITY<span className="brand-light">OPS</span></span>
+          <span className="brand-mark">SO</span>
+          <span className="brand-text">SecurityOps<small>Verwaltung</small></span>
         </a>
-        <div className="account">
-          <span className="topbar-label">{user.full_name}</span>
-          <button className="sign-out" onClick={() => void signOut()}>Abmelden</button>
-        </div>
-      </header>
-
-      <section className="intro">
-        <p className="eyebrow">{isEmployeePortal ? "MITARBEITERPORTAL" : "SECURITYOPS VERWALTUNG"}</p>
-        <h1>{isEmployeePortal ? `Guten Tag, ${user.full_name}.` : "Guten Tag."}</h1>
-        <p>{isEmployeePortal
-          ? "Eigene Dienste, Aufgaben, Qualifikationen, Arbeitszeiten und Anträge."
-          : "Kunden, Objekte, Personal, Schlüssel, Inventar, Aufgaben, Dienste und Arbeitszeiten zentral verwalten."}</p>
-      </section>
-
-      <nav className="module-tabs" aria-label="Verwaltungsmodule">
+        <nav className="module-tabs" aria-label="Verwaltungsmodule">
         {isEmployeePortal ? <>
           <button
             className={activeModule === "employee_portal" ? "module-tab active" : "module-tab"}
@@ -759,7 +743,22 @@ export default function App() {
           className={activeModule === "security" ? "module-tab active" : "module-tab"}
           onClick={() => selectModule("security")}>Sicherheit</button>
         </>}
-      </nav>
+        </nav>
+        <div className="sidebar-foot">
+          <span className="sidebar-user">{user.full_name}</span>
+          <button className="sign-out" onClick={() => void signOut()}>Abmelden</button>
+        </div>
+      </aside>
+      <main className="main">
+        <section className="page-head">
+          <div>
+            <p className="eyebrow">{isEmployeePortal ? "MITARBEITERPORTAL" : "SECURITYOPS VERWALTUNG"}</p>
+            <h1>{isEmployeePortal ? `Guten Tag, ${user.full_name}.` : "Guten Tag."}</h1>
+            <p>{isEmployeePortal
+              ? "Eigene Dienste, Aufgaben, Qualifikationen, Arbeitszeiten und Anträge."
+              : "Kunden, Objekte, Personal, Schlüssel, Inventar, Aufgaben, Dienste und Arbeitszeiten zentral verwalten."}</p>
+          </div>
+        </section>
 
       {searchableTypes.length > 0 && (
         <GlobalSearch
@@ -1126,7 +1125,8 @@ export default function App() {
       </section>}
       </>}
       <footer>SecurityOps <span>·</span> Verwaltung</footer>
-    </main>
+      </main>
+    </div>
   );
 }
 
