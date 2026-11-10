@@ -1,0 +1,16 @@
+{
+  "name": "securityops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Monorepo-Einstieg: reicht Install, Build und Tests an frontend/ weiter.",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install-frontend.mjs",
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix frontend test",
+    "preview": "npm --prefix frontend run preview"
+  }
+}

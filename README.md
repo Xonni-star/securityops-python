@@ -112,6 +112,19 @@ Das Backend liest `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USE
 
 Bei direktem Backend-Start außerhalb von Docker: Python 3.12+, `cd backend`, `pip install '.[test]'`, die getrennten Datenbankrollen mit `python -m scripts.provision_database_roles` als Administrator provisionieren, Alembic mit `securityops_migrator` und die API mit `securityops_runtime` starten. Für Notification-/OWKS-Hintergrundverarbeitung zusätzlich in einem separaten Prozess `python -m app.notification_worker run` starten. Für lokale HTTP-Entwicklung müssen `APP_ENV=development` und `SESSION_COOKIE_SECURE=false` ausdrücklich gesetzt werden. Datenbank-Secrets gehören nicht in Quellcode oder Versionsverwaltung.
 
+## Frontend ohne Docker (Monorepo)
+
+Das Repository ist ein Monorepo: `backend/` enthält die FastAPI-Anwendung, `frontend/` die React-Oberfläche mit Vite und TypeScript. Im Wurzelverzeichnis liegt ein schlanker `package.json`, damit `npm install` und `npm run …` direkt am Repo-Root funktionieren und die Befehle an `frontend/` weitergereicht werden. Voraussetzung ist Node.js ≥ 22.22.2; die Frontend-Abhängigkeiten verlangen aktuelle Node-Versionen (`vite` ≥ 20.19/22.12, `vitest` und `jsdom` ≥ 22.22).
+
+```sh
+npm install     # installiert die Frontend-Abhängigkeiten aus frontend/package-lock.json
+npm run dev     # Vite-Entwicklungsserver auf http://localhost:5173
+npm run build   # Typprüfung und Produktionsbuild nach frontend/dist
+npm test        # Vitest
+```
+
+Damit lässt sich das Frontend auch in Umgebungen starten, die ausschließlich ein Node-Projekt im Wurzelverzeichnis erwarten. Der Vite-Entwicklungsserver proxyt `/api` und `/health` auf `http://api:8000`, also auf den API-Container; ohne Compose rendert die Oberfläche, die API-Aufrufe laufen jedoch ins Leere. Für die vollständige Anwendung bleibt Docker Compose der vorgesehene Weg. Die CI prüft weiterhin direkt in `frontend/`.
+
 ## Tests
 
 ```sh
