@@ -2,7 +2,7 @@
 
 **Historische Live-Prüfung:** 09.11.2026, 19:40 Uhr CET · Checkout und `origin/main` stimmten bei dieser Prüfung überein · **Alembic-Head:** `0035_worker_monitoring` · **Alembic-Migrationen:** 35 · **Offene Pull Requests zu diesem Zeitpunkt:** #62, #64, #65, #66, #68–#77.
 
-**Aktueller Main-/GitHub-Abgleich:** 10.11.2026, 08:34 Uhr CET · **Alembic-Head:** `0038_digital_policies` · **Alembic-Migrationen:** 38 · PRs #84 und #86 sind in `main` integriert · **Offene Pull Requests:** #85, #87, #88 und #89. Die detaillierte GitHub-Statusaufnahme weiter unten bleibt eine ausdrücklich datierte historische Momentaufnahme.
+**Aktueller Main-/GitHub-Abgleich:** 10.11.2026, 08:42 Uhr CET · **Alembic-Head:** `0038_digital_policies` · **Alembic-Migrationen:** 38 · PRs #84, #86 und #87 sind in `main` integriert · **Offene Pull Requests:** #85, #88 und #89. Die detaillierte GitHub-Statusaufnahme weiter unten bleibt eine ausdrücklich datierte historische Momentaufnahme.
 
 **Vorgeschlagener Stand des offenen PR #85 (nicht in `main`):** **Alembic-Head:** `0039_unique_billing_corrections` · **Alembic-Migrationen:** 39. Die additive Migration ergänzt die Eindeutigkeitssicherung für Rechnungskorrekturen. Issue #7 bleibt offen für fachliche Regeln und Abnahmen.
 
